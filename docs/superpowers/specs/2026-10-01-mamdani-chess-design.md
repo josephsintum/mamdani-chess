@@ -26,6 +26,7 @@ A browser game where friends — and strangers via quick match — play Pothole 
 | Frontend | SvelteKit (Svelte 5) with `adapter-static`; custom board component, no chessground. |
 | Storage | SQLite via `modernc.org/sqlite` (pure Go). |
 | Hosting | One Railway service. |
+| Visual design | "Subway" look, dark theme by default; "Silver" light theme via a header toggle. See §6. |
 
 ## Out of scope (for now)
 
@@ -161,7 +162,8 @@ Evaluated after resolution: checkmate; stalemate (Mamdani moves count as legal m
 - `Board.svelte`: CSS 8×8 grid, pointer events for drag and tap-tap, legal-move dots from the server's list, potholes and the Mamdani as their own layers, Svelte transitions for falls, repairs, and captures. No rules logic.
 - `DiceTray.svelte` animates `last` events in order; the board waits on it before showing the final position.
 - One `gameStream` module wraps `EventSource` and exposes reactive state; actions are `fetch` POSTs.
-- Piece art: cburnett SVGs (CC BY-SA 3.0, credited on the Rules page). Mamdani and pothole art are custom.
+- Piece art: cburnett SVGs (CC BY-SA 3.0, credited on the Rules page). Mamdani and pothole art are custom (see §6).
+- Theme colors are CSS custom properties; `data-theme="dark|silver"` on `<html>` switches them. No color literals in components.
 
 ---
 
@@ -174,7 +176,50 @@ Evaluated after resolution: checkmate; stalemate (Mamdani moves count as legal m
 - **HTTP integration**: two SSE clients quick-match and play a short game end to end.
 - **Playwright smoke test**: two browsers match and play a few moves.
 
+---
+
+## 6. Visual design
+
+Design canvas: https://claude.ai/artifact/XVJqVp283CoZEHpmHDrSih — the "Subway" artboards (Home, Game, Home phone; dark and silver) are the reference. Older artboards (road-works look) show layout and flow only.
+
+### Direction
+"Subway": inspired by New York station signage — white-on-black signs with a thick white rule along the top, circular colored route bullets, a bold grotesque typeface. It must stay *inspired by*: no MTA name, logo, real line maps, or official signage reproduced.
+
+### Theme
+- **Dark is the default and the design-first theme.** Every screen is designed in dark; silver gets one contrast pass at the end.
+- **Silver** (light) is a full theme, switched by a header toggle. The choice is saved per browser (`localStorage`); first visit is always dark, not the OS setting.
+
+### Tokens
+| Token | Dark | Silver |
+| --- | --- | --- |
+| `--bg` page | `#101010` | `#E4E6E9` |
+| `--panel` signs, cards | `#000000` | `#F7F8F9` + `1px #C4C8CD` border |
+| `--rule` sign top rule | `#FFFFFF` | `#121212` |
+| `--text` | `#FFFFFF` | `#121212` |
+| `--text-muted` | `#BBBBBB` | `#4A4F56` |
+| `--line` dividers | `#333333` | `#D6D9DD` |
+| `--accent` highlight | `#FCCC0A` | `#FCCC0A` fill; `#7A5C00` as text |
+| `--board-light` / `--board-dark` | `#DADADA` / `#6A6A6A` | `#F2F3F4` / `#8E9399` |
+| `--board-last` light / dark | `#FBE38A` / `#C6A21A` | same |
+| `--target-ring` | `#FCCC0A` | `#0039A6` |
+
+Bullet colors (both themes): red `#EE352E`, blue `#0039A6`, green `#00933C`, orange `#FF6319`, yellow `#FCCC0A` (dark text), purple `#B933AD`. Bullets carry their own text color; never inherit.
+
+### Type
+Work Sans (400–800) for everything; IBM Plex Mono for clocks, codes and move numbers.
+
+### Signature elements
+- **Bullets** mark players, dice results (the two d8s read as `d` and `5`), the saving roll, and "How it works" steps.
+- **Move log as a route line**: one stop per half-move; the current stop is a yellow ring.
+- **Dice tray as a "Service update"** panel with a yellow header bar.
+- **Pothole = manhole cover** (custom SVG: iron disc, grid, "NYC" medallion, lift slots), with a thin `--accent` rim so it reads on dark squares. Static, no animation.
+- **The Mamdani** is a round token with a blue ring. The current photo is a placeholder; the shipped game needs art we have rights to (illustration recommended).
+
+### Accessibility
+Text contrast ≥ 4.5:1 in both themes (yellow is never used as text on silver). Touch targets ≥ 44 px. Emoji reactions have `aria-label`s.
+
 ## Next steps
 
-1. Design the screens in canvas (home, waiting, game, result, rules; desktop and mobile).
-2. Implementation plan.
+1. Carry dark Subway through the remaining screens: waiting, quick match, house rules, game over, rules, and the phone game screen.
+2. Silver contrast pass.
+3. Implementation plan.
