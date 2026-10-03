@@ -208,7 +208,7 @@ Dark only for the demo. Colors live in CSS custom properties so a light theme ca
 Barlow Condensed (700–800, uppercase) for headings and big buttons; IBM Plex Sans for body text; IBM Plex Mono for clocks, codes, dice values and move numbers.
 
 ### Signature elements
-- **Pothole = manhole cover**: a custom SVG (iron disc, diamond grid, "NYC" medallion, lift slots) with a soft shadow. Static.
+- **Pothole**: an irregular near-black hole with a deep inner shadow and a `--hazard` orange ring. Static.
 - **Target square**: dashed yellow ring while the dice resolve.
 - **Dice tray**: d6 as a pip die, d8s as diamonds, the saving roll highlighted in yellow; the clock shows "Paused for dice" meanwhile.
 - **Spectator strip**: a narrow column beside the board where audience reactions float up, with the watcher count at the bottom.
