@@ -17,7 +17,7 @@ Chess comes first; the dice bring chaos, and the Mamdani is how you fight back. 
 
 ## Decisions
 
-All fourteen are agreed.
+All sixteen are agreed.
 
 | # | Decision | Rule |
 | --- | --- | --- |
@@ -35,6 +35,8 @@ All fourteen are agreed.
 | 12 | Saving-roll reach | Clear queen line. Nothing between the Mamdani and the square; nothing else is checked. |
 | 13 | Endless re-rolls | Cap at 64. After 64 re-rolls without a valid square, no pothole opens that turn. |
 | 14 | Pawns, castling, en passant | Blocks like a piece. No castling through or onto a pothole (rook's path included), no pawn double-step across one, and a pothole on the en passant square cancels that capture. |
+| 15 | Roll after a checkmating move | No roll. A move that checkmates ends the game at once, so the dice can't undo a mate made on the board (goal 2). |
+| 16 | Check held off only by your own pothole | Checkmate. Every move closes your own pothole, so if the king would then be in check and no move fixes it, it is checkmate. |
 
 ## Setup
 
@@ -112,7 +114,7 @@ A saving roll is one d8. An odd number saves the piece, and the pothole never op
 
 You win by checkmate, as in normal chess. Kings never fall into potholes, and a fall that would checkmate is re-rolled, so a pothole can't win the game directly.
 
-- **Checkmate:** check where no move of your pieces and no Mamdani move gets you out of check.
+- **Checkmate:** check where no move of your pieces and no Mamdani move gets you out of check. A move that checkmates ends the game at once; no pothole roll follows. If your own open pothole is the only thing blocking a check and no move fixes it, that is also checkmate, because every move closes that pothole.
 - **Stalemate:** a draw, but only if you also have no legal Mamdani move.
 - **50-move rule:** moving the Mamdani does not reset the count. Losing a piece to a pothole does reset it; the Mamdani falling does not.
 - **Repetition:** a position counts as repeated only if the pieces, the Mamdani and the open potholes are all the same.
