@@ -31,7 +31,7 @@ All fourteen are agreed.
 | 8 | Sliders and potholes | Can't cross, with blocked lines shown on the board (goal 4). Knights can jump over a pothole but can't land on it. |
 | 9 | Stalling with the Mamdani | No rule. Either player may move it anywhere it can reach, including straight back. Threefold repetition ends any back-and-forth as a draw. |
 | 10 | Number of potholes | New pothole on every even roll (original). Potholes never move; each one lasts as set in #4. |
-| 11 | Pothole would checkmate | Re-roll. If a fall would leave the next player checkmated, re-roll both d8s. A roll never wins on its own (goals 2, 3). |
+| 11 | Pothole would checkmate | Re-roll. If the result of the roll (a piece falling, or a hole opening on an empty square) would leave the next player checkmated, re-roll both d8s. A roll never wins on its own (goals 2, 3). |
 | 12 | Saving-roll reach | Clear queen line. Nothing between the Mamdani and the square; nothing else is checked. |
 | 13 | Endless re-rolls | Cap at 64. After 64 re-rolls without a valid square, no pothole opens that turn. |
 | 14 | Pawns, castling, en passant | Blocks like a piece. No castling through or onto a pothole (rook's path included), no pawn double-step across one, and a pothole on the en passant square cancels that capture. |
@@ -68,8 +68,8 @@ When the d8s land on a square:
 - **King:** kings never fall. Re-roll both d8s.
 - **Next to the Mamdani:** the pothole is repaired the moment it opens. Nothing falls.
 - **Already a pothole:** re-roll both d8s.
-- **Would expose the roller's king:** if the piece falling would leave the player who just moved in check, re-roll both d8s.
-- **Would checkmate the next player:** if the piece falling would leave the next player checkmated, re-roll both d8s. A roll never wins the game on its own.
+- **Would expose the roller's king:** if the piece falling would leave the player who just moved in check once the hole closes, re-roll both d8s.
+- **Would checkmate the next player:** if the result (a piece falling, or a hole on an empty square taking an escape or blocking square) would leave the next player checkmated, re-roll both d8s. A roll never wins the game on its own.
 - **Too many re-rolls:** after 64 re-rolls without a valid square, no pothole opens this turn.
 - **Empty square:** the pothole opens. Mark it with a checker.
 - **Any other piece:** the piece falls in and is lost, unless it is saved (see Saving rolls).
@@ -114,7 +114,7 @@ You win by checkmate, as in normal chess. Kings never fall into potholes, and a 
 
 - **Checkmate:** check where no move of your pieces and no Mamdani move gets you out of check.
 - **Stalemate:** a draw, but only if you also have no legal Mamdani move.
-- **50-move rule:** moving the Mamdani does not reset the count. Losing a piece to a pothole does reset it.
+- **50-move rule:** moving the Mamdani does not reset the count. Losing a piece to a pothole does reset it; the Mamdani falling does not.
 - **Repetition:** a position counts as repeated only if the pieces, the Mamdani and the open potholes are all the same.
 - Castling, en passant and promotion work as normal. A pothole blocks like a piece: you cannot castle through or onto one (including the rook's path over b1 or b8), a pawn cannot double-step across one, and a pothole on the en passant square cancels that capture.
 
