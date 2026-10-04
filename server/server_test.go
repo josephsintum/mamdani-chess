@@ -2,8 +2,10 @@ package server
 
 import (
 	"bufio"
+	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -11,8 +13,14 @@ import (
 	"testing/fstest"
 	"time"
 
+	"mamdani-chess/game"
 	"mamdani-chess/store"
 )
+
+// odd always rolls 1, so no potholes open and moves are plain chess.
+type odd struct{}
+
+func (odd) D8() int { return 1 }
 
 func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
@@ -26,18 +34,54 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 		"_app/immutable/app.js": {Data: []byte("console.log(1)")},
 		"favicon.svg":           {Data: []byte("<svg/>")},
 	}
-	s := New(st, assets)
+	s := New(st, game.NewHub(odd{}), assets)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 	return s, ts
 }
 
+// player is one browser: its own cookie jar, so its own guest ID.
+type player struct {
+	t   *testing.T
+	c   *http.Client
+	url string
+}
+
+func newPlayer(t *testing.T, ts *httptest.Server) *player {
+	jar, _ := cookiejar.New(nil)
+	return &player{t: t, c: &http.Client{Jar: jar}, url: ts.URL}
+}
+
+func (p *player) post(path, body string) (int, string) {
+	p.t.Helper()
+	resp, err := p.c.Post(p.url+path, "application/json", strings.NewReader(body))
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, strings.TrimSpace(string(b))
+}
+
+func (p *player) create() string {
+	p.t.Helper()
+	status, body := p.post("/api/games", "")
+	var out struct{ Code string }
+	if status != http.StatusCreated || json.Unmarshal([]byte(body), &out) != nil || len(out.Code) != 6 {
+		p.t.Fatalf("create: %d %s", status, body)
+	}
+	return out.Code
+}
+
 // sseReader reads "event:"/"data:" pairs and comments from a stream.
-type sseReader struct{ sc *bufio.Scanner }
+type sseReader struct {
+	t  *testing.T
+	sc *bufio.Scanner
+}
 
 // next returns the next event name and data, or ("comment", text) for a heartbeat.
-func (r sseReader) next(t *testing.T) (string, string) {
-	t.Helper()
+func (r sseReader) next() (string, string) {
+	r.t.Helper()
 	var event, data string
 	for r.sc.Scan() {
 		line := r.sc.Text()
@@ -54,59 +98,129 @@ func (r sseReader) next(t *testing.T) (string, string) {
 			data = line[len("data: "):]
 		}
 	}
-	t.Fatalf("stream ended: %v", r.sc.Err())
+	r.t.Fatalf("stream ended: %v", r.sc.Err())
 	return "", ""
 }
 
-func openStream(t *testing.T, url string) sseReader {
-	t.Helper()
-	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatal(err)
+// state reads the next "state" event as a View.
+func (r sseReader) state() game.View {
+	r.t.Helper()
+	ev, data := r.next()
+	var v game.View
+	if ev != "state" || json.Unmarshal([]byte(data), &v) != nil {
+		r.t.Fatalf("got %q %q, want a state event", ev, data)
 	}
-	t.Cleanup(func() { resp.Body.Close() })
+	return v
+}
+
+func (p *player) stream(code string) sseReader {
+	p.t.Helper()
+	resp, err := p.c.Get(p.url + "/api/games/" + code + "/stream")
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	p.t.Cleanup(func() { resp.Body.Close() })
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
-		t.Fatalf("Content-Type = %q", ct)
+		p.t.Fatalf("Content-Type = %q", ct)
 	}
 	if resp.Header.Get("X-Accel-Buffering") != "no" {
-		t.Fatal("missing X-Accel-Buffering: no")
+		p.t.Fatal("missing X-Accel-Buffering: no")
 	}
-	return sseReader{bufio.NewScanner(resp.Body)}
+	return sseReader{t: p.t, sc: bufio.NewScanner(resp.Body)}
 }
 
-func TestHonkStreamSendsCurrentThenUpdates(t *testing.T) {
+func TestFriendGameOverHTTP(t *testing.T) {
 	_, ts := newTestServer(t)
-	a := openStream(t, ts.URL+"/api/honk/stream")
-	b := openStream(t, ts.URL+"/api/honk/stream")
-	for _, s := range []sseReader{a, b} {
-		if ev, data := s.next(t); ev != "honk" || data != `{"count":0}` {
-			t.Fatalf("first event = %q %q", ev, data)
-		}
+	alice, bob, carol := newPlayer(t, ts), newPlayer(t, ts), newPlayer(t, ts)
+
+	code := alice.create()
+	a := alice.stream(code)
+	if v := a.state(); v.You != "white" || v.Status != game.Waiting {
+		t.Fatalf("alice: you=%s status=%s", v.You, v.Status)
+	}
+	b := bob.stream(code)
+	if v := b.state(); v.You != "black" || v.Status != game.Playing {
+		t.Fatalf("bob: you=%s status=%s", v.You, v.Status)
+	}
+	if v := a.state(); v.Status != game.Playing || len(v.Legal) != 33 {
+		t.Fatalf("alice after bob joins: status=%s legal=%d", v.Status, len(v.Legal))
+	}
+	if v := carol.stream(code).state(); v.You != "spectator" {
+		t.Fatalf("carol: you=%s", v.You)
 	}
 
-	resp, err := http.Post(ts.URL+"/api/honk", "application/json", nil)
+	if status, body := alice.post("/api/games/"+code+"/move", `{"from":"e2","to":"e4","seq":0}`); status != http.StatusNoContent {
+		t.Fatalf("alice e2e4: %d %s", status, body)
+	}
+	if v := b.state(); v.Seq != 1 || v.Board[28] != "wP" || len(v.Legal) != 32 || v.Log[0] != "e4 · d8 1" {
+		t.Fatalf("bob after e4: seq=%d e4=%q legal=%d log=%q", v.Seq, v.Board[28], len(v.Legal), v.Log)
+	}
+	if v := a.state(); v.Seq != 1 || len(v.Legal) != 0 {
+		t.Fatalf("alice after e4: seq=%d legal=%d", v.Seq, len(v.Legal))
+	}
+}
+
+func TestMoveErrors(t *testing.T) {
+	_, ts := newTestServer(t)
+	alice, bob, carol := newPlayer(t, ts), newPlayer(t, ts), newPlayer(t, ts)
+	code := alice.create()
+	alice.stream(code).state()
+	bob.stream(code).state()
+	move := "/api/games/" + code + "/move"
+	cases := []struct {
+		who        *player
+		path, body string
+		want       int
+	}{
+		{carol, move, `{"from":"e2","to":"e4","seq":0}`, http.StatusForbidden},
+		{bob, move, `{"from":"e7","to":"e5","seq":0}`, http.StatusConflict},   // not your turn
+		{alice, move, `{"from":"e2","to":"e4","seq":5}`, http.StatusConflict}, // stale
+		{alice, move, `{"from":"e2","to":"e5","seq":0}`, http.StatusConflict}, // illegal
+		{alice, move, `{"from":"e9","to":"e4","seq":0}`, http.StatusBadRequest},
+		{alice, move, `not json`, http.StatusBadRequest},
+		{alice, move, `{"from":"` + strings.Repeat("x", 5000) + `"}`, http.StatusBadRequest},
+		{alice, "/api/games/NOPE99/move", `{"from":"e2","to":"e4","seq":0}`, http.StatusNotFound},
+	}
+	for _, c := range cases {
+		if status, body := c.who.post(c.path, c.body); status != c.want {
+			t.Errorf("%s %.40s: %d %s, want %d", c.path, c.body, status, body, c.want)
+		}
+	}
+	resp, err := http.Get(ts.URL + "/api/games/NOPE99/stream")
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if strings.TrimSpace(string(body)) != `{"count":1}` {
-		t.Fatalf("POST body = %s", body)
-	}
-
-	for _, s := range []sseReader{a, b} {
-		if ev, data := s.next(t); ev != "honk" || data != `{"count":1}` {
-			t.Fatalf("broadcast = %q %q", ev, data)
-		}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("unknown game stream: %d, want 404", resp.StatusCode)
 	}
 }
 
-func TestHonkStreamHeartbeat(t *testing.T) {
+func TestGuestCookie(t *testing.T) {
+	_, ts := newTestServer(t)
+	resp, err := http.Post(ts.URL+"/api/games", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	var c *http.Cookie
+	for _, k := range resp.Cookies() {
+		if k.Name == "guest" {
+			c = k
+		}
+	}
+	if c == nil || len(c.Value) != 32 || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Path != "/" {
+		t.Fatalf("guest cookie %+v", c)
+	}
+}
+
+func TestGameStreamHeartbeat(t *testing.T) {
 	s, ts := newTestServer(t)
 	s.heartbeat = 10 * time.Millisecond
-	r := openStream(t, ts.URL+"/api/honk/stream")
-	r.next(t) // current count
-	if ev, text := r.next(t); ev != "comment" || text != "ping" {
+	alice := newPlayer(t, ts)
+	r := alice.stream(alice.create())
+	r.state()
+	if ev, text := r.next(); ev != "comment" || text != "ping" {
 		t.Fatalf("got %q %q, want heartbeat", ev, text)
 	}
 }
@@ -145,8 +259,9 @@ func TestStaticAndFallback(t *testing.T) {
 
 func TestCloseEndsStreamsButNotRequests(t *testing.T) {
 	s, ts := newTestServer(t)
-	r := openStream(t, ts.URL+"/api/honk/stream")
-	r.next(t) // current count
+	alice := newPlayer(t, ts)
+	r := alice.stream(alice.create())
+	r.state()
 
 	s.Close()
 	s.Close() // idempotent
@@ -162,14 +277,5 @@ func TestCloseEndsStreamsButNotRequests(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("stream still open 1s after Close")
 	}
-
-	resp, err := http.Post(ts.URL+"/api/honk", "application/json", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != 200 || strings.TrimSpace(string(body)) != `{"count":1}` {
-		t.Fatalf("POST after Close = %d %s", resp.StatusCode, body)
-	}
+	alice.create() // other requests still work
 }

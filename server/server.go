@@ -8,33 +8,36 @@ import (
 	"sync"
 	"time"
 
+	"mamdani-chess/game"
 	"mamdani-chess/store"
 )
 
 // Server routes API and frontend requests.
 type Server struct {
 	store     *store.Store
+	games     *game.Hub
 	assets    fs.FS
-	honks     *broadcaster
 	heartbeat time.Duration
 	mux       *http.ServeMux
 	done      chan struct{} // closed by Close to end SSE streams
 	closeOnce sync.Once
 }
 
-// New returns a Server backed by st that serves the frontend from assets.
-func New(st *store.Store, assets fs.FS) *Server {
+// New returns a Server for the games in hub that serves the frontend from
+// assets. st is unused until games are saved (a later milestone).
+func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	s := &Server{
 		store:     st,
+		games:     hub,
 		assets:    assets,
-		honks:     newBroadcaster(),
 		heartbeat: 15 * time.Second,
 		mux:       http.NewServeMux(),
 		done:      make(chan struct{}),
 	}
 	s.mux.HandleFunc("GET /healthz", s.healthz)
-	s.mux.HandleFunc("POST /api/honk", s.honk)
-	s.mux.HandleFunc("GET /api/honk/stream", s.honkStream)
+	s.mux.HandleFunc("POST /api/games", s.createGame)
+	s.mux.HandleFunc("GET /api/games/{code}/stream", s.gameStream)
+	s.mux.HandleFunc("POST /api/games/{code}/move", s.gameMove)
 	s.mux.HandleFunc("/api/", s.apiNotFound)
 	s.mux.HandleFunc("/", s.static)
 	return s

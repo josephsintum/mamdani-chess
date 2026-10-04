@@ -16,6 +16,9 @@
 	--board-last-light: #e9d98b;
 	--board-last-dark: #b5a24f;
 	--target-ring: #f2c230;
+	--hole: #08090a; /* inside of a pothole */
+	--piece-light: #fbf8f0;
+	--piece-dark: #141518;
 
 	--font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
 	--font-body: 'IBM Plex Sans', system-ui, sans-serif;

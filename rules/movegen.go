@@ -82,7 +82,7 @@ func (p *Position) pseudoMoves() []Move {
 			}
 		}
 	}
-	for s := Square(0); s < 64; s++ {
+	for s := range Square(64) {
 		pc := p.Board[s]
 		if pc == NoPiece || pc.Color() != c {
 			continue

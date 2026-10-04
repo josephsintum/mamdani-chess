@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"mamdani-chess/game"
 	"mamdani-chess/server"
 	"mamdani-chess/store"
 	"mamdani-chess/web"
@@ -33,7 +34,7 @@ func run() error {
 	}
 	defer st.Close()
 
-	handler := server.New(st, web.Assets())
+	handler := server.New(st, game.NewHub(game.CryptoDice{}), web.Assets())
 	srv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           handler,
