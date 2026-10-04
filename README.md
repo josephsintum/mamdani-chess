@@ -48,6 +48,8 @@ pnpm --dir web dev
 
 Then open http://localhost:5173.
 
+To work on the board without a second browser, open http://localhost:5173/dev/board (dev server only). One browser plays both sides, moves ignore check, and you pick what the dice do next: a pothole, a fall, a saving roll and so on. It uses the same board, dice tray and animation code as real games.
+
 To build a single binary with the frontend embedded:
 
 ```sh

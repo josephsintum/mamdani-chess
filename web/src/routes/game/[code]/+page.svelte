@@ -5,16 +5,15 @@
 	import DiceTray from '#lib/DiceTray.svelte';
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
-	import { firstDiceStep, stageAt } from '#lib/board.ts';
+	import { Animator } from '#lib/animator.svelte.ts';
+	import { stageAt } from '#lib/board.ts';
 	import { createGame, reasons, resign, sendMove, type Color, type MoveJSON, type View } from '#lib/game.ts';
-
-	/** Time between dice steps; a whole roll takes about two seconds. */
-	const STEP_MS = 550;
 
 	const code = page.params.code ?? '';
 
-	let view = $state<View | null>(null);
-	let shown = $state(0); // events of view.last revealed so far
+	const anim = new Animator();
+	let view = $derived(anim.view);
+	let shown = $derived(anim.shown);
 	let connected = $state(false);
 	let notFound = $state(false);
 	let lost = $state(false);
@@ -22,27 +21,10 @@
 	let busy = $state(false); // a move or resignation is on its way
 	let confirmResign = $state(false);
 	let copyHint = $state('');
-	let timer: ReturnType<typeof setTimeout> | undefined;
 
-	// A new view plays out its dice one step at a time when it is the next
-	// turn; anything else (first load, reconnect, resignation) shows at once.
-	// A hidden tab skips the animation: browsers throttle its timers, so a
-	// player coming back would otherwise wait through slow dice.
 	function receive(next: View) {
-		const animate = view !== null && next.seq === view.seq + 1 && next.last.length > 0 && !document.hidden;
-		view = next;
 		error = '';
-		clearTimeout(timer);
-		shown = animate ? firstDiceStep(next.last) : next.last.length;
-		tick();
-	}
-
-	function tick() {
-		if (!view || shown >= view.last.length) return;
-		timer = setTimeout(() => {
-			shown += 1;
-			tick();
-		}, STEP_MS);
+		anim.receive(next, { hidden: document.hidden });
 	}
 
 	onMount(() => {
@@ -61,20 +43,17 @@
 		source.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
 		// Coming back to a tab mid-animation jumps to the end of the roll.
 		const finishOnReturn = () => {
-			if (!document.hidden && view && shown < view.last.length) {
-				clearTimeout(timer);
-				shown = view.last.length;
-			}
+			if (!document.hidden) anim.finish();
 		};
 		document.addEventListener('visibilitychange', finishOnReturn);
 		return () => {
 			source.close();
-			clearTimeout(timer);
+			anim.stop();
 			document.removeEventListener('visibilitychange', finishOnReturn);
 		};
 	});
 
-	let animating = $derived(view !== null && shown < view.last.length);
+	let animating = $derived(anim.animating);
 	let stage = $derived(view ? stageAt(view, shown) : null);
 	let you = $derived(view?.you ?? 'spectator');
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
