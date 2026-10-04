@@ -13,7 +13,8 @@ func (p *Position) SAN(m Move) string {
 	pc := p.Board[m.From]
 	switch {
 	case m.From == p.Mamdani:
-		b.WriteString("M" + m.To.String())
+		b.WriteByte('M')
+		b.WriteString(m.To.String())
 	case pc.Kind() == King && m.To.File()-m.From.File() == 2:
 		b.WriteString("O-O")
 	case pc.Kind() == King && m.From.File()-m.To.File() == 2:
@@ -33,7 +34,8 @@ func (p *Position) SAN(m Move) string {
 		}
 		b.WriteString(m.To.String())
 		if m.Promo != NoKind {
-			b.WriteString("=" + sanLetters[m.Promo])
+			b.WriteByte('=')
+			b.WriteString(sanLetters[m.Promo])
 		}
 	}
 	q := *p
