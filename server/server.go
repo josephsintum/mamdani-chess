@@ -38,6 +38,7 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/games", s.createGame)
 	s.mux.HandleFunc("GET /api/games/{code}/stream", s.gameStream)
 	s.mux.HandleFunc("POST /api/games/{code}/move", s.gameMove)
+	s.mux.HandleFunc("POST /api/games/{code}/resign", s.gameResign)
 	s.mux.HandleFunc("/api/", s.apiNotFound)
 	s.mux.HandleFunc("/", s.static)
 	return s

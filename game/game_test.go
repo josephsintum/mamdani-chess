@@ -84,7 +84,7 @@ func TestMoveBroadcastsToEveryone(t *testing.T) {
 		if v.Seq != 1 || v.Turn != "black" || v.Board[rules.E4] != "wP" || v.Board[rules.E2] != "" {
 			t.Errorf("%s: seq=%d turn=%s e4=%q e2=%q", name, v.Seq, v.Turn, v.Board[rules.E4], v.Board[rules.E2])
 		}
-		if !slices.Equal(v.Log, []string{"e4 · d8 1"}) {
+		if !slices.Equal(v.Log, []LogEntry{{SAN: "e4", Color: "white", Dice: "d8 1"}}) {
 			t.Errorf("%s: log %q", name, v.Log)
 		}
 		// Black: 19 normal moves (a7a5 is blocked by the Mamdani) + 13 Mamdani moves.
@@ -139,7 +139,7 @@ func TestPotholeShowsInView(t *testing.T) {
 	if !slices.Equal(kinds, want) {
 		t.Errorf("last %v, want %v", kinds, want)
 	}
-	if !strings.HasPrefix(v.Log[0], "e4 · d8 2 → d4") {
+	if !strings.HasPrefix(v.Log[0].Dice, "d8 2 → d4") {
 		t.Errorf("log %q", v.Log[0])
 	}
 }
@@ -204,5 +204,59 @@ func TestPanicInGameIsContained(t *testing.T) {
 	// The game goroutine survives and the position is unchanged.
 	if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
 		t.Fatalf("the game should keep working after a panic: %v", err)
+	}
+}
+
+func TestResign(t *testing.T) {
+	g := NewHub(odd{}).Create("alice")
+	if err := g.Resign("alice"); !errors.Is(err, ErrWaiting) {
+		t.Errorf("resign before black joins: %v", err)
+	}
+	b := g.Join("bob")
+	recv(t, b)
+	if err := g.Resign("carol"); !errors.Is(err, ErrNotPlayer) {
+		t.Errorf("spectator resigns: %v", err)
+	}
+	if err := g.Resign("alice"); err != nil {
+		t.Fatal(err)
+	}
+	v := recv(t, b)
+	if v.Status != Over || v.Result == nil || v.Result.Winner != "black" || v.Result.Reason != Resignation || len(v.Legal) != 0 {
+		t.Fatalf("status %s result %+v legal %d", v.Status, v.Result, len(v.Legal))
+	}
+	if err := g.Resign("bob"); !errors.Is(err, ErrGameOver) {
+		t.Errorf("resign after the game ended: %v", err)
+	}
+	if err := g.Move("bob", mv(t, "e7e5"), 0); !errors.Is(err, ErrGameOver) {
+		t.Errorf("move after resignation: %v", err)
+	}
+}
+
+func TestStatsAndLostPieces(t *testing.T) {
+	g := NewHub(&script{rolls: []int{
+		2, 7, 8, // e4: g8 is hit; the Mamdani on a5 has no line to it, so the knight falls
+		2, 4, 2, 5, // e5: d2 is hit; a5-b4-c3-d2 is clear, so White rolls to save: 5 saves it
+		2, 2, 4, // Nf3: b4 is next to the Mamdani, so the new pothole is repaired at once
+	}}).Create("alice")
+	a := g.Join("alice")
+	g.Join("bob")
+	recv(t, a)
+	for i, m := range []string{"e2e4", "e7e5", "g1f3"} {
+		if err := g.Move([]string{"alice", "bob"}[i%2], mv(t, m), i); err != nil {
+			t.Fatalf("%s: %v", m, err)
+		}
+	}
+	var v *View
+	for v == nil || v.Seq < 3 {
+		v = recv(t, a)
+	}
+	if !slices.Equal(v.Lost.White, []string{}) || !slices.Equal(v.Lost.Black, []string{"bN"}) {
+		t.Errorf("lost %+v, want white none and black [bN]", v.Lost)
+	}
+	if want := (StatsJSON{SavingRolls: 1, Saved: 1, Repaired: 1}); v.Stats != want {
+		t.Errorf("stats %+v, want %+v", v.Stats, want)
+	}
+	if want := (LogEntry{SAN: "e4", Color: "white", Dice: "d8 2 → g8 · bN falls"}); v.Log[0] != want {
+		t.Errorf("log[0] %+v, want %+v", v.Log[0], want)
 	}
 }

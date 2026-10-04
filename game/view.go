@@ -30,7 +30,9 @@ type View struct {
 	Check    bool        `json:"check"`
 	Legal    []MoveJSON  `json:"legal"` // only for the player to move
 	Last     []EventJSON `json:"last"`  // what happened on the latest turn, in order
-	Log      []string    `json:"log"`   // one line per turn
+	Log      []LogEntry  `json:"log"`   // one entry per turn
+	Lost     LostJSON    `json:"lost"`  // pieces each side has lost to potholes
+	Stats    StatsJSON   `json:"stats"`
 	Result   *ResultJSON `json:"result"`
 	Seq      int         `json:"seq"` // turns played; a move must quote it
 }
@@ -60,6 +62,28 @@ type EventJSON struct {
 	Roll   int                `json:"roll,omitempty"`
 	Saved  *bool              `json:"saved,omitempty"`
 	Reason rules.RerollReason `json:"reason,omitempty"`
+}
+
+// LogEntry is one turn in the move log: the move in algebraic notation and
+// what the dice did, e.g. {"e4", "white", "d8 4 → c3"}.
+type LogEntry struct {
+	SAN   string `json:"san"`
+	Color string `json:"color"`
+	Dice  string `json:"dice"`
+}
+
+// LostJSON lists the pieces each side has lost to potholes, as piece codes.
+type LostJSON struct {
+	White []string `json:"white"`
+	Black []string `json:"black"`
+}
+
+// StatsJSON counts what the dice and the Mamdani have done this game.
+type StatsJSON struct {
+	SavingRolls int  `json:"savingRolls"`
+	Saved       int  `json:"saved"`
+	Repaired    int  `json:"repaired"` // potholes the Mamdani fixed
+	MamdaniFell bool `json:"mamdaniFell"`
 }
 
 // ResultJSON is how the game ended.
@@ -147,9 +171,9 @@ func eventJSON(e rules.Event) EventJSON {
 	return j
 }
 
-// describe writes one log line for a turn, e.g. "e4 · d8 4 → d3 · save 5 ✓".
-func describe(san string, events []rules.Event) string {
-	parts := []string{san}
+// describe sums up what the dice did on a turn, e.g. "d8 4 → d3 · save 5 ✓".
+func describe(events []rules.Event) string {
+	var parts []string
 	rolled := false
 	for _, e := range events {
 		last := len(parts) - 1

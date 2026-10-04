@@ -76,13 +76,30 @@ func (s *Server) gameMove(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad move"})
 		return
 	}
-	switch err := g.Move(guest, m, req.Seq); {
+	writeGameResult(w, g.Move(guest, m, req.Seq))
+}
+
+// gameResign ends the game; the caller's opponent wins.
+func (s *Server) gameResign(w http.ResponseWriter, r *http.Request) {
+	guest := guestID(w, r)
+	g, ok := s.games.Get(r.PathValue("code"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
+		return
+	}
+	writeGameResult(w, g.Resign(guest))
+}
+
+// writeGameResult maps the outcome of a move or resignation to a response.
+// Success is 204: the new state arrives on the stream.
+func writeGameResult(w http.ResponseWriter, err error) {
+	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, game.ErrNotPlayer):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 	case errors.Is(err, rules.ErrBadDie), errors.Is(err, game.ErrInternal):
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "dice failed"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	default:
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 	}
