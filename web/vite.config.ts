@@ -11,6 +11,9 @@ export default defineConfig({
 	],
 	server: {
 		// `pnpm dev` on :5173 talks to `go run ./cmd/server` on :8080.
-		proxy: { '/api': 'http://localhost:8080' }
+		proxy: { '/api': 'http://localhost:8080' },
+		// The production build lands in web/build; rebuilding it must not
+		// reload the dev page.
+		watch: { ignored: ['**/build/**'] }
 	}
 });
