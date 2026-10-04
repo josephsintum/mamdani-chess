@@ -181,3 +181,28 @@ func TestLeaveStopsUpdates(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
+
+// panicky panics on its first roll, then rolls 1 forever.
+type panicky struct{ rolled bool }
+
+func (p *panicky) D8() int {
+	if !p.rolled {
+		p.rolled = true
+		panic("dice exploded")
+	}
+	return 1
+}
+
+func TestPanicInGameIsContained(t *testing.T) {
+	g := NewHub(&panicky{}).Create("alice")
+	a := g.Join("alice")
+	g.Join("bob")
+	recv(t, a)
+	if err := g.Move("alice", mv(t, "e2e4"), 0); !errors.Is(err, ErrInternal) {
+		t.Fatalf("got %v, want ErrInternal", err)
+	}
+	// The game goroutine survives and the position is unchanged.
+	if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
+		t.Fatalf("the game should keep working after a panic: %v", err)
+	}
+}

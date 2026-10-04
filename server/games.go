@@ -81,7 +81,7 @@ func (s *Server) gameMove(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, game.ErrNotPlayer):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
-	case errors.Is(err, rules.ErrBadDie):
+	case errors.Is(err, rules.ErrBadDie), errors.Is(err, game.ErrInternal):
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "dice failed"})
 	default:
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})

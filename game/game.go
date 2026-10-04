@@ -5,6 +5,9 @@ package game
 
 import (
 	"errors"
+	"fmt"
+	"log/slog"
+	"runtime/debug"
 	"slices"
 
 	"mamdani-chess/rules"
@@ -18,6 +21,7 @@ var (
 	ErrStale       = errors.New("the game has moved on; reload the position")
 	ErrGameOver    = rules.ErrGameOver
 	ErrIllegalMove = rules.ErrIllegalMove
+	ErrInternal    = errors.New("internal error in this game")
 )
 
 // Game is one live game.
@@ -62,14 +66,24 @@ func (g *Game) loop() {
 	}
 }
 
-// do runs f on the game's goroutine and waits for it to finish.
-func (g *Game) do(f func()) {
-	done := make(chan struct{})
+// do runs f on the game's goroutine and waits for it to finish. A panic in
+// f is logged and returned as ErrInternal instead of killing the server, so
+// one bad position can't end every game. rules.Game.Play only updates the
+// game after a turn succeeds, so a panic leaves the position unchanged.
+func (g *Game) do(f func()) (err error) {
+	done := make(chan error, 1)
 	g.calls <- func() {
-		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic in game", "code", g.code, "panic", r, "turns", g.g.Turns, "stack", string(debug.Stack()))
+				done <- fmt.Errorf("%w: %v", ErrInternal, r)
+				return
+			}
+			done <- nil
+		}()
 		f()
 	}
-	<-done
+	return <-done
 }
 
 // Code returns the game's share code.
@@ -103,7 +117,9 @@ func (g *Game) Leave(sub *Sub) {
 // which rejects a move made from an out-of-date board.
 func (g *Game) Move(guest string, m rules.Move, seq int) error {
 	var err error
-	g.do(func() { err = g.move(guest, m, seq) })
+	if perr := g.do(func() { err = g.move(guest, m, seq) }); perr != nil {
+		return perr
+	}
 	return err
 }
 
