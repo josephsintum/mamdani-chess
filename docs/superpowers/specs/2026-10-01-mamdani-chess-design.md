@@ -134,18 +134,20 @@ The game counts open streams per player. At zero, a 60 s forfeit timer starts an
 ## 3. Rules engine (`rules`)
 
 ### Data
-- `Position`: 64 squares; Mamdani square (or none) and the square it last left; open potholes with opener color and close time; side to move; castling rights; en passant square; halfmove clock; fullmove number; position-hash history.
+- `Position`: 64 squares; Mamdani square (or none); open potholes with opener color and close time; side to move; castling rights; en passant square; halfmove clock; fullmove number; position-hash history.
 - `Settings`: pothole trigger (default: even on d8), pothole duration in turns (default: until opener's next move), sliders cross potholes (default: no), Mamdani enabled (default: yes). Defaults must match RULES.md.
 
 ### Move generation
 - 8×8 board with direction tables. Pieces, potholes, and the Mamdani all block sliding lines; knights jump potholes but cannot land on them.
-- Mamdani moves: queen lines to empty, non-pothole squares; not back to the square it just left; illegal if they leave the mover's king in check.
+- Mamdani moves: queen lines to empty, non-pothole squares (including straight back); illegal if they leave the mover's king in check.
 - A move is legal only if the mover's king is not in check **after** the move and the turn's close and repair steps.
 
 ### Turn resolution
 `Apply(pos, move, dice) → (newPos, []Event, error)` where `dice` provides `D8()`. Steps follow RULES.md: move → close → repair → pothole d8 → place (two d8) → resolve. Events: `Moved`, `Captured`, `Promoted`, `PotholeClosed`, `Repaired`, `RolledPothole`, `Target`, `Reroll{reason}`, `SavingRoll{roll, saved}`, `Fell{piece}`, `PotholeOpened`.
 
-Re-roll the target square when it is: a king; an open pothole; or a square whose piece falling would leave the player who just moved in check.
+Re-roll the target square when it is: a king; an open pothole; a square whose piece falling would leave the player who just moved in check; or one whose piece falling would leave the next player checkmated. After 64 re-rolls with no valid square, no pothole opens.
+
+A piece gets a saving roll when the Mamdani has a clear queen line to its square; nothing else is checked. Potholes block like pieces for castling (rook's path included), pawn double-steps and en passant.
 
 ### Game end
 Evaluated after resolution: checkmate; stalemate (Mamdani moves count as legal moves); 50-move rule (Mamdani moves don't reset, pothole losses do); threefold repetition (hash includes potholes and Mamdani); insufficient material.

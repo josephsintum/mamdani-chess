@@ -37,6 +37,8 @@ When the d8s land on a square:
 - **Next to the Mamdani:** the pothole is repaired the moment it opens. Nothing falls.
 - **Already a pothole:** re-roll both d8s.
 - **Would expose the roller's king:** if the piece falling would leave the player who just moved in check, re-roll both d8s.
+- **Would checkmate the next player:** if the piece falling would leave the next player checkmated, re-roll both d8s. A roll never wins the game on its own.
+- **Too many re-rolls:** after 64 re-rolls without a valid square, no pothole opens this turn.
 - **Empty square:** the pothole opens. Mark it with a checker.
 - **Any other piece:** the piece falls in and is lost, unless it is saved (see Saving rolls).
 - **The Mamdani:** the Mamdani must make a saving roll (see Saving rolls).
@@ -58,7 +60,6 @@ The Mamdani belongs to neither player. It moves like a queen, never captures and
 - **Captures:** it never captures, and nobody can capture it.
 - **Blocking:** it blocks lines like any piece. It can block a check, and it can block your opponent's escape squares.
 - **Your own king:** you may not move the Mamdani so that it leaves your own king in check.
-- **No ping-pong:** you may not move the Mamdani straight back to the square it just came from. This stops two players stalling by moving it back and forth.
 - **Repairs:** any pothole on one of the 8 squares next to the Mamdani is repaired at once. The repair happens after every move, and when a new pothole opens there.
 - **Falling in:** the Mamdani can fall into a pothole like any other piece (see Saving rolls). Once it falls, it is gone for the rest of the game.
 
@@ -68,7 +69,7 @@ A saving roll is one d8. An odd number saves the piece, and the pothole never op
 
 | Who is on the square | Gets a saving roll when | Odd (1, 3, 5, 7) | Even (2, 4, 6, 8) |
 | --- | --- | --- | --- |
-| A player's piece | The Mamdani could legally move onto that square next turn, along a clear queen line | Piece saved, no pothole | Piece lost, pothole opens |
+| A player's piece | The Mamdani has a clear queen line to that square (nothing between them; nothing else is checked) | Piece saved, no pothole | Piece lost, pothole opens |
 | The Mamdani | Always | Mamdani saved, no pothole | Mamdani removed for the rest of the game, pothole opens |
 
 - The owner of the piece rolls. For the Mamdani, the player who rolled the pothole rolls.
@@ -77,13 +78,13 @@ A saving roll is one d8. An odd number saves the piece, and the pothole never op
 
 ## Winning and draws
 
-You win by checkmate, as in normal chess. Kings never fall into potholes, so a pothole can't win the game directly.
+You win by checkmate, as in normal chess. Kings never fall into potholes, and a fall that would checkmate is re-rolled, so a pothole can't win the game directly.
 
 - **Checkmate:** check where no move of your pieces and no Mamdani move gets you out of check.
 - **Stalemate:** a draw, but only if you also have no legal Mamdani move.
 - **50-move rule:** moving the Mamdani does not reset the count. Losing a piece to a pothole does reset it.
 - **Repetition:** a position counts as repeated only if the pieces, the Mamdani and the open potholes are all the same.
-- Castling, en passant and promotion work as normal. You cannot castle through or onto a pothole.
+- Castling, en passant and promotion work as normal. A pothole blocks like a piece: you cannot castle through or onto one (including the rook's path over b1 or b8), a pawn cannot double-step across one, and a pothole on the en passant square cancels that capture.
 
 ## Watch in test games
 
