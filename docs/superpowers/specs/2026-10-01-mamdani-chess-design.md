@@ -2,7 +2,7 @@
 
 Date: 2026-10-01
 Status: Draft for review
-Rules: [../../../RULES.md](../../../RULES.md) (live doc: https://claude.ai/code/artifact/50584f76-084a-4ea2-ae02-8534639e9b76)
+Rules: [../../../RULES.md](../../../RULES.md) (live doc: https://claude.ai/artifact/AvSPCQS42ggQGpTWQGoQRB). The rules are the original Pot-Hole Chess plus the Mamdani; the doc's decision table records each choice.
 
 ## Goal
 
@@ -53,8 +53,8 @@ Accounts, ratings, game history, private games, chat, draw offers, takebacks, pr
 
 ### Game `/game/:code`
 - Board in the center. Player bars above and below: name, clock, pieces lost.
-- **Dice tray** beside the board. After each move the clock pauses and the turn plays out in about 2 s: d6 → (if even) two d8 and the target square glows → (if eligible) saving d8 → crack and fall, or saved.
-- **Log panel**: moves and rolls, e.g. `e4 · d6 4 → d3 · save 5 ✓`.
+- **Dice tray** beside the board. After each move the clock pauses and the turn plays out in about 2 s: pothole d8 → (if even) two d8 and the target square glows → (if eligible) saving d8 → crack and fall, or saved.
+- **Log panel**: moves and rolls, e.g. `e4 · d8 4 → d3 · save 5 ✓`.
 - **Reactions**: players have an emoji bar; their reactions float from their player bar. Spectator reactions rise in a strip at the board's edge, beside a 👀 watcher count. Fixed set: 😂 😱 🔥 🕳️ 👏 😭.
 - **Resign** with an inline confirm.
 - **Mobile**: board full width, player bars above and below, log in a collapsible drawer, emoji bar pinned at the bottom.
@@ -135,7 +135,7 @@ The game counts open streams per player. At zero, a 60 s forfeit timer starts an
 
 ### Data
 - `Position`: 64 squares; Mamdani square (or none) and the square it last left; open potholes with opener color and close time; side to move; castling rights; en passant square; halfmove clock; fullmove number; position-hash history.
-- `Settings`: pothole trigger (default: even on d6), pothole duration in turns (default: until opener's next move), sliders cross potholes (default: no), Mamdani enabled (default: yes). Defaults must match RULES.md.
+- `Settings`: pothole trigger (default: even on d8), pothole duration in turns (default: until opener's next move), sliders cross potholes (default: no), Mamdani enabled (default: yes). Defaults must match RULES.md.
 
 ### Move generation
 - 8×8 board with direction tables. Pieces, potholes, and the Mamdani all block sliding lines; knights jump potholes but cannot land on them.
@@ -143,7 +143,7 @@ The game counts open streams per player. At zero, a 60 s forfeit timer starts an
 - A move is legal only if the mover's king is not in check **after** the move and the turn's close and repair steps.
 
 ### Turn resolution
-`Apply(pos, move, dice) → (newPos, []Event, error)` where `dice` provides `D6()` and `D8()`. Steps follow RULES.md: move → close → repair → d6 → place (two d8) → resolve. Events: `Moved`, `Captured`, `Promoted`, `PotholeClosed`, `Repaired`, `RolledD6`, `Target`, `Reroll{reason}`, `SavingRoll{roll, saved}`, `Fell{piece}`, `PotholeOpened`.
+`Apply(pos, move, dice) → (newPos, []Event, error)` where `dice` provides `D8()`. Steps follow RULES.md: move → close → repair → pothole d8 → place (two d8) → resolve. Events: `Moved`, `Captured`, `Promoted`, `PotholeClosed`, `Repaired`, `RolledPothole`, `Target`, `Reroll{reason}`, `SavingRoll{roll, saved}`, `Fell{piece}`, `PotholeOpened`.
 
 Re-roll the target square when it is: a king; an open pothole; or a square whose piece falling would leave the player who just moved in check.
 
@@ -210,7 +210,7 @@ Barlow Condensed (700–800, uppercase) for headings and big buttons; IBM Plex S
 ### Signature elements
 - **Pothole**: an irregular near-black hole with a deep inner shadow and a `--hazard` orange ring. Static.
 - **Target square**: dashed yellow ring while the dice resolve.
-- **Dice tray**: d6 as a pip die, d8s as diamonds, the saving roll highlighted in yellow; the clock shows "Paused for dice" meanwhile.
+- **Dice tray**: the pothole roll and the two placement d8s as diamonds, the saving roll highlighted in yellow; the clock shows "Paused for dice" meanwhile.
 - **Spectator strip**: a narrow column beside the board where audience reactions float up, with the watcher count at the bottom.
 - **The Mamdani**: a round token with a yellow ring. The current photo is a placeholder; the shipped game needs art we have rights to (illustration recommended). The traffic cone is the logo mark.
 
