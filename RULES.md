@@ -2,7 +2,39 @@
 
 Live doc: https://claude.ai/artifact/AvSPCQS42ggQGpTWQGoQRB (source of truth; this file is a copy)
 
-This is Pot-Hole Chess (Spicer and Chamberlain, 2001) with one addition. Potholes open at random and swallow pieces, exactly as in the original. The addition is the Mamdani: a neutral piece either player can move, which blocks lines, repairs potholes and saves pieces from falling.
+This is Pot-Hole Chess (Spicer and Chamberlain, 2001) with one addition. Potholes open at random and swallow pieces, exactly as in the original. The addition is the Mamdani: a neutral piece either player can move, which blocks lines, repairs potholes and saves pieces from falling. The rules are locked; see the decisions below.
+
+## How it should feel
+
+Chess comes first; the dice bring chaos, and the Mamdani is how you fight back. Every rule below is judged against these goals.
+
+1. **The Mamdani is your answer to the dice.** The dice roll after every move and you can't control them. Where you put the Mamdani decides which pieces they can hurt.
+2. **Luck finishes, skill sets up.** A roll can decide a game only after good chess made it matter. No instant wins out of nowhere.
+3. **Every bad roll has an answer.** Block, capture, or send the Mamdani. The player hit should always have counterplay.
+4. **Readable at a glance.** Players and spectators can see what's open, what's blocked and why. The portal game showed that hidden or moving hazards feel unfair.
+5. **Fun to watch.** Every roll is shown big, so a pothole opening or a piece being saved is an event everyone reacts to.
+6. **Simple to explain.** A new player learns the additions in one minute.
+
+## Decisions
+
+All fourteen are agreed.
+
+| # | Decision | Rule |
+| --- | --- | --- |
+| 1 | When potholes happen | Automatic, after your move (original). Move first, then roll a d8. Even: a new pothole opens (#10). Odd: nothing. The dice never cost you a move. |
+| 2 | How many rolls | Unlimited (original). One roll after every move, for both players. |
+| 3 | Where it lands | Fully random (original). Two d8s pick the file and rank. |
+| 4 | How long it lasts | One round (original). A pothole closes when the player who rolled it finishes their next move. The Mamdani can repair it sooner. |
+| 5 | How the Mamdani repairs | Next to it. Any pothole on the 8 squares around the Mamdani is fixed at once. Saving rolls stay as in #7. |
+| 6 | Pothole lands on a king | Re-roll. Kings never fall, as in the original Pot-Hole Chess. Re-roll both d8s. |
+| 7 | Saving rolls | Keep. It's the Mamdani's defensive job and the answer to a bad roll (goal 3). |
+| 8 | Sliders and potholes | Can't cross, with blocked lines shown on the board (goal 4). Knights can jump over a pothole but can't land on it. |
+| 9 | Stalling with the Mamdani | No rule. Either player may move it anywhere it can reach, including straight back. Threefold repetition ends any back-and-forth as a draw. |
+| 10 | Number of potholes | New pothole on every even roll (original). Potholes never move; each one lasts as set in #4. |
+| 11 | Pothole would checkmate | Re-roll. If a fall would leave the next player checkmated, re-roll both d8s. A roll never wins on its own (goals 2, 3). |
+| 12 | Saving-roll reach | Clear queen line. Nothing between the Mamdani and the square; nothing else is checked. |
+| 13 | Endless re-rolls | Cap at 64. After 64 re-rolls without a valid square, no pothole opens that turn. |
+| 14 | Pawns, castling, en passant | Blocks like a piece. No castling through or onto a pothole (rook's path included), no pawn double-step across one, and a pothole on the en passant square cancels that capture. |
 
 ## Setup
 

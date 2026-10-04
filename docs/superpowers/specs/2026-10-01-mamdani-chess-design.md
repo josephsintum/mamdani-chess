@@ -20,7 +20,7 @@ A browser game where friends — and strangers via quick match — play Pothole 
 | Matchmaking | Quick match only: first-come-first-served queue, random colors. |
 | Friend games | Create a game, share a link or 6-character code. |
 | Chat | None. Emoji reactions from players and spectators, visible to everyone. |
-| House rules | Configurable per friend game; quick match always uses the defaults in RULES.md. |
+| House rules | Deferred. Every game uses RULES.md; revisit after test games (see the rules doc's "Watch in test games"). |
 | Server | Go, single binary, serves the frontend too. |
 | Transport | Server-Sent Events (server → browser) + JSON POST (browser → server). |
 | Frontend | SvelteKit (Svelte 5) with `adapter-static`; custom board component, no chessground. |
@@ -42,7 +42,7 @@ Accounts, ratings, game history, private games, chat, draw offers, takebacks, pr
 
 ### Home `/`
 - Header: logo, Rules link, guest name.
-- Hero: one-line pitch and three actions — **Play online** (quick match), **Play a friend** (create game, with an optional *House rules* panel), **Join with code** (input + Go).
+- Hero: one-line pitch and three actions — **Play online** (quick match), **Play a friend** (create game; the canvas's *House rules* panel is deferred), **Join with code** (input + Go).
 - **Live games**: cards for games in progress — players, move number, watcher count, mini board. Click to spectate. Refreshed every 10 s.
 - **About**: 2–3 sentences on potholes and the Mamdani, link to Rules.
 
@@ -134,8 +134,9 @@ The game counts open streams per player. At zero, a 60 s forfeit timer starts an
 ## 3. Rules engine (`rules`)
 
 ### Data
-- `Position`: 64 squares; Mamdani square (or none); open potholes with opener color and close time; side to move; castling rights; en passant square; halfmove clock; fullmove number; position-hash history.
-- `Settings`: pothole trigger (default: even on d8), pothole duration in turns (default: until opener's next move), sliders cross potholes (default: no), Mamdani enabled (default: yes). Defaults must match RULES.md.
+- `Position`: 64 squares; Mamdani square (or none); the open pothole each color rolled (at most one each; it closes on that color's next move); side to move; castling rights; en passant square; halfmove clock; fullmove number.
+- `Game`: position, position-count history for repetition, result, and the turn log (`{move, dice}`) used for replay.
+- No house-rule settings for now (see Decisions). Perft uses positions without a Mamdani or potholes.
 
 ### Move generation
 - 8×8 board with direction tables. Pieces, potholes, and the Mamdani all block sliding lines; knights jump potholes but cannot land on them.
