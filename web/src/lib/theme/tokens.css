@@ -17,6 +17,9 @@
 	--board-last-dark: #b5a24f;
 	--target-ring: #f2c230;
 	--hole: #08090a; /* inside of a pothole */
+	--accent-wash: #26241b; /* background behind a highlighted row */
+	--accent-line: #5a4c1c;
+	--hazard-text: #ff9a6b; /* pothole lines in the log, readable on --surface */
 	--piece-light: #fbf8f0;
 	--piece-dark: #141518;
 
