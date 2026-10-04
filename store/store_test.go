@@ -42,38 +42,16 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	}
 }
 
-func TestHonkIncrements(t *testing.T) {
-	ctx := context.Background()
+func TestHonksTableDropped(t *testing.T) {
 	s, _ := openTemp(t)
 	defer s.Close()
-	for want := int64(1); want <= 3; want++ {
-		got, err := s.Honk(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got != want {
-			t.Fatalf("Honk = %d, want %d", got, want)
-		}
-	}
-}
-
-func TestHonksPersistAcrossReopen(t *testing.T) {
-	ctx := context.Background()
-	s, path := openTemp(t)
-	s.Honk(ctx)
-	s.Honk(ctx)
-	s.Close()
-
-	s, err := Open(path)
+	var n int
+	err := s.db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'honks'`).Scan(&n)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
-	n, err := s.Honks(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 2 {
-		t.Fatalf("Honks after reopen = %d, want 2", n)
+	if n != 0 {
+		t.Fatal("the honks table should be dropped by migration 2")
 	}
 }

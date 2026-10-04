@@ -11,6 +11,8 @@ var migrations = []string{
 	// 1: walking-skeleton honk counter (dropped by the game-server plan).
 	`CREATE TABLE honks (id INTEGER PRIMARY KEY CHECK (id = 1), count INTEGER NOT NULL);
 	 INSERT INTO honks (id, count) VALUES (1, 0);`,
+	// 2: the honk demo is gone.
+	`DROP TABLE honks;`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
