@@ -102,6 +102,12 @@ describe('stageAt', () => {
 		expect(stageAt(final, 5).target).toBe('g8');
 	});
 
+	it('keeps a fall out of the lost list until it is revealed', () => {
+		const v = { ...final, lost: { white: [], black: ['bP', 'bN'] } };
+		expect(stageAt(v, 1).lost).toEqual({ white: [], black: ['bP'] });
+		expect(stageAt(v, fellOnG8.length).lost).toEqual({ white: [], black: ['bP', 'bN'] });
+	});
+
 	it('shows the final position once every step is revealed', () => {
 		const s = stageAt(final, fellOnG8.length);
 		expect(s.board[squareIndex('g8')]).toBe('');

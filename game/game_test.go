@@ -260,3 +260,16 @@ func TestStatsAndLostPieces(t *testing.T) {
 		t.Errorf("log[0] %+v, want %+v", v.Log[0], want)
 	}
 }
+
+func TestResignAfterMateIsRefused(t *testing.T) {
+	g := NewHub(odd{}).Create("alice")
+	g.Join("bob")
+	for i, m := range []string{"f2f3", "e7e5", "g2g4", "d8h4"} {
+		if err := g.Move([]string{"alice", "bob"}[i%2], mv(t, m), i); err != nil {
+			t.Fatalf("%s: %v", m, err)
+		}
+	}
+	if err := g.Resign("alice"); !errors.Is(err, ErrGameOver) {
+		t.Errorf("resign after checkmate: %v, want ErrGameOver", err)
+	}
+}

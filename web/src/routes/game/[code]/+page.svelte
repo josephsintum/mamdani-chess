@@ -26,8 +26,10 @@
 
 	// A new view plays out its dice one step at a time when it is the next
 	// turn; anything else (first load, reconnect, resignation) shows at once.
+	// A hidden tab skips the animation: browsers throttle its timers, so a
+	// player coming back would otherwise wait through slow dice.
 	function receive(next: View) {
-		const animate = view !== null && next.seq === view.seq + 1 && next.last.length > 0;
+		const animate = view !== null && next.seq === view.seq + 1 && next.last.length > 0 && !document.hidden;
 		view = next;
 		error = '';
 		clearTimeout(timer);
@@ -57,9 +59,18 @@
 			}
 		};
 		source.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
+		// Coming back to a tab mid-animation jumps to the end of the roll.
+		const finishOnReturn = () => {
+			if (!document.hidden && view && shown < view.last.length) {
+				clearTimeout(timer);
+				shown = view.last.length;
+			}
+		};
+		document.addEventListener('visibilitychange', finishOnReturn);
 		return () => {
 			source.close();
 			clearTimeout(timer);
+			document.removeEventListener('visibilitychange', finishOnReturn);
 		};
 	});
 
@@ -185,7 +196,7 @@
 			</div>
 
 			<div class="board-col">
-				<PlayerBar color={top} you={you === top} lost={view.lost[top]} toMove={playing && view.turn === top && !animating} />
+				<PlayerBar color={top} you={you === top} lost={stage.lost[top]} toMove={playing && view.turn === top && !animating} />
 				<div class="board-wrap">
 					<Board
 						{stage}
@@ -207,7 +218,7 @@
 				<PlayerBar
 					color={bottom}
 					you={you === bottom}
-					lost={view.lost[bottom]}
+					lost={stage.lost[bottom]}
 					toMove={playing && view.turn === bottom && !animating}
 				/>
 			</div>

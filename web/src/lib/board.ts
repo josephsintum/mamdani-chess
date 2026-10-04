@@ -77,6 +77,7 @@ export interface Stage {
 	potholes: View['potholes'];
 	mamdani: string;
 	target: string; // square ringed while the dice play out, or ""
+	lost: View['lost']; // pieces lost to potholes, without falls not yet revealed
 }
 
 /**
@@ -89,16 +90,24 @@ export function stageAt(view: View, shown: number): Stage {
 	let potholes = [...view.potholes];
 	let mamdani = view.mamdani;
 	let target = '';
+	const lost = { white: [...view.lost.white], black: [...view.lost.black] };
 	view.last.forEach((e, i) => {
 		const revealed = i < shown;
 		if (e.kind === 'target' && revealed) target = e.sq ?? '';
 		if (e.kind === 'fell' && !revealed && e.sq) {
-			if (e.piece === 'M') mamdani = e.sq;
-			else board[squareIndex(e.sq)] = e.piece ?? '';
+			if (e.piece === 'M') {
+				mamdani = e.sq;
+			} else {
+				board[squareIndex(e.sq)] = e.piece ?? '';
+				// The fall is the newest entry in its side's list.
+				const list = e.piece?.[0] === 'w' ? lost.white : lost.black;
+				const at = list.lastIndexOf(e.piece ?? '');
+				if (at >= 0) list.splice(at, 1);
+			}
 		}
 		if (e.kind === 'pothole_opened' && !revealed) potholes = potholes.filter((p) => p.sq !== e.sq);
 	});
-	return { board, potholes, mamdani, target: shown < view.last.length ? target : '' };
+	return { board, potholes, mamdani, target: shown < view.last.length ? target : '', lost };
 }
 
 export interface DiceStep {
