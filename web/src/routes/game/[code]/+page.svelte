@@ -9,6 +9,7 @@
 	let view = $state<View | null>(null);
 	let connected = $state(false);
 	let notFound = $state(false);
+	let lost = $state(false);
 	let error = $state('');
 	let copied = $state(false);
 
@@ -17,8 +18,13 @@
 		source.onopen = () => (connected = true);
 		source.onerror = () => {
 			connected = false;
-			// A 404 closes the stream for good; other errors reconnect by themselves.
-			if (source.readyState === EventSource.CLOSED && !view) notFound = true;
+			// A 404 or other error status closes the stream for good; network
+			// errors reconnect by themselves. Games live in memory for now, so a
+			// server restart is the usual way a game in progress disappears.
+			if (source.readyState === EventSource.CLOSED) {
+				if (view) lost = true;
+				else notFound = true;
+			}
 		};
 		source.addEventListener('state', (e) => {
 			view = JSON.parse((e as MessageEvent<string>).data);
@@ -56,8 +62,15 @@
 	<header>
 		<a href="/" class="logo">Pothole Chess</a>
 		<span class="code">{code}</span>
-		{#if view && !connected}<span class="warn">Reconnecting…</span>{/if}
+		{#if view && !connected && !lost}<span class="warn">Reconnecting…</span>{/if}
 	</header>
+
+	{#if lost}
+		<p class="error" role="alert">
+			Lost the connection to this game. If the server restarted, the game is gone.
+			<a href={`/game/${code}`} data-sveltekit-reload>Reload</a> or <a href="/">start a new one</a>.
+		</p>
+	{/if}
 
 	{#if notFound}
 		<p>Game not found. <a href="/">Start a new one</a>.</p>

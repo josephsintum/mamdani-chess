@@ -3,7 +3,16 @@
 
 	let { view, onmove }: { view: View; onmove: (move: MoveJSON) => void } = $props();
 
-	const glyphs: Record<string, string> = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
+	// U+FE0E asks for the text form: iOS can draw ♟ as a colour emoji that
+	// ignores CSS colour, which would make both sides' pawns look the same.
+	const glyphs: Record<string, string> = {
+		K: '♚\uFE0E',
+		Q: '♛\uFE0E',
+		R: '♜\uFE0E',
+		B: '♝\uFE0E',
+		N: '♞\uFE0E',
+		P: '♟\uFE0E'
+	};
 	const promoOptions = [
 		{ promo: 'q', kind: 'Q' },
 		{ promo: 'r', kind: 'R' },
