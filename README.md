@@ -9,11 +9,11 @@ Chess comes first: the dice bring the chaos, and the Mamdani is how you fight ba
 
 ## Status
 
-Early development. You can play a rough game: press **Play a friend**, send the link, and play in two browsers. There is no clock yet, and games live in memory, so they vanish when the server restarts.
+Early development. You can play a full game: press **Play a friend**, send the link, and play in two browsers. Every roll plays out in a dice tray, and the game ends with a result card. There is no clock yet, and games live in memory, so they vanish when the server restarts.
 
 | Done | Next |
 | --- | --- |
-| Rules engine (`rules/`): move generation, potholes, saving rolls, game end and replay. It is tested against published chess move counts (perft) and 10,000 random games. | Dice animation, a move log and a result screen; then a playtest |
+| Rules engine (`rules/`): move generation, potholes, saving rolls, game end and replay. It is tested against published chess move counts (perft) and 10,000 random games. | A playtest with friends, then clocks and saved games |
 | App: Go server, live updates over Server-Sent Events, SvelteKit frontend with a tap-to-move board, CI and a Dockerfile. | Clocks, saved games, quick match, spectators and emoji reactions, then a public launch |
 
 The plan is in [docs/superpowers/plans/2026-10-03-00-roadmap.md](docs/superpowers/plans/2026-10-03-00-roadmap.md).
