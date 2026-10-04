@@ -46,6 +46,8 @@ func (s *Server) honkStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-s.done:
+			return
 		case n := <-updates:
 			if n <= last { // already sent a newer count
 				continue

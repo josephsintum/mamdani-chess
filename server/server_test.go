@@ -142,3 +142,34 @@ func TestStaticAndFallback(t *testing.T) {
 		}
 	}
 }
+
+func TestCloseEndsStreamsButNotRequests(t *testing.T) {
+	s, ts := newTestServer(t)
+	r := openStream(t, ts.URL+"/api/honk/stream")
+	r.next(t) // current count
+
+	s.Close()
+	s.Close() // idempotent
+
+	ended := make(chan struct{})
+	go func() {
+		for r.sc.Scan() {
+		}
+		close(ended)
+	}()
+	select {
+	case <-ended:
+	case <-time.After(time.Second):
+		t.Fatal("stream still open 1s after Close")
+	}
+
+	resp, err := http.Post(ts.URL+"/api/honk", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || strings.TrimSpace(string(body)) != `{"count":1}` {
+		t.Fatalf("POST after Close = %d %s", resp.StatusCode, body)
+	}
+}

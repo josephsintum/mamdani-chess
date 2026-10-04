@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -34,14 +33,14 @@ func run() error {
 	}
 	defer st.Close()
 
-	// Cancelling base ends open SSE streams so shutdown doesn't hang on them.
-	base, stopStreams := context.WithCancel(context.Background())
+	handler := server.New(st, web.Assets())
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           server.New(st, web.Assets()),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
-		BaseContext:       func(net.Listener) context.Context { return base },
 	}
+	// Ends SSE streams when Shutdown starts; other in-flight requests finish.
+	srv.RegisterOnShutdown(handler.Close)
 
 	sig, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -54,12 +53,10 @@ func run() error {
 
 	select {
 	case err := <-errc:
-		stopStreams()
 		return err
 	case <-sig.Done():
 	}
 	slog.Info("shutting down")
-	stopStreams()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

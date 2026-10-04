@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"sync"
 	"time"
 
 	"mamdani-chess/store"
@@ -17,6 +18,8 @@ type Server struct {
 	honks     *broadcaster
 	heartbeat time.Duration
 	mux       *http.ServeMux
+	done      chan struct{} // closed by Close to end SSE streams
+	closeOnce sync.Once
 }
 
 // New returns a Server backed by st that serves the frontend from assets.
@@ -27,6 +30,7 @@ func New(st *store.Store, assets fs.FS) *Server {
 		honks:     newBroadcaster(),
 		heartbeat: 15 * time.Second,
 		mux:       http.NewServeMux(),
+		done:      make(chan struct{}),
 	}
 	s.mux.HandleFunc("GET /healthz", s.healthz)
 	s.mux.HandleFunc("POST /api/honk", s.honk)
@@ -35,6 +39,10 @@ func New(st *store.Store, assets fs.FS) *Server {
 	s.mux.HandleFunc("/", s.static)
 	return s
 }
+
+// Close ends every open SSE stream. Other in-flight requests are unaffected.
+// Safe to call more than once.
+func (s *Server) Close() { s.closeOnce.Do(func() { close(s.done) }) }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
