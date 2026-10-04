@@ -14,7 +14,7 @@ Early development. You can play a rough game: press **Play a friend**, send the 
 | Done | Next |
 | --- | --- |
 | Rules engine (`rules/`): move generation, potholes, saving rolls, game end and replay. It is tested against published chess move counts (perft) and 10,000 random games. | Dice animation, a move log and a result screen; then a playtest |
-| App: Go server, live updates over Server-Sent Events, SvelteKit frontend with a tap-to-move board, CI and a Dockerfile. | Dice animations, clocks, quick match, spectators and emoji reactions, then a public launch |
+| App: Go server, live updates over Server-Sent Events, SvelteKit frontend with a tap-to-move board, CI and a Dockerfile. | Clocks, saved games, quick match, spectators and emoji reactions, then a public launch |
 
 The plan is in [docs/superpowers/plans/2026-10-03-00-roadmap.md](docs/superpowers/plans/2026-10-03-00-roadmap.md).
 
