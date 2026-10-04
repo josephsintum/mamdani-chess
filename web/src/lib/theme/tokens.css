@@ -1,0 +1,39 @@
+/* Road-works theme tokens (spec §6). Dark only for now; components use
+   these variables, never color literals, so a light theme can be added. */
+:root {
+	--bg: #141518;
+	--surface: #1e2024;
+	--surface-2: #2a2d32;
+	--line: #3a3e44;
+	--text: #f1eee6;
+	--text-body: #c9c5bb;
+	--text-muted: #a8a49b;
+	--accent: #f2c230;
+	--accent-text: #141518;
+	--hazard: #ff7a3d;
+	--board-light: #d9d3c4;
+	--board-dark: #857e72;
+	--board-last-light: #e9d98b;
+	--board-last-dark: #b5a24f;
+	--target-ring: #f2c230;
+
+	--font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+	--font-body: 'IBM Plex Sans', system-ui, sans-serif;
+	--font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+	color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text-body);
+	font-family: var(--font-body);
+	-webkit-font-smoothing: antialiased;
+}
