@@ -114,3 +114,31 @@ func TestReplay(t *testing.T) {
 		t.Error("replay with missing dice should fail")
 	}
 }
+
+func TestBoardMateIsNotUndoneByDice(t *testing.T) {
+	// With an even roll the dice could drop the h4 queen and break the mate.
+	// A checkmating move ends the game before any pothole roll.
+	g := NewGame()
+	play(t, g, "f2f3", "e7e5", "g2g4")
+	d := dice(2, 1, 3, 8, 4)
+	if _, err := g.Play(mv(t, "d8h4"), d); err != nil {
+		t.Fatal(err)
+	}
+	if g.Result.Reason != Checkmate || g.Result.Winner != Black {
+		t.Fatalf("result %+v, want Black wins by checkmate", g.Result)
+	}
+	if d.Left() != 5 || len(g.Turns[len(g.Turns)-1].Dice) != 0 {
+		t.Errorf("no dice should be rolled after mate; %d left, recorded %v", d.Left(), g.Turns[len(g.Turns)-1].Dice)
+	}
+}
+
+func TestCheckHeldOffOnlyByOwnPotholeIsMate(t *testing.T) {
+	// White's own hole on e4 blocks the e8 rook. Every white move closes it,
+	// and nothing can block the e-file or step off it: that is checkmate,
+	// not stalemate.
+	p := setup(t, "k3r3/8/8/8/8/8/3P1P2/3RKR2 w - - 0 1", NoSquare, E4, NoSquare)
+	g := NewGameFrom(p)
+	if g.Result.Reason != Checkmate || g.Result.Winner != Black {
+		t.Errorf("result %+v, want Black wins by checkmate", g.Result)
+	}
+}

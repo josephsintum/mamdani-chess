@@ -2,6 +2,7 @@ package rules
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 )
 
@@ -13,20 +14,67 @@ type Dice interface {
 // ErrIllegalMove is returned by Apply for a move not in LegalMoves.
 var ErrIllegalMove = errors.New("illegal move")
 
+// ErrBadDie is returned by Apply when Dice produces a roll outside 1..8.
+var ErrBadDie = errors.New("die roll outside 1..8")
+
 // maxRerolls caps placement re-rolls; past it no pothole opens this turn.
 const maxRerolls = 64
 
 // Apply plays one full turn: move, close, repair, pothole roll, placement
 // and resolution. It returns the new position and what happened, in order.
-// p is not modified.
+// A move that checkmates ends the game at once: no pothole roll follows, so
+// the dice can't undo a mate made on the board. p is not modified.
 func Apply(p Position, m Move, dice Dice) (Position, []Event, error) {
 	if !slices.Contains(p.LegalMoves(), m) {
 		return p, nil, ErrIllegalMove
 	}
 	mover := p.Turn
-	ev := p.play(m, nil)
-	ev = p.rollPothole(mover, dice, ev)
-	return p, ev, nil
+	next := p
+	ev := next.play(m, nil)
+	if next.Mated() {
+		return next, ev, nil
+	}
+	checked := &checkedDice{dice: dice}
+	ev = next.rollPothole(mover, checked, ev)
+	if checked.err != nil {
+		return p, nil, checked.err
+	}
+	return next, ev, nil
+}
+
+// checkedDice rejects rolls outside 1..8. After the first bad roll it keeps
+// the error and returns 1 (odd), which ends the turn quickly.
+type checkedDice struct {
+	dice Dice
+	err  error
+}
+
+func (c *checkedDice) D8() int {
+	if c.err != nil {
+		return 1
+	}
+	r := c.dice.D8()
+	if r < 1 || r > 8 {
+		c.err = fmt.Errorf("%w: got %d", ErrBadDie, r)
+		return 1
+	}
+	return r
+}
+
+// Mated reports whether the side to move is checkmated: no legal move, and
+// its king attacked once its own open pothole is counted as closed. Every
+// move closes that pothole, so a check it is only holding off can't be
+// escaped either.
+func (p *Position) Mated() bool {
+	return p.threatened() && len(p.LegalMoves()) == 0
+}
+
+// threatened reports whether the side to move's king is attacked, ignoring
+// its own open pothole.
+func (p *Position) threatened() bool {
+	q := *p
+	q.Potholes[q.Turn] = NoSquare
+	return q.InCheck(q.Turn)
 }
 
 func (p *Position) rollPothole(mover Color, dice Dice, ev []Event) []Event {
@@ -72,7 +120,7 @@ func (p *Position) rerollReason(s Square, mover Color) RerollReason {
 	// Would the outcome checkmate the next player? A roll never wins.
 	opened := gone
 	opened.Potholes[mover] = s
-	if opened.InCheck(opened.Turn) && len(opened.LegalMoves()) == 0 {
+	if opened.Mated() {
 		return ReasonCheckmate
 	}
 	return ""

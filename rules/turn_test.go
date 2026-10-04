@@ -198,3 +198,20 @@ func TestMamdaniMoveDoesNotResetFiftyMoveCount(t *testing.T) {
 		t.Errorf("halfmove %d, want 11", p.Halfmove)
 	}
 }
+
+func TestBadDiceRejected(t *testing.T) {
+	for _, rolls := range [][]int{{0}, {9}, {2, 9, 1}, {2, 1, 0}, {2, 4, 2, 10}} {
+		p := StartPosition()
+		_, _, err := Apply(p, mv(t, "e2e4"), dice(rolls...))
+		if !errors.Is(err, ErrBadDie) {
+			t.Errorf("rolls %v: got %v, want ErrBadDie", rolls, err)
+		}
+		if p != StartPosition() {
+			t.Errorf("rolls %v: position changed", rolls)
+		}
+	}
+	corrupt := []Turn{{Move: mv(t, "e2e4"), Dice: []int{2, 9, 1}}}
+	if _, err := Replay(StartPosition(), corrupt); !errors.Is(err, ErrBadDie) {
+		t.Errorf("replay with a 9: got %v, want ErrBadDie", err)
+	}
+}

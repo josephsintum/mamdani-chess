@@ -71,7 +71,7 @@ func (g *Game) Play(m Move, dice Dice) ([]Event, error) {
 func (g *Game) status() Result {
 	p := &g.Pos
 	if len(p.LegalMoves()) == 0 {
-		if p.InCheck(p.Turn) {
+		if p.threatened() {
 			return Result{Over: true, Winner: p.Turn.Other(), Reason: Checkmate}
 		}
 		return Result{Over: true, Draw: true, Reason: Stalemate}

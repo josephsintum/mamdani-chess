@@ -74,11 +74,14 @@ func checkInvariants(t *testing.T, seed, ply int, before Position, m Move, g *Ga
 	if p.InCheck(p.Turn.Other()) {
 		fail("the player who just moved is in check")
 	}
+	q := before
+	q.play(m, nil)
+	if q.Mated() && g.Result.Reason != Checkmate {
+		fail("the dice undid a checkmate made on the board")
+	}
 	if g.Result.Reason == Checkmate {
 		// A roll never wins: the move alone must already have been mate.
-		q := before
-		q.play(m, nil)
-		if !q.InCheck(q.Turn) || len(q.LegalMoves()) != 0 {
+		if !q.Mated() {
 			fail("the dice delivered checkmate")
 		}
 	}
