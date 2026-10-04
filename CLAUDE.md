@@ -25,4 +25,4 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Next step
 
-Write the implementation plan from the spec. Suggested order: rules engine (Go, with perft and random-game tests) → game server (SSE, clocks) → Svelte board → game screen → home, quick match, friend games → game over and rules page → phone layouts and deploy.
+Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`: a playable game first, the Railway launch last. Plans 01 (walking skeleton, minus the deploy) and 02 (rules engine) are merged; next is Plan 03, a rough playable game. Repo: https://github.com/josephsintum/mamdani-chess (public).
