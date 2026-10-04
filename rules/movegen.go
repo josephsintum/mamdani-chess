@@ -1,0 +1,202 @@
+package rules
+
+import "fmt"
+
+// Move is one move. A Mamdani move has From set to the Mamdani's square.
+// Castling is the king's two-square move (e1g1). Promo is NoKind unless a
+// pawn promotes.
+type Move struct {
+	From, To Square
+	Promo    Kind
+}
+
+var promoLetters = map[Kind]byte{Knight: 'n', Bishop: 'b', Rook: 'r', Queen: 'q'}
+
+// String returns the move in UCI form: "e2e4", "e7e8q".
+func (m Move) String() string {
+	s := m.From.String() + m.To.String()
+	if c, ok := promoLetters[m.Promo]; ok {
+		s += string(c)
+	}
+	return s
+}
+
+// ParseMove reads UCI form.
+func ParseMove(s string) (Move, error) {
+	if len(s) != 4 && len(s) != 5 {
+		return Move{}, fmt.Errorf("bad move %q", s)
+	}
+	from, err := ParseSquare(s[0:2])
+	if err != nil {
+		return Move{}, err
+	}
+	to, err := ParseSquare(s[2:4])
+	if err != nil {
+		return Move{}, err
+	}
+	m := Move{From: from, To: to}
+	if len(s) == 5 {
+		for k, c := range promoLetters {
+			if c == s[4] {
+				m.Promo = k
+			}
+		}
+		if m.Promo == NoKind {
+			return Move{}, fmt.Errorf("bad promotion in %q", s)
+		}
+	}
+	return m, nil
+}
+
+// LegalMoves returns every legal move for the side to move: its own pieces
+// and the Mamdani. A move is legal only if the mover's king is safe after
+// the move, the close step and the repair step.
+func (p *Position) LegalMoves() []Move {
+	var legal []Move
+	for _, m := range p.pseudoMoves() {
+		q := *p
+		q.play(m, nil)
+		if !q.InCheck(p.Turn) {
+			legal = append(legal, m)
+		}
+	}
+	return legal
+}
+
+// canLand reports whether a piece of color c may finish a move on s.
+func (p *Position) canLand(s Square, c Color) bool {
+	if p.IsPothole(s) || s == p.Mamdani {
+		return false
+	}
+	pc := p.Board[s]
+	return pc == NoPiece || pc.Color() != c
+}
+
+func (p *Position) pseudoMoves() []Move {
+	c := p.Turn
+	moves := make([]Move, 0, 64)
+	if p.Mamdani != NoSquare {
+		for _, d := range queenDirs {
+			for t := p.Mamdani.Offset(d[0], d[1]); t != NoSquare && !p.Blocked(t); t = t.Offset(d[0], d[1]) {
+				moves = append(moves, Move{From: p.Mamdani, To: t})
+			}
+		}
+	}
+	for s := Square(0); s < 64; s++ {
+		pc := p.Board[s]
+		if pc == NoPiece || pc.Color() != c {
+			continue
+		}
+		switch pc.Kind() {
+		case Pawn:
+			moves = p.pawnMoves(moves, s)
+		case Knight:
+			moves = p.stepMoves(moves, s, knightJumps)
+		case Bishop:
+			moves = p.slideMoves(moves, s, bishopDirs)
+		case Rook:
+			moves = p.slideMoves(moves, s, rookDirs)
+		case Queen:
+			moves = p.slideMoves(moves, s, queenDirs)
+		case King:
+			moves = p.stepMoves(moves, s, queenDirs)
+			moves = p.castlingMoves(moves, s)
+		}
+	}
+	return moves
+}
+
+func (p *Position) stepMoves(moves []Move, from Square, steps [][2]int) []Move {
+	c := p.Board[from].Color()
+	for _, d := range steps {
+		if t := from.Offset(d[0], d[1]); t != NoSquare && p.canLand(t, c) {
+			moves = append(moves, Move{From: from, To: t})
+		}
+	}
+	return moves
+}
+
+func (p *Position) slideMoves(moves []Move, from Square, dirs [][2]int) []Move {
+	c := p.Board[from].Color()
+	for _, d := range dirs {
+		for t := from.Offset(d[0], d[1]); t != NoSquare; t = t.Offset(d[0], d[1]) {
+			if p.canLand(t, c) {
+				moves = append(moves, Move{From: from, To: t})
+			}
+			if p.Blocked(t) {
+				break
+			}
+		}
+	}
+	return moves
+}
+
+func pawnDir(c Color) int {
+	if c == White {
+		return 1
+	}
+	return -1
+}
+
+func (p *Position) pawnMoves(moves []Move, from Square) []Move {
+	c := p.Board[from].Color()
+	dir := pawnDir(c)
+	add := func(to Square) {
+		if to.Rank() == 0 || to.Rank() == 7 {
+			for _, k := range []Kind{Queen, Rook, Bishop, Knight} {
+				moves = append(moves, Move{From: from, To: to, Promo: k})
+			}
+			return
+		}
+		moves = append(moves, Move{From: from, To: to})
+	}
+	if one := from.Offset(0, dir); one != NoSquare && !p.Blocked(one) {
+		add(one)
+		startRank := 1
+		if c == Black {
+			startRank = 6
+		}
+		if two := one.Offset(0, dir); from.Rank() == startRank && !p.Blocked(two) {
+			add(two)
+		}
+	}
+	for _, df := range []int{-1, 1} {
+		t := from.Offset(df, dir)
+		if t == NoSquare {
+			continue
+		}
+		if pc := p.Board[t]; pc != NoPiece && pc.Color() != c {
+			add(t)
+		} else if t == p.EP && !p.Blocked(t) && p.Board[t.Offset(0, -dir)] == NewPiece(c.Other(), Pawn) {
+			// En passant. A pothole on the target square cancels it.
+			add(t)
+		}
+	}
+	return moves
+}
+
+func (p *Position) castlingMoves(moves []Move, k Square) []Move {
+	c := p.Board[k].Color()
+	home, ks, qs := E1, WhiteKingside, WhiteQueenside
+	if c == Black {
+		home, ks, qs = E8, BlackKingside, BlackQueenside
+	}
+	if k != home || p.Attacked(k, c.Other()) {
+		return moves
+	}
+	rook := NewPiece(c, Rook)
+	// Every square between king and rook must be clear of pieces, the
+	// Mamdani and potholes; the king may not pass through or land on an
+	// attacked square.
+	if p.Castling&ks != 0 && p.Board[k.Offset(3, 0)] == rook &&
+		!p.Blocked(k.Offset(1, 0)) && !p.Blocked(k.Offset(2, 0)) &&
+		!p.Attacked(k.Offset(1, 0), c.Other()) && !p.Attacked(k.Offset(2, 0), c.Other()) {
+		moves = append(moves, Move{From: k, To: k.Offset(2, 0)})
+	}
+	if p.Castling&qs != 0 && p.Board[k.Offset(-4, 0)] == rook &&
+		!p.Blocked(k.Offset(-1, 0)) && !p.Blocked(k.Offset(-2, 0)) && !p.Blocked(k.Offset(-3, 0)) &&
+		!p.Attacked(k.Offset(-1, 0), c.Other()) && !p.Attacked(k.Offset(-2, 0), c.Other()) {
+		moves = append(moves, Move{From: k, To: k.Offset(-2, 0)})
+	}
+	return moves
+}
