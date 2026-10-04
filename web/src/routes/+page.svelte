@@ -1,23 +1,19 @@
 <script lang="ts">
-	// Walking-skeleton demo: one shared counter over SSE.
-	// Throwaway: replaced by the home page in a later plan.
-	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { createGame } from '#lib/game.ts';
 
-	let count = $state<number | null>(null);
-	let connected = $state(false);
+	let busy = $state(false);
+	let error = $state('');
 
-	onMount(() => {
-		const source = new EventSource('/api/honk/stream');
-		source.onopen = () => (connected = true);
-		source.onerror = () => (connected = false);
-		source.addEventListener('honk', (e) => {
-			count = JSON.parse((e as MessageEvent<string>).data).count;
-		});
-		return () => source.close();
-	});
-
-	async function honk() {
-		await fetch('/api/honk', { method: 'POST' });
+	async function newGame() {
+		busy = true;
+		error = '';
+		try {
+			await goto(`/game/${await createGame()}`);
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+			busy = false;
+		}
 	}
 </script>
 
@@ -27,9 +23,13 @@
 
 <main>
 	<h1>Pothole Chess</h1>
-	<p class="count" aria-live="polite">{count ?? '–'}</p>
-	<button onclick={honk} disabled={!connected}>Honk</button>
-	<p class="status">{connected ? 'Live' : 'Reconnecting…'}</p>
+	<p>
+		Chess, but the road is falling apart. After every move a d8 may open a pothole that swallows
+		a piece. The Mamdani — a neutral piece either player can move — repairs them.
+	</p>
+	<button onclick={newGame} disabled={busy}>{busy ? 'Starting…' : 'Play a friend'}</button>
+	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	<p class="hint">You play White. Send the link to a friend; they play Black.</p>
 </main>
 
 <style>
@@ -40,20 +40,20 @@
 		justify-items: center;
 		gap: 16px;
 		padding: 16px;
+		max-width: 560px;
+		margin: 0 auto;
+		text-align: center;
 	}
 	h1 {
 		margin: 0;
 		font-family: var(--font-display);
 		font-weight: 800;
-		font-size: 48px;
+		font-size: 56px;
 		text-transform: uppercase;
 		color: var(--text);
 	}
-	.count {
+	p {
 		margin: 0;
-		font-family: var(--font-mono);
-		font-size: 72px;
-		color: var(--accent);
 	}
 	button {
 		min-height: 44px;
@@ -69,12 +69,14 @@
 		cursor: pointer;
 	}
 	button:disabled {
-		opacity: 0.5;
+		opacity: 0.6;
 		cursor: default;
 	}
-	.status {
-		margin: 0;
+	.hint {
 		color: var(--text-muted);
 		font-size: 14px;
+	}
+	.error {
+		color: var(--hazard);
 	}
 </style>
