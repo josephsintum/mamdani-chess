@@ -6,16 +6,43 @@ import (
 )
 
 // setup parses fen and places the Mamdani (NoSquare for none) and the open
-// potholes rolled by White and Black (NoSquare for none).
-func setup(t *testing.T, fen string, mamdani, whiteHole, blackHole Square) Position {
+// potholes, oldest first.
+func setup(t *testing.T, fen string, mamdani Square, holes ...Hole) Position {
 	t.Helper()
 	p, err := ParseFEN(fen)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.Mamdani = mamdani
-	p.Potholes = [2]Square{whiteHole, blackHole}
+	for i, h := range holes {
+		h.Seq = uint32(i + 1)
+		p.Potholes[i] = h
+	}
 	return p
+}
+
+// hole is an open pothole on s rolled by c with left rounds to go.
+func hole(s Square, c Color, left int8) Hole { return Hole{Sq: s, By: c, Left: left} }
+
+// open returns the open potholes, oldest first.
+func open(p Position) []Hole {
+	var hs []Hole
+	for _, h := range p.Potholes {
+		if h.Sq != NoSquare {
+			hs = append(hs, h)
+		}
+	}
+	slices.SortFunc(hs, func(a, b Hole) int { return int(a.Seq) - int(b.Seq) })
+	return hs
+}
+
+// openSquares returns the open potholes' squares, oldest first.
+func openSquares(p Position) []Square {
+	var ss []Square
+	for _, h := range open(p) {
+		ss = append(ss, h.Sq)
+	}
+	return ss
 }
 
 func dice(rolls ...int) *ScriptedDice { return &ScriptedDice{Rolls: rolls} }

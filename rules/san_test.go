@@ -22,7 +22,7 @@ func TestSAN(t *testing.T) {
 		{"rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq g3 0 2", NoSquare, "d8h4", "Qh4#"},
 	}
 	for _, c := range cases {
-		p := setup(t, c.fen, c.mamdani, NoSquare, NoSquare)
+		p := setup(t, c.fen, c.mamdani)
 		if got := p.SAN(mv(t, c.uci)); got != c.want {
 			t.Errorf("%s %s: got %q, want %q", c.fen, c.uci, got, c.want)
 		}

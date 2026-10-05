@@ -11,8 +11,8 @@ func TestOddRollNoPothole(t *testing.T) {
 	if want := []EventKind{Moved, RolledPothole}; !slices.Equal(kinds(ev), want) {
 		t.Errorf("events %v, want %v", kinds(ev), want)
 	}
-	if p.Potholes != [2]Square{NoSquare, NoSquare} || p.Turn != Black {
-		t.Errorf("potholes %v turn %v", p.Potholes, p.Turn)
+	if len(open(p)) != 0 || p.Turn != Black {
+		t.Errorf("potholes %v turn %v", open(p), p.Turn)
 	}
 }
 
@@ -29,36 +29,124 @@ func TestIllegalMovesRejected(t *testing.T) {
 			t.Errorf("%s: got %v, want ErrIllegalMove", uci, err)
 		}
 	}
-	p := setup(t, "4k3/P7/8/8/8/8/8/4K3 w - - 0 1", NoSquare, NoSquare, NoSquare)
+	p := setup(t, "4k3/P7/8/8/8/8/8/4K3 w - - 0 1", NoSquare)
 	if _, _, err := Apply(p, mv(t, "a7a8"), dice()); !errors.Is(err, ErrIllegalMove) {
 		t.Errorf("promotion without a piece: got %v, want ErrIllegalMove", err)
 	}
 }
 
-func TestPotholeOpensAndClosesAfterRollersNextMove(t *testing.T) {
+func TestPotholeClosesAfterRollersThirdMove(t *testing.T) {
 	// Even roll, then file 4 rank 4: d4.
 	p, ev := apply(t, StartPosition(), "e2e4", dice(2, 4, 4))
 	if want := []EventKind{Moved, RolledPothole, Target, PotholeOpened}; !slices.Equal(kinds(ev), want) {
 		t.Fatalf("events %v, want %v", kinds(ev), want)
 	}
-	if p.Potholes[White] != D4 {
-		t.Fatalf("white pothole %v, want d4", p.Potholes[White])
+	if e, _ := find(ev, PotholeOpened); e.Color != White {
+		t.Errorf("opened by %v, want White", e.Color)
 	}
-	p, _ = apply(t, p, "g8f6", dice(1))
-	if p.Potholes[White] != D4 {
-		t.Fatal("pothole closed before White's next move")
+	// Only White's moves count it down; Black's leave it alone.
+	for i, step := range []struct {
+		uci  string
+		left int8
+	}{
+		{"g8f6", 3}, {"g1f3", 2}, {"b8c6", 2}, {"f1c4", 1}, {"c6b8", 1},
+	} {
+		p, ev = apply(t, p, step.uci, dice(1))
+		if got := open(p); len(got) != 1 || got[0] != (Hole{Sq: D4, By: White, Left: step.left, Seq: 1}) {
+			t.Fatalf("after move %d (%s): holes %v, want d4 with %d left", i+1, step.uci, got, step.left)
+		}
+		if _, ok := find(ev, PotholeClosed); ok {
+			t.Fatalf("%s closed a hole: %v", step.uci, ev)
+		}
 	}
-	p, ev = apply(t, p, "g1f3", dice(1))
-	if e, ok := find(ev, PotholeClosed); !ok || e.Square != D4 || p.Potholes[White] != NoSquare {
-		t.Errorf("pothole should close after White's next move: %v", ev)
+	p, ev = apply(t, p, "b1c3", dice(1))
+	if want := []EventKind{Moved, PotholeClosed, RolledPothole}; !slices.Equal(kinds(ev), want) {
+		t.Fatalf("events %v, want %v", kinds(ev), want)
+	}
+	if e := ev[1]; e.Square != D4 || e.Color != White || len(open(p)) != 0 {
+		t.Errorf("d4 should close after White's third move: %+v, open %v", e, open(p))
 	}
 }
 
-func TestTwoPotholesAtOnce(t *testing.T) {
+func TestBothPlayersHolesOpenAtOnce(t *testing.T) {
 	p, _ := apply(t, StartPosition(), "e2e4", dice(2, 4, 4)) // White: d4
 	p, _ = apply(t, p, "e7e5", dice(4, 8, 3))                // Black: h3
-	if p.Potholes != [2]Square{D4, H3} {
-		t.Errorf("potholes %v, want [d4 h3]", p.Potholes)
+	want := []Hole{{Sq: D4, By: White, Left: 3, Seq: 1}, {Sq: H3, By: Black, Left: 3, Seq: 2}}
+	if got := open(p); !slices.Equal(got, want) {
+		t.Errorf("holes %v, want %v", got, want)
+	}
+}
+
+// fiveHoles is the start position with HoleCap holes open, none next to
+// the Mamdani or on the a5-d2 diagonal, and none on its last round. The
+// oldest, on d5, sits in a middle slot, so the cap must go by Seq.
+func fiveHoles() Position {
+	p := StartPosition()
+	p.Potholes = [HoleCap]Hole{
+		{Sq: F4, By: White, Left: 2, Seq: 2},
+		{Sq: G5, By: Black, Left: 3, Seq: 5},
+		{Sq: D5, By: Black, Left: 2, Seq: 1},
+		{Sq: H4, By: White, Left: 3, Seq: 4},
+		{Sq: C6, By: Black, Left: 2, Seq: 3},
+	}
+	return p
+}
+
+func TestCapClosesOldest(t *testing.T) {
+	p, ev := apply(t, fiveHoles(), "e2e3", dice(2, 4, 4)) // d4
+	want := []EventKind{Moved, RolledPothole, Target, PotholeClosed, PotholeOpened}
+	if !slices.Equal(kinds(ev), want) {
+		t.Fatalf("events %v, want %v", kinds(ev), want)
+	}
+	if e := ev[3]; e.Square != D5 || e.Color != Black {
+		t.Errorf("closed %+v, want Black's d5", e)
+	}
+	if e := ev[4]; e.Square != D4 || e.Color != White {
+		t.Errorf("opened %+v, want White's d4", e)
+	}
+	if got, want := openSquares(p), []Square{F4, C6, H4, G5, D4}; !slices.Equal(got, want) {
+		t.Errorf("holes %v, want %v", got, want)
+	}
+	if got := open(p)[4]; got.Left != HoleRounds || got.By != White {
+		t.Errorf("new hole %+v, want White's with %d rounds", got, HoleRounds)
+	}
+}
+
+func TestNothingOpensSoCapClosesNothing(t *testing.T) {
+	for name, rolls := range map[string][]int{
+		"saved":    {2, 4, 2, 5}, // the d2 pawn, saved
+		"repaired": {2, 2, 4},    // b4, next to the Mamdani
+	} {
+		before := fiveHoles()
+		p, ev := apply(t, before, "e2e4", dice(rolls...))
+		if _, ok := find(ev, PotholeClosed); ok {
+			t.Errorf("%s: a hole closed: %v", name, ev)
+		}
+		if got, want := openSquares(p), openSquares(before); !slices.Equal(got, want) {
+			t.Errorf("%s: holes %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestRerollIfCapCloseExposesRoller(t *testing.T) {
+	// Black's oldest hole on e4 shields the white king from the e8 rook.
+	// Any hole that opens now pushes it out, so only a target the Mamdani
+	// repairs at once (a1, next to b2) leaves White safe.
+	const fen = "k3r3/8/8/8/8/8/7P/4K3 w - - 0 1"
+	holes := []Hole{hole(E4, Black, 2), hole(B6, White, 3), hole(C6, Black, 3), hole(G6, White, 2), hole(H6, Black, 2)}
+	p := setup(t, fen, B2, holes...)
+	p, ev := apply(t, p, "h2h3", dice(2, 8, 1, 1, 1)) // h1, then a1
+	if e, ok := find(ev, Reroll); !ok || e.Square != H1 || e.Reason != ReasonExposes {
+		t.Fatalf("want an exposes re-roll on h1: %v", ev)
+	}
+	if e, ok := find(ev, Repaired); !ok || e.Square != A1 || !p.IsPothole(E4) {
+		t.Errorf("a1 should be repaired at once and e4 stay open: %v", ev)
+	}
+	// With room under the cap, h1 opens and e4 stays.
+	p = setup(t, fen, B2, holes[:4]...)
+	p, ev = apply(t, p, "h2h3", dice(2, 8, 1))
+	if e, ok := find(ev, PotholeOpened); !ok || e.Square != H1 || !p.IsPothole(E4) {
+		t.Errorf("h1 should open with four holes open: %v", ev)
 	}
 }
 
@@ -74,7 +162,7 @@ func TestRerollKing(t *testing.T) {
 
 func TestRerollExistingPothole(t *testing.T) {
 	p := StartPosition()
-	p.Potholes[Black] = D4
+	p.Potholes[0] = hole(D4, Black, 2)
 	_, ev := apply(t, p, "e2e4", dice(6, 4, 4, 8, 3)) // d4, then h3
 	if e, ok := find(ev, Reroll); !ok || e.Reason != ReasonPothole {
 		t.Errorf("want a pothole re-roll: %v", ev)
@@ -97,8 +185,8 @@ func TestNextToMamdaniRepairedOnOpening(t *testing.T) {
 	if e, ok := find(ev, Repaired); !ok || e.Square != B4 {
 		t.Errorf("want b4 repaired at once: %v", ev)
 	}
-	if p.Potholes != [2]Square{NoSquare, NoSquare} {
-		t.Errorf("no pothole should stay open: %v", p.Potholes)
+	if len(open(p)) != 0 {
+		t.Errorf("no pothole should stay open: %v", open(p))
 	}
 }
 
@@ -110,8 +198,8 @@ func TestPieceWithoutMamdaniLineFalls(t *testing.T) {
 	if _, ok := find(ev, SavingRoll); ok {
 		t.Error("no saving roll without a clear Mamdani line")
 	}
-	if p.Board[G8] != NoPiece || p.Potholes[White] != G8 || p.Halfmove != 0 {
-		t.Errorf("board %v pothole %v halfmove %d", p.Board[G8], p.Potholes[White], p.Halfmove)
+	if p.Board[G8] != NoPiece || !slices.Equal(openSquares(p), []Square{G8}) || p.Halfmove != 0 {
+		t.Errorf("board %v potholes %v halfmove %d", p.Board[G8], openSquares(p), p.Halfmove)
 	}
 }
 
@@ -123,7 +211,7 @@ func TestSavingRoll(t *testing.T) {
 	if !ok || !e.Saved || e.Color != White || e.Roll != 5 {
 		t.Fatalf("want a successful white saving roll: %v", ev)
 	}
-	if p.Board[D2] != NewPiece(White, Pawn) || p.Potholes[White] != NoSquare {
+	if p.Board[D2] != NewPiece(White, Pawn) || len(open(p)) != 0 {
 		t.Error("a saved piece stays and no pothole opens")
 	}
 
@@ -131,7 +219,7 @@ func TestSavingRoll(t *testing.T) {
 	if e, _ := find(ev, SavingRoll); e.Saved {
 		t.Fatal("even saving roll should fail")
 	}
-	if p.Board[D2] != NoPiece || p.Potholes[White] != D2 {
+	if p.Board[D2] != NoPiece || !slices.Equal(openSquares(p), []Square{D2}) {
 		t.Error("the pawn falls and the pothole opens")
 	}
 }
@@ -149,8 +237,8 @@ func TestMamdaniFalls(t *testing.T) {
 	if e, ok := find(ev, Fell); !ok || e.Piece != MamdaniPiece {
 		t.Fatalf("Mamdani should fall: %v", ev)
 	}
-	if p.Mamdani != NoSquare || p.Potholes[White] != A5 {
-		t.Fatalf("mamdani %v pothole %v", p.Mamdani, p.Potholes[White])
+	if p.Mamdani != NoSquare || !slices.Equal(openSquares(p), []Square{A5}) {
+		t.Fatalf("mamdani %v potholes %v", p.Mamdani, openSquares(p))
 	}
 	// With the Mamdani gone there are no more saving rolls: a7 falls at once.
 	_, ev = apply(t, p, "e7e5", dice(2, 1, 7))
@@ -161,31 +249,48 @@ func TestMamdaniFalls(t *testing.T) {
 
 func TestRerollIfFallExposesRoller(t *testing.T) {
 	// The e2 bishop shields the white king from the e8 rook.
-	p := setup(t, "k3r3/8/8/8/8/8/4B2P/4K3 w - - 0 1", NoSquare, NoSquare, NoSquare)
+	p := setup(t, "k3r3/8/8/8/8/8/4B2P/4K3 w - - 0 1", NoSquare)
 	_, ev := apply(t, p, "h2h3", dice(2, 5, 2, 8, 8)) // e2, then h8
 	if e, ok := find(ev, Reroll); !ok || e.Square != E2 || e.Reason != ReasonExposes {
 		t.Errorf("want an exposes re-roll on e2: %v", ev)
 	}
 }
 
-func TestRerollIfResultWouldCheckmate(t *testing.T) {
-	// Ra8+ is answered only by the c7 knight (Nxa8 or Ne8). If it fell,
-	// Black would be mated by the roll, so the dice go again.
-	p := setup(t, "7k/2n3pp/8/8/8/8/8/R5K1 w - - 0 1", NoSquare, NoSquare, NoSquare)
-	p, ev := apply(t, p, "a1a8", dice(2, 3, 7, 1, 1)) // c7, then a1
-	if e, ok := find(ev, Reroll); !ok || e.Square != C7 || e.Reason != ReasonCheckmate {
-		t.Errorf("want a checkmate re-roll on c7: %v", ev)
+func TestRollMatesOnLastEscapeSquare(t *testing.T) {
+	// Nf7+ leaves the h8 king one way out, g8. The roll opens a hole there.
+	g := NewGameFrom(setup(t, "7k/6pp/8/6N1/8/8/8/4K3 w - - 0 1", NoSquare))
+	ev, err := g.Play(mv(t, "g5f7"), dice(2, 7, 8)) // g8
+	if err != nil {
+		t.Fatal(err)
 	}
-	if p.Board[C7] != NewPiece(Black, Knight) {
-		t.Error("the knight must survive")
+	if e, ok := find(ev, PotholeOpened); !ok || e.Square != G8 {
+		t.Fatalf("g8 should open: %v", ev)
+	}
+	if want := (Result{Over: true, Winner: White, Reason: Checkmate}); g.Result != want {
+		t.Errorf("result %+v, want White wins by checkmate", g.Result)
+	}
+}
+
+func TestRollMatesWhenOnlyDefenderFalls(t *testing.T) {
+	// Ra8+ is answered only by the c7 knight (Nxa8 or Ne8). It falls.
+	g := NewGameFrom(setup(t, "7k/2n3pp/8/8/8/8/8/R5K1 w - - 0 1", NoSquare))
+	ev, err := g.Play(mv(t, "a1a8"), dice(2, 3, 7)) // c7
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e, ok := find(ev, Fell); !ok || e.Square != C7 {
+		t.Fatalf("the c7 knight should fall: %v", ev)
+	}
+	if want := (Result{Over: true, Winner: White, Reason: Checkmate}); g.Result != want {
+		t.Errorf("result %+v, want White wins by checkmate", g.Result)
 	}
 }
 
 func TestRepairStepAfterMove(t *testing.T) {
 	p := StartPosition()
-	p.Potholes[Black] = D4
+	p.Potholes[0] = hole(D4, Black, 2)
 	p, ev := apply(t, p, "a5c5", dice(1)) // c5 touches d4
-	if e, ok := find(ev, Repaired); !ok || e.Square != D4 || p.Potholes[Black] != NoSquare {
+	if e, ok := find(ev, Repaired); !ok || e.Square != D4 || len(open(p)) != 0 {
 		t.Errorf("moving next to d4 should repair it: %v", ev)
 	}
 }

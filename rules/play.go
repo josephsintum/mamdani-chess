@@ -1,7 +1,7 @@
 package rules
 
-// play makes move m for the side to move, then runs the close and repair
-// steps and passes the turn. It assumes m is pseudo-legal. Events are
+// play makes move m for the side to move, then runs the countdown and
+// repair steps and passes the turn. It assumes m is pseudo-legal. Events are
 // appended to *ev; pass nil when only the resulting position matters, and
 // nothing is recorded or allocated.
 func (p *Position) play(m Move, ev *[]Event) {
@@ -17,10 +17,17 @@ func (p *Position) play(m Move, ev *[]Event) {
 	if mover == Black {
 		p.Fullmove++
 	}
-	// Close: the mover's own pothole from their previous turn.
-	if s := p.Potholes[mover]; s != NoSquare {
-		p.Potholes[mover] = NoSquare
-		emit(ev, Event{Kind: PotholeClosed, Square: s})
+	// Count down: each of the mover's own holes loses a round, and any
+	// with none left closes. The other player's holes wait for their moves.
+	for i := range p.Potholes {
+		h := &p.Potholes[i]
+		if h.Sq == NoSquare || h.By != mover {
+			continue
+		}
+		h.Left--
+		if h.Left == 0 {
+			p.closeHole(i, ev)
+		}
 	}
 	p.repair(ev)
 	p.Turn = mover.Other()
@@ -101,9 +108,9 @@ func (p *Position) repair(ev *[]Event) {
 	if p.Mamdani == NoSquare {
 		return
 	}
-	for c, s := range p.Potholes {
-		if s != NoSquare && adjacent(s, p.Mamdani) {
-			p.Potholes[c] = NoSquare
+	for i := range p.Potholes {
+		if s := p.Potholes[i].Sq; s != NoSquare && adjacent(s, p.Mamdani) {
+			p.Potholes[i].Sq = NoSquare
 			emit(ev, Event{Kind: Repaired, Square: s})
 		}
 	}

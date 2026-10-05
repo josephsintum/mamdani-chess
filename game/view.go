@@ -1,7 +1,9 @@
 package game
 
 import (
+	"cmp"
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -45,10 +47,29 @@ type View struct {
 	data []byte // the encoded view, set once before it is shared (see JSON)
 }
 
-// Pothole is an open pothole and the color that rolled it.
+// Pothole is an open pothole, the color that rolled it and its rounds left:
+// how many more of By's moves it stays open for (1 to rules.HoleRounds).
 type Pothole struct {
-	Sq string `json:"sq"`
-	By string `json:"by"`
+	Sq   string `json:"sq"`
+	By   string `json:"by"`
+	Left int    `json:"left"`
+}
+
+// potholesJSON lists p's open potholes, oldest first, so the next one the
+// cap would close comes first. It is never nil: no holes encodes as [].
+func potholesJSON(p *rules.Position) []Pothole {
+	holes := make([]rules.Hole, 0, rules.HoleCap)
+	for _, h := range p.Potholes {
+		if h.Sq != rules.NoSquare {
+			holes = append(holes, h)
+		}
+	}
+	slices.SortFunc(holes, func(a, b rules.Hole) int { return cmp.Compare(a.Seq, b.Seq) })
+	out := make([]Pothole, len(holes))
+	for i, h := range holes {
+		out[i] = Pothole{Sq: h.Sq.String(), By: colorName(h.By), Left: int(h.Left)}
+	}
+	return out
 }
 
 // MoveJSON is a move on the wire. Promo is "", "q", "r", "b" or "n".
@@ -177,8 +198,10 @@ func eventJSON(e rules.Event) EventJSON {
 		j.Piece, j.Color = pieceCode(e.Piece), colorName(e.Color)
 	case rules.Captured, rules.Fell:
 		j.Sq, j.Piece = squareName(e.Square), pieceCode(e.Piece)
-	case rules.PotholeClosed, rules.Repaired, rules.Target:
+	case rules.Repaired, rules.Target:
 		j.Sq = squareName(e.Square)
+	case rules.PotholeClosed:
+		j.Sq, j.Color = squareName(e.Square), colorName(e.Color)
 	case rules.RolledPothole:
 		j.Roll, j.Color = e.Roll, colorName(e.Color)
 	case rules.Reroll:
@@ -193,6 +216,9 @@ func eventJSON(e rules.Event) EventJSON {
 }
 
 // describe sums up what the dice did on a turn, e.g. "d8 4 → d3 · save 5 ✓".
+// A hole closing after the roll is the cap making room ("c4 closes"); holes
+// that count down to zero close before the roll and are left out, as every
+// turn has them.
 func describe(events []rules.Event) string {
 	var parts []string
 	rolled := false
@@ -204,6 +230,10 @@ func describe(events []rules.Event) string {
 				parts[last] += " repaired"
 			} else {
 				parts = append(parts, "repairs "+e.Square.String())
+			}
+		case rules.PotholeClosed:
+			if rolled {
+				parts = append(parts, e.Square.String()+" closes")
 			}
 		case rules.RolledPothole:
 			rolled = true

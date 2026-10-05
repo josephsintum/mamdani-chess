@@ -34,7 +34,7 @@ func (g *Game) publish() {
 		Black:    g.names[rules.Black],
 		Move:     len(g.g.Turns)/2 + 1,
 		Mamdani:  squareName(p.Mamdani),
-		Potholes: []Pothole{},
+		Potholes: potholesJSON(p),
 		Watching: g.watching(),
 		status:   g.status(),
 		created:  g.created,
@@ -42,11 +42,6 @@ func (g *Game) publish() {
 	}
 	for s, pc := range p.Board {
 		l.Board[s] = pieceCode(pc)
-	}
-	for c, s := range p.Potholes {
-		if s != rules.NoSquare {
-			l.Potholes = append(l.Potholes, Pothole{Sq: s.String(), By: colorName(rules.Color(c))})
-		}
 	}
 	if n := len(g.g.Turns); n > 0 {
 		m := moveJSON(g.g.Turns[n-1].Move)

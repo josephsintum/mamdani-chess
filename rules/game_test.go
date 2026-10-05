@@ -27,10 +27,10 @@ func TestFoolsMate(t *testing.T) {
 
 func TestMamdaniCanBlockMate(t *testing.T) {
 	const fen = "7k/8/8/8/8/8/6PP/r6K w - - 0 1" // back-rank check from a1
-	if g := NewGameFrom(setup(t, fen, D4, NoSquare, NoSquare)); g.Result.Over {
+	if g := NewGameFrom(setup(t, fen, D4)); g.Result.Over {
 		t.Error("Md1 blocks the check, so it is not mate")
 	}
-	g := NewGameFrom(setup(t, fen, NoSquare, NoSquare, NoSquare))
+	g := NewGameFrom(setup(t, fen, NoSquare))
 	if g.Result.Reason != Checkmate || g.Result.Winner != Black {
 		t.Errorf("without the Mamdani it is mate: %+v", g.Result)
 	}
@@ -38,10 +38,10 @@ func TestMamdaniCanBlockMate(t *testing.T) {
 
 func TestStalemateCountsMamdaniMoves(t *testing.T) {
 	const fen = "k7/8/1Q6/8/8/8/8/7K b - - 0 1"
-	if g := NewGameFrom(setup(t, fen, H4, NoSquare, NoSquare)); g.Result.Over {
+	if g := NewGameFrom(setup(t, fen, H4)); g.Result.Over {
 		t.Error("Black can still move the Mamdani, so it is not stalemate")
 	}
-	g := NewGameFrom(setup(t, fen, NoSquare, NoSquare, NoSquare))
+	g := NewGameFrom(setup(t, fen, NoSquare))
 	if g.Result.Reason != Stalemate || !g.Result.Draw {
 		t.Errorf("want stalemate, got %+v", g.Result)
 	}
@@ -56,6 +56,24 @@ func TestThreefoldRepetition(t *testing.T) {
 	play(t, g, "f6g8")
 	if g.Result.Reason != Repetition {
 		t.Errorf("want repetition, got %+v", g.Result)
+	}
+}
+
+func TestRepetitionKeyCountsRoundsLeft(t *testing.T) {
+	const fen = "4k3/8/8/8/8/8/8/4K3 w - - 0 1"
+	base := setup(t, fen, NoSquare, hole(C4, White, 2), hole(F5, Black, 3))
+	// The same holes in other slots, opened in another order: same key.
+	if same := setup(t, fen, NoSquare, hole(F5, Black, 3), hole(C4, White, 2)); same.Key() != base.Key() {
+		t.Error("slot order and Seq changed the key")
+	}
+	for name, p := range map[string]Position{
+		"rounds left": setup(t, fen, NoSquare, hole(C4, White, 1), hole(F5, Black, 3)),
+		"roller":      setup(t, fen, NoSquare, hole(C4, Black, 2), hole(F5, Black, 3)),
+		"square":      setup(t, fen, NoSquare, hole(C3, White, 2), hole(F5, Black, 3)),
+	} {
+		if p.Key() == base.Key() {
+			t.Errorf("a different %s gave the same key", name)
+		}
 	}
 }
 
@@ -81,7 +99,7 @@ func TestInsufficientMaterial(t *testing.T) {
 		{"4k3/8/8/8/8/8/8/3RK3 w - - 0 1", NoSquare, false},
 	}
 	for _, c := range cases {
-		g := NewGameFrom(setup(t, c.fen, c.mamdani, NoSquare, NoSquare))
+		g := NewGameFrom(setup(t, c.fen, c.mamdani))
 		if over := g.Result.Reason == InsufficientMaterial; over != c.over {
 			t.Errorf("%s mamdani %v: insufficient=%v, want %v", c.fen, c.mamdani, over, c.over)
 		}
@@ -132,13 +150,18 @@ func TestBoardMateIsNotUndoneByDice(t *testing.T) {
 	}
 }
 
-func TestCheckHeldOffOnlyByOwnPotholeIsMate(t *testing.T) {
-	// White's own hole on e4 blocks the e8 rook. Every white move closes it,
-	// and nothing can block the e-file or step off it: that is checkmate,
-	// not stalemate.
-	p := setup(t, "k3r3/8/8/8/8/8/3P1P2/3RKR2 w - - 0 1", NoSquare, E4, NoSquare)
-	g := NewGameFrom(p)
-	if g.Result.Reason != Checkmate || g.Result.Winner != Black {
+func TestCheckHeldOffOnlyByOwnLastRoundPotholeIsMate(t *testing.T) {
+	// White's own hole on e4 blocks the e8 rook. On its last round, every
+	// white move closes it, and nothing can block the e-file or step off
+	// it: that is checkmate, not stalemate.
+	const fen = "k3r3/8/8/8/8/8/3P1P2/3RKR2 w - - 0 1"
+	g := NewGameFrom(setup(t, fen, NoSquare, hole(E4, White, 1)))
+	if want := (Result{Over: true, Winner: Black, Reason: Checkmate}); g.Result != want {
 		t.Errorf("result %+v, want Black wins by checkmate", g.Result)
+	}
+	// With two rounds left it outlasts White's next move: Ke2 is safe.
+	g = NewGameFrom(setup(t, fen, NoSquare, hole(E4, White, 2)))
+	if g.Result.Over || !legal(t, g.Pos, "e1e2") {
+		t.Errorf("result %+v, want the game on with Ke2 legal", g.Result)
 	}
 }

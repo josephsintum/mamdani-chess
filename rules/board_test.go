@@ -40,7 +40,7 @@ func TestStartPosition(t *testing.T) {
 	if p.Board[E1] != NewPiece(White, King) || p.Board[D8] != NewPiece(Black, Queen) || p.Board[E4] != NoPiece {
 		t.Error("pieces are misplaced")
 	}
-	if p.Mamdani != A5 || p.Potholes != [2]Square{NoSquare, NoSquare} {
+	if p.Mamdani != A5 || p.Potholes != noHoles() {
 		t.Errorf("mamdani %v potholes %v", p.Mamdani, p.Potholes)
 	}
 	if p.Turn != White || p.Castling != WhiteKingside|WhiteQueenside|BlackKingside|BlackQueenside || p.EP != NoSquare || p.Fullmove != 1 {

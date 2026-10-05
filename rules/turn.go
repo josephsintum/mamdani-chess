@@ -19,10 +19,12 @@ var ErrBadDie = errors.New("die roll outside 1..8")
 // maxRerolls caps placement re-rolls; past it no pothole opens this turn.
 const maxRerolls = 64
 
-// Apply plays one full turn: move, close, repair, pothole roll, placement
-// and resolution. It returns the new position and what happened, in order.
-// A move that checkmates ends the game at once: no pothole roll follows, so
-// the dice can't undo a mate made on the board. p is not modified.
+// Apply plays one full turn: move, countdown, repair, pothole roll,
+// placement and resolution. It returns the new position and what happened,
+// in order. A move that checkmates ends the game at once: no pothole roll
+// follows, so the dice can't undo a mate made on the board. The roll itself
+// may leave the next player mated; the game sees that like any other mate.
+// p is not modified.
 func Apply(p Position, m Move, dice Dice) (Position, []Event, error) {
 	if !p.isLegal(m) {
 		return p, nil, ErrIllegalMove
@@ -62,18 +64,23 @@ func (c *checkedDice) D8() int {
 }
 
 // Mated reports whether the side to move is checkmated: no legal move, and
-// its king attacked once its own open pothole is counted as closed. Every
-// move closes that pothole, so a check it is only holding off can't be
-// escaped either.
+// its king attacked once its own holes on their last round are counted as
+// closed. Every move closes those, so a check they are only holding off
+// can't be escaped either. A hole with rounds to spare outlasts the next
+// move, so a check it holds off leaves a stalemate, not a mate.
 func (p *Position) Mated() bool {
 	return p.threatened() && !p.hasLegalMove()
 }
 
 // threatened reports whether the side to move's king is attacked, ignoring
-// its own open pothole.
+// its own holes that close on its next move.
 func (p *Position) threatened() bool {
 	q := *p
-	q.Potholes[q.Turn] = NoSquare
+	for i, h := range q.Potholes {
+		if h.Sq != NoSquare && h.By == q.Turn && h.Left == 1 {
+			q.Potholes[i].Sq = NoSquare
+		}
+	}
 	return q.InCheck(q.Turn)
 }
 
@@ -111,17 +118,17 @@ func (p *Position) rerollReason(s Square, mover Color) RerollReason {
 	// Would the fall leave the roller in check once the hole is gone?
 	// While open, the hole blocks the same lines the piece did, so the test
 	// is made without it: the roller must not inherit an unanswerable check
-	// when their own pothole closes after their next move.
+	// when their own pothole closes. With HoleCap open, the oldest hole
+	// closes as this one opens, and it may be the one shielding the
+	// roller's king: then the roller would be in check on the other
+	// player's turn, so that is tested too.
 	gone := *p
 	gone.remove(s)
+	if i := gone.capVictim(); i >= 0 {
+		gone.Potholes[i].Sq = NoSquare
+	}
 	if gone.InCheck(mover) {
 		return ReasonExposes
-	}
-	// Would the outcome checkmate the next player? A roll never wins.
-	opened := gone
-	opened.Potholes[mover] = s
-	if opened.Mated() {
-		return ReasonCheckmate
 	}
 	return ""
 }
@@ -169,8 +176,8 @@ func (p *Position) resolve(s Square, mover Color, dice Dice, ev []Event) []Event
 		p.Halfmove = 0
 		p.Castling &^= rightsLost(s)
 	}
-	p.Potholes[mover] = s
-	return append(ev, Event{Kind: PotholeOpened, Square: s, Color: mover})
+	p.openHole(s, mover, &ev)
+	return ev
 }
 
 // mamdaniReaches reports whether the Mamdani has a clear queen line to s:

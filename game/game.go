@@ -496,7 +496,7 @@ func (g *Game) viewFor(r role) *View {
 		Status:   g.status(),
 		You:      "spectator",
 		Mamdani:  squareName(p.Mamdani),
-		Potholes: []Pothole{},
+		Potholes: potholesJSON(p),
 		Turn:     colorName(p.Turn),
 		Check:    p.InCheck(p.Turn),
 		Legal:    []MoveJSON{},
@@ -516,11 +516,6 @@ func (g *Game) viewFor(r role) *View {
 	}
 	for s, pc := range p.Board {
 		v.Board[s] = pieceCode(pc)
-	}
-	for c, s := range p.Potholes {
-		if s != rules.NoSquare {
-			v.Potholes = append(v.Potholes, Pothole{Sq: s.String(), By: colorName(rules.Color(c))})
-		}
 	}
 	if v.Status == Playing && seated && color == p.Turn {
 		for _, m := range p.LegalMoves() {

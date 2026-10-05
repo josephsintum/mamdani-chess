@@ -23,6 +23,9 @@ func TestEventJSONOmitsFieldsThatDontApply(t *testing.T) {
 		{rules.Event{Kind: rules.Moved, Move: rules.Move{From: rules.E7, To: rules.E8, Promo: rules.Queen}, Piece: rules.NewPiece(rules.White, rules.Pawn), Color: rules.White},
 			`{"kind":"moved","from":"e7","to":"e8","promo":"q","piece":"wP","color":"white"}`},
 		{rules.Event{Kind: rules.NoPothole}, `{"kind":"no_pothole"}`},
+		{rules.Event{Kind: rules.PotholeClosed, Square: rules.C4, Color: rules.Black},
+			`{"kind":"pothole_closed","sq":"c4","color":"black"}`},
+		{rules.Event{Kind: rules.Repaired, Square: rules.C4}, `{"kind":"repaired","sq":"c4"}`},
 	}
 	for _, c := range cases {
 		b, err := json.Marshal(eventJSON(c.e))
@@ -67,6 +70,22 @@ func TestDescribe(t *testing.T) {
 		{Kind: rules.Fell, Piece: rules.NewPiece(rules.Black, rules.Knight)},
 	}
 	if got, want := describe(ev), "repairs d4 · d8 2 → g8 · bN falls"; got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}
+
+func TestDescribeShowsOnlyTheCapClosing(t *testing.T) {
+	// f5 runs out of rounds before the roll: every turn has those, so the
+	// log leaves it out. c4 is the cap making room for e4.
+	ev := []rules.Event{
+		{Kind: rules.Moved},
+		{Kind: rules.PotholeClosed, Square: rules.F5, Color: rules.White},
+		{Kind: rules.RolledPothole, Roll: 2},
+		{Kind: rules.Target, Square: rules.E4},
+		{Kind: rules.PotholeClosed, Square: rules.C4, Color: rules.Black},
+		{Kind: rules.PotholeOpened, Square: rules.E4, Color: rules.White},
+	}
+	if got, want := describe(ev), "d8 2 → e4 · c4 closes"; got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
 }

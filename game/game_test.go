@@ -157,7 +157,7 @@ func TestPotholeShowsInView(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := recv(t, a)
-	if !slices.Equal(v.Potholes, []Pothole{{Sq: "d4", By: "white"}}) {
+	if !slices.Equal(v.Potholes, []Pothole{{Sq: "d4", By: "white", Left: 3}}) {
 		t.Errorf("potholes %v", v.Potholes)
 	}
 	kinds := []rules.EventKind{}
@@ -170,6 +170,28 @@ func TestPotholeShowsInView(t *testing.T) {
 	}
 	if !strings.HasPrefix(v.Log[0].Dice, "d8 2 → d4") {
 		t.Errorf("log %q", v.Log[0])
+	}
+}
+
+func TestPotholesCountDownOldestFirst(t *testing.T) {
+	// White opens d4, Black opens h3, then White's move counts d4 down.
+	g := create(t, NewHub(&script{rolls: []int{2, 4, 4, 4, 8, 3}}, nil), "alice")
+	a := join(t, g, "alice")
+	join(t, g, "bob")
+	recv(t, a)
+	for i, m := range []struct{ guest, uci string }{{"alice", "e2e4"}, {"bob", "e7e5"}, {"alice", "g1f3"}} {
+		if err := g.Move(m.guest, mv(t, m.uci), i); err != nil {
+			t.Fatal(err)
+		}
+		recv(t, a)
+	}
+	v := recvView(t, g, "alice")
+	want := []Pothole{{Sq: "d4", By: "white", Left: 2}, {Sq: "h3", By: "black", Left: 3}}
+	if !slices.Equal(v.Potholes, want) {
+		t.Errorf("potholes %v, want %v", v.Potholes, want)
+	}
+	if l := g.live.Load(); !slices.Equal(l.Potholes, want) {
+		t.Errorf("live potholes %v, want %v", l.Potholes, want)
 	}
 }
 

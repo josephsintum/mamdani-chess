@@ -53,7 +53,7 @@ func ParseMove(s string) (Move, error) {
 
 // LegalMoves returns every legal move for the side to move: its own pieces
 // and the Mamdani. A move is legal only if the mover's king is safe after
-// the move, the close step and the repair step.
+// the move, the countdown and the repair step.
 func (p *Position) LegalMoves() []Move {
 	var buf [maxMoves]Move
 	pseudo := p.pseudoMoves(buf[:0])
@@ -72,7 +72,7 @@ func (p *Position) LegalMoves() []Move {
 const maxMoves = 320
 
 // safe reports whether pseudo-legal m leaves the mover's king unattacked
-// once the close and repair steps have run.
+// once the countdown and repair steps have run.
 func (p *Position) safe(m Move) bool {
 	q := *p
 	q.play(m, nil)
