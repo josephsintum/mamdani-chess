@@ -1,15 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { fly } from 'svelte/transition';
 	import { reducedMotion, setInstant } from '#lib/motion.ts';
 	import { dev } from '$app/env';
 	import { page } from '$app/state';
 	import Board from '#lib/Board.svelte';
+	import DiceSummary from '#lib/DiceSummary.svelte';
 	import DiceTray from '#lib/DiceTray.svelte';
 	import MoveLog from '#lib/MoveLog.svelte';
+	import MovesSheet from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
-	import { checkSquare, stageAt } from '#lib/board.ts';
+	import { checkSquare, pillFor, stageAt } from '#lib/board.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
 	import {
@@ -31,6 +34,9 @@
 	const instant = dev && page.url.searchParams.has('instant');
 	setInstant(instant);
 	const anim = new Animator(instant ? 0 : STEP_MS);
+	// Phones in portrait get their own layout (canvas row "Phone game: playtest build").
+	const phone = new MediaQuery('max-width: 639px');
+	let sheet: MovesSheet | undefined = $state();
 	let view = $derived(anim.view);
 	let shown = $derived(anim.shown);
 	// Your move, shown before the server confirms it (One Million Chessboards
@@ -59,6 +65,7 @@
 			optimistic = null;
 			unsent = false;
 		}
+		if (next.result) confirmResign = false; // the game ended before you chose
 		const prev = anim.view;
 		anim.receive(next, { hidden: document.hidden });
 		if (unsent) resend();
@@ -125,6 +132,8 @@
 	});
 	let playing = $derived(view?.status === 'playing');
 	let isPlayer = $derived(you === 'white' || you === 'black');
+	let topPill = $derived(view ? pillFor(view, top, animating) : { text: '', tone: 'turn' as const });
+	let bottomPill = $derived(view ? pillFor(view, bottom, animating) : { text: '', tone: 'turn' as const });
 
 	async function move(m: MoveJSON) {
 		if (!view || busy) return;
@@ -176,15 +185,22 @@
 		confirmResign = false;
 	}
 
+	let hintTimer: ReturnType<typeof setTimeout> | undefined;
+
 	async function copyLink() {
 		try {
 			await navigator.clipboard.writeText(page.url.href);
 			copyHint = 'Link copied';
 		} catch {
 			// No clipboard on plain-http addresses: select the link instead.
-			(document.getElementById('link') as HTMLInputElement | null)?.select();
-			copyHint = 'Press Ctrl+C (⌘C on a Mac) to copy';
+			const link = document.getElementById('link') as HTMLInputElement | null;
+			link?.select();
+			if (!phone.current) copyHint = 'Press Ctrl+C (⌘C on a Mac) to copy';
+			else copyHint = link ? 'Tap and hold the link to copy it' : 'Copy the address bar to share';
 		}
+		// The phone's header shows the hint in place of the code, briefly.
+		clearTimeout(hintTimer);
+		hintTimer = setTimeout(() => (copyHint = ''), 2500);
 	}
 
 	async function newGame() {
@@ -216,6 +232,33 @@
 		if (view.check) text += yours ? ' — you’re in check' : ` — ${side} is in check`;
 		if (firstMove !== null) text += ` · ${Math.ceil(firstMove / 1000)}s to make the first move`;
 		return text;
+	});
+
+	// Phones have no visible status line, so the first-move countdown rides
+	// on the pill of the side that has to move.
+	function phonePill(p: { text: string }, c: Color): string {
+		if (!p.text || firstMove === null || view?.turn !== c) return p.text;
+		return `${p.text} · ${Math.ceil(firstMove / 1000)}s`;
+	}
+
+	// The phone's game-over bar: what its rematch button does, if anything.
+	let rematchAction = $derived.by((): { kind: 'go' | 'offer' | 'offered' | 'answer'; label: string } | null => {
+		const r = view?.rematch;
+		if (!view || !r || !resultCard || view.result?.reason === 'expired') return null;
+		if (r.code) return { kind: 'go', label: isPlayer ? 'Go to rematch' : 'Watch rematch' };
+		if (!isPlayer) return null;
+		if (r.offer && r.offer !== you) return { kind: 'answer', label: '' };
+		if (r.offer === you) return { kind: 'offered', label: 'Offered…' };
+		return { kind: 'offer', label: 'Rematch' };
+	});
+	// On phones a rematch offer or decline replaces the result's detail line,
+	// so the card keeps its height and the page never scrolls.
+	let rematchNote = $derived.by(() => {
+		const r = view?.rematch;
+		if (!r || r.code || !isPlayer) return '';
+		if (r.offer && r.offer !== you) return 'Your opponent wants a rematch.';
+		if (r.declined) return 'Rematch declined.';
+		return '';
 	});
 
 	let resultCard = $derived.by(() => {
@@ -253,6 +296,129 @@
 	<title>Game {code} · Pothole Chess</title>
 </svelte:head>
 
+{#if phone.current && view && stage && !notFound}
+	<div class="phone">
+		<header class="ph-head">
+			<a href="/" class="ph-logo">Pothole Chess</a>
+			<span class="ph-meta">
+				{#if !connected && !lost}<span class="ph-chip warn">Reconnecting…</span>{/if}
+				{#if you === 'spectator'}<span class="ph-chip">Watching</span>{/if}
+				<span class="ph-code">{copyHint && view.status !== 'waiting' ? copyHint : code}</span>
+				<button type="button" class="ph-icon" aria-label="Copy game link" onclick={copyLink}>
+					<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+				</button>
+			</span>
+		</header>
+		{#if lost}
+			<p class="ph-lost" role="alert">
+				This game is no longer on the server. <a href="/">Start a new one</a>.
+			</p>
+		{/if}
+		<!-- The pills and the dice card show this; screen readers hear it. -->
+		<p class="sr-only" aria-live="polite">{status}</p>
+
+		<div class="ph-play">
+			<PlayerBar
+				compact
+				color={top}
+				you={you === top}
+				lost={stage.lost[top]}
+				pill={phonePill(topPill, top)}
+				pillTone={topPill.tone}
+				toMove={playing && view.turn === top && !animating}
+				clockMs={clockFor(top)}
+				ticking={view.clock.running === top && !pausedForDice}
+				offline={view.status !== 'waiting' && !view.online[top]}
+			/>
+			<div class="ph-board">
+				<Board
+					{stage}
+					legal={view.legal}
+					{lastMove}
+					flipped={bottom === 'black'}
+					interactive={!animating && !busy && !optimistic && playing}
+					dim={!!resultCard || view.status === 'waiting'}
+					check={checked}
+					saved={savedSquare}
+					onmove={move}
+				/>
+			</div>
+			<PlayerBar
+				compact
+				color={bottom}
+				you={you === bottom}
+				lost={stage.lost[bottom]}
+				pill={phonePill(bottomPill, bottom)}
+				pillTone={bottomPill.tone}
+				toMove={playing && view.turn === bottom && !animating}
+				clockMs={clockFor(bottom)}
+				ticking={view.clock.running === bottom && !pausedForDice}
+				offline={view.status !== 'waiting' && !view.online[bottom]}
+			/>
+		</div>
+
+		{#if view.status === 'waiting' && you === 'white'}
+			<section class="ph-card" aria-label="Invite a friend">
+				<label for="link" class="ph-title">Send this link to your friend</label>
+				<div class="ph-row">
+					<input id="link" readonly value={page.url.href} />
+					<button type="button" class="primary" onclick={copyLink}>Copy link</button>
+				</div>
+				{#if copyHint}<span class="muted">{copyHint}</span>{/if}
+			</section>
+		{:else if confirmResign}
+			<section class="ph-card danger-line" aria-label="Resign">
+				<span class="ph-title">Resign this game? <span class="muted">{you === 'white' ? 'Black' : 'White'} wins.</span></span>
+				<div class="ph-two">
+					<button type="button" class="outline" onclick={() => (confirmResign = false)}>Keep playing</button>
+					<button type="button" class="danger" onclick={doResign} disabled={busy}>Yes, resign</button>
+				</div>
+			</section>
+		{:else if resultCard}
+			<section class="ph-card accent-line" role="status" aria-label="Game over" in:fly={{ y: 24, duration: reducedMotion() ? 0 : 400 }}>
+				<span class="ph-result"><span class="ph-headline">{resultCard.title}</span><span class="ph-kicker">{resultCard.kicker}</span></span>
+				<span class="ph-detail">{rematchNote || resultCard.detail}</span>
+			</section>
+		{:else if error}
+			<p class="ph-card ph-error" role="alert">{error}</p>
+		{:else if unsent}
+			<p class="ph-card ph-detail" role="status">{status}</p>
+		{:else}
+			<DiceSummary {view} {shown} />
+		{/if}
+
+		{#if view.status !== 'waiting' && !confirmResign}
+			<nav class="ph-nav" aria-label="Game actions" class:single={!resultCard && !(isPlayer && playing)} class:three={!!rematchAction}>
+				{#if rematchAction}
+					{#if rematchAction.kind === 'answer'}
+						<button type="button" class="primary" onclick={() => offerRematch()} disabled={busy}>Accept</button>
+						<button type="button" class="outline" onclick={() => offerRematch(true)} disabled={busy}>Decline</button>
+					{:else}
+						{#if rematchAction.kind === 'go'}
+							<button type="button" class="primary" onclick={() => location.assign(`/game/${view.rematch.code}`)}>{rematchAction.label}</button>
+						{:else}
+							<button type="button" class="primary" onclick={() => offerRematch()} disabled={busy || rematchAction.kind === 'offered'}
+								>{rematchAction.label}</button
+							>
+						{/if}
+						<button type="button" class="outline" onclick={newGame} disabled={busy}>New game</button>
+					{/if}
+				{:else if resultCard}<button type="button" class="primary" onclick={newGame} disabled={busy}>New game</button>{/if}
+				<button type="button" class="solid" onclick={(e) => sheet?.open(e.currentTarget)}>
+					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+					{rematchAction ? 'Moves' : 'Moves and rolls'}
+				</button>
+				{#if !resultCard && isPlayer && playing}
+					<button type="button" class="outline" onclick={() => (confirmResign = true)} disabled={busy}>
+						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"></path><path d="M4 4h12l-2 4 2 4H4"></path></svg>
+						Resign
+					</button>
+				{/if}
+			</nav>
+		{/if}
+	</div>
+	<MovesSheet bind:this={sheet} {view} {shown} rolling={animating} />
+{:else}
 <main>
 	<header>
 		<a href="/" class="logo">Pothole Chess</a>
@@ -297,6 +463,8 @@
 					color={top}
 					you={you === top}
 					lost={stage.lost[top]}
+					pill={topPill.text}
+					pillTone={topPill.tone}
 					toMove={playing && view.turn === top && !animating}
 					clockMs={clockFor(top)}
 					ticking={view.clock.running === top && !pausedForDice}
@@ -327,6 +495,8 @@
 					color={bottom}
 					you={you === bottom}
 					lost={stage.lost[bottom]}
+					pill={bottomPill.text}
+					pillTone={bottomPill.tone}
 					toMove={playing && view.turn === bottom && !animating}
 					clockMs={clockFor(bottom)}
 					ticking={view.clock.running === bottom && !pausedForDice}
@@ -390,8 +560,228 @@
 		</div>
 	{/if}
 </main>
+{/if}
 
 <style>
+	/* Phone layout (under 640px): one screen, no scrolling. */
+	.phone {
+		display: flex;
+		flex-direction: column;
+		height: 100vh;
+		height: 100dvh;
+		overflow: hidden;
+	}
+	.ph-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-shrink: 0;
+		height: 48px;
+		padding: 0 4px 0 12px;
+	}
+	.ph-logo {
+		font-family: var(--font-display);
+		font-size: 20px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		color: var(--text);
+		text-decoration: none;
+	}
+	.ph-meta {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+	}
+	.ph-code {
+		overflow: hidden;
+		font-family: var(--font-mono);
+		font-size: 14px;
+		font-weight: 600;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		color: var(--text-muted);
+	}
+	.ph-chip {
+		padding: 2px 8px;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+	.ph-chip.warn {
+		border-color: var(--hazard);
+		color: var(--hazard-text);
+	}
+	.ph-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--text-body);
+		cursor: pointer;
+	}
+	.ph-lost {
+		margin: 0 8px 4px;
+		font-size: 14px;
+		color: var(--hazard-text);
+	}
+	/* Bars and board take the space left over; the board is as big as fits. */
+	.ph-play {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		flex: 1 1 auto;
+		min-height: 0;
+		container-type: size;
+	}
+	.ph-board {
+		width: min(calc(100cqw - 16px), calc(100cqh - 92px));
+		margin: 2px auto;
+	}
+	.ph-card {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		flex-shrink: 0;
+		margin: 6px 8px 0;
+		padding: 12px;
+		background: var(--surface);
+		border: 1px solid var(--surface-2);
+		border-radius: 12px;
+	}
+	.ph-card.accent-line {
+		gap: 4px;
+		border-color: var(--accent-line);
+	}
+	.ph-card.danger-line {
+		border-color: var(--hazard);
+	}
+	.ph-title {
+		font-weight: 600;
+		color: var(--text);
+	}
+	.ph-row {
+		display: flex;
+		gap: 8px;
+	}
+	.ph-row input {
+		flex: 1;
+		min-width: 0;
+		height: 44px;
+		box-sizing: border-box;
+		padding: 0 10px;
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		background: var(--bg);
+		color: var(--text-body);
+		font-family: var(--font-mono);
+		font-size: 13px;
+	}
+	.ph-row .primary {
+		flex-grow: 0;
+	}
+	.ph-two {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 8px;
+	}
+	.ph-result {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+	}
+	.ph-headline {
+		font-family: var(--font-display);
+		font-size: 28px;
+		font-weight: 800;
+		line-height: 1;
+		text-transform: uppercase;
+		color: var(--accent);
+	}
+	.ph-kicker {
+		font-family: var(--font-mono);
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+	.ph-detail {
+		font-size: 14px;
+	}
+	.ph-error {
+		margin-bottom: 0;
+		font-size: 14px;
+		color: var(--hazard-text);
+	}
+	.ph-nav {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 8px;
+		flex-shrink: 0;
+		margin-top: 8px;
+		padding: 8px 8px max(12px, env(safe-area-inset-bottom));
+		border-top: 1px solid var(--surface-2);
+	}
+	.ph-nav.single {
+		grid-template-columns: 1fr;
+	}
+	.ph-nav.three {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+	.phone button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		min-height: 44px;
+		padding: 0 14px;
+		border-radius: 10px;
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.phone .solid {
+		border: 0;
+		background: var(--surface-2);
+		color: var(--text);
+	}
+	.phone .outline {
+		border: 1px solid var(--line);
+		background: none;
+		color: var(--text);
+	}
+	.phone .primary {
+		border: 0;
+		background: var(--accent);
+		color: var(--accent-text);
+	}
+	.phone .danger {
+		border: 0;
+		background: var(--hazard);
+		color: var(--accent-text);
+	}
+	.phone .ph-icon {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--text-body);
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
 	main {
 		max-width: 1400px;
 		margin: 0 auto;

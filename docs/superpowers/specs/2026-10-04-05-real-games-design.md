@@ -166,6 +166,16 @@ Railway stops the old process before starting the new one (the volume allows one
 - **Declined:** `state.rematch` becomes `{declined: true}`; the offerer sees "Rematch declined." and can ask again.
 - The hub creates the new game from inside the old game's goroutine. That's safe: `Hub.Create` only takes the hub's mutex, and never calls into an existing game.
 
+## On phones
+
+The phone layout ([its spec](2026-10-05-phone-layout-design.md)) landed on `main` while this milestone was being built, and left the clocks' place empty. Merging the two (decided with Joseph, 2026-10-04) put milestone 05 into it without changing its no-scroll layout:
+
+- **Clocks:** each compact player bar shows its clock to the right of the pill, smaller (16 px, 64 px wide), with the same yellow and orange states. "Paused for dice" stays desktop-only; the dice card shows the roll.
+- **First-move countdown:** phones have no visible status line, so it rides on the pill of the side to move ("Your move · 45s").
+- **Offline move:** "Sending your move…" takes the card slot, just above the dice card in priority.
+- **Disconnected:** a short "Offline" label after the name.
+- **Rematch:** at game over a player's bottom bar has three buttons: the rematch action (Rematch, Offered…, Go to rematch, or Accept and Decline), New game, and Moves. An offer or a decline replaces the result card's detail line, so the card keeps its height. Spectators get Watch rematch once it starts.
+
 ## Log lines
 
 The guest cookie works as a login (whoever holds it takes that guest's seat), so `guestID()` in `server/guest.go` hands the rest of the server only its SHA-256: seats, the database and logs never hold the cookie. The 128 random bits need no salt. Leaderboards and achievements (milestone 08) key on the same hash. Logs shorten it further to an 8-character `guestTag`.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { followsRematch, trySendMove, type View } from './game.ts';
+import { followsRematch, pieceName, trySendMove, type View } from './game.ts';
 
 function view(you: View['you'], code?: string): View {
 	return { you, rematch: code ? { code } : {} } as View;
@@ -41,5 +41,13 @@ describe('trySendMove', () => {
 			throw new TypeError('Failed to fetch');
 		});
 		expect(await trySendMove('ABC123', move, 0)).toBe('unsent');
+	});
+});
+
+describe('pieceName', () => {
+	it('names a piece for screen readers', () => {
+		expect(pieceName('bN')).toBe('black knight');
+		expect(pieceName('wQ')).toBe('white queen');
+		expect(pieceName('M')).toBe('the Mamdani');
 	});
 });

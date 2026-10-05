@@ -3,7 +3,7 @@
 
 	// A d8 shown as a diamond. When it appears it tumbles through random
 	// faces for a moment, then lands on its value.
-	let { value, highlight = false }: { value: number; highlight?: boolean } = $props();
+	let { value, highlight = false, small = false }: { value: number; highlight?: boolean; small?: boolean } = $props();
 
 	const TUMBLE_MS = 320;
 	let face = $state(0); // 0 = settled on value
@@ -20,7 +20,7 @@
 	}
 </script>
 
-<span class="die" class:highlight class:rolling={face !== 0} {@attach tumble}>
+<span class="die" class:highlight class:small class:rolling={face !== 0} {@attach tumble}>
 	<!-- The tray is a live region: screen readers get the value, never the tumbling faces. -->
 	<span aria-hidden="true">{face || value}</span>
 	<span class="sr-only">{value}</span>
@@ -36,6 +36,16 @@
 		transform: rotate(45deg);
 		background: var(--line);
 		border-radius: 5px;
+	}
+	/* The phone's dice card: fits a 26px chip row. */
+	.die.small {
+		width: 22px;
+		height: 22px;
+		margin: 0 4px;
+		border-radius: 4px;
+	}
+	.die.small span {
+		font-size: 13px;
 	}
 	.die.rolling {
 		animation: tumble 0.32s ease-out;

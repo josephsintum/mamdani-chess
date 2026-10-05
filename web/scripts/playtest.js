@@ -8,24 +8,26 @@
 //   pnpm --dir web playtest                       # 6 games in Chromium
 //   pnpm --dir web playtest --browser webkit      # Safari's engine
 //   pnpm --dir web playtest --games 12 --drag 0.5 # half the moves by dragging
+//   pnpm --dir web playtest --phone               # as iPhones: taps, the phone layout
 //
 // Against a production build (no ?instant: the dice play out in full), allow
 // each turn longer:
 //
 //   pnpm --dir web playtest --base https://<domain> --games 2 --max-plies 30 --turn-ms 15000
 
-import { chromium, webkit } from 'playwright';
+import { chromium, devices, webkit } from 'playwright';
 import { parseArgs } from 'node:util';
 
 const { values: opts } = parseArgs({
 	options: {
 		games: { type: 'string', default: '6' },
-		browser: { type: 'string', default: 'chromium' },
+		browser: { type: 'string' }, // chromium; webkit with --phone
 		drag: { type: 'string', default: '0.3' }, // share of moves made by dragging
 		base: { type: 'string', default: 'http://localhost:5173' },
 		'max-plies': { type: 'string', default: '1000' },
 		'turn-ms': { type: 'string', default: '3000' }, // how long a move may take to land
-		headed: { type: 'boolean', default: false }
+		headed: { type: 'boolean', default: false },
+		phone: { type: 'boolean', default: false } // play as an iPhone 15, in the phone layout
 	}
 });
 const GAMES = Number(opts.games);
@@ -33,8 +35,11 @@ const DRAG = Number(opts.drag);
 const MAX_PLIES = Number(opts['max-plies']);
 const TURN_MS = Number(opts['turn-ms']);
 const engines = { chromium, webkit };
+opts.browser ??= opts.phone ? 'webkit' : 'chromium';
 if (!engines[opts.browser]) throw new Error(`--browser must be one of ${Object.keys(engines).join(', ')}`);
 
+// The result card: beside the board on desktop, in the card slot on a phone.
+const RESULT = '.result, section[aria-label="Game over"]';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const pick = (xs) => xs[Math.floor(Math.random() * xs.length)];
 
@@ -53,6 +58,39 @@ async function clickMove(page) {
 		await tick();
 		return { from: from.getAttribute('aria-label'), to: to.getAttribute('aria-label') };
 	});
+}
+
+/** Taps a random movable piece, then a random target, as a finger would. */
+async function tapMove(page) {
+	const from = pick(await page.locator('.square.movable').all());
+	const fromLabel = await from.getAttribute('aria-label');
+	await from.tap();
+	const tos = await page.locator('.square.legal').all();
+	if (!tos.length) return { err: `no targets for ${fromLabel}` };
+	const to = pick(tos);
+	const toLabel = await to.getAttribute('aria-label');
+	await to.tap();
+	return { from: fromLabel, to: toLabel };
+}
+
+/** The phone layout's rules: one screen, no scrolling, a board near full width. */
+async function phoneLayout(page) {
+	return page.evaluate(() => {
+		if (!document.querySelector('.phone')) return 'not in the phone layout';
+		if (document.documentElement.scrollHeight > innerHeight + 1) return `the page scrolls (${document.documentElement.scrollHeight} > ${innerHeight})`;
+		const board = document.querySelector('.board')?.getBoundingClientRect().width ?? 0;
+		if (board < innerWidth * 0.9) return `the board is ${Math.round(board)}px on a ${innerWidth}px screen`;
+		return '';
+	});
+}
+
+/** Opens "Moves and rolls" and closes it again. */
+async function sheetOpensAndCloses(page) {
+	await page.getByRole('button', { name: 'Moves and rolls' }).tap();
+	if (!(await page.locator('dialog.sheet[open]').count())) return 'the moves sheet did not open';
+	await page.locator('dialog.sheet').getByRole('button', { name: 'Close' }).tap();
+	if (await page.locator('dialog.sheet[open]').count()) return 'the moves sheet did not close';
+	return '';
 }
 
 /** Drags a random movable piece to a random target with the real mouse. */
@@ -75,7 +113,8 @@ async function dragMove(page) {
 }
 
 async function playGame(browser, n) {
-	const contexts = [await browser.newContext(), await browser.newContext()];
+	const device = opts.phone ? { ...devices['iPhone 15'], defaultBrowserType: undefined } : {};
+	const contexts = [await browser.newContext(device), await browser.newContext(device)];
 	const [w, b] = await Promise.all(contexts.map((c) => c.newPage()));
 	const errors = [];
 	for (const [p, who] of [
@@ -94,7 +133,7 @@ async function playGame(browser, n) {
 	await b.goto(url);
 
 	const movable = (p) => p.locator('.square.movable').count();
-	const over = async () => (await w.locator('.result').count()) > 0 && (await b.locator('.result').count()) > 0;
+	const over = async () => (await w.locator(RESULT).count()) > 0 && (await b.locator(RESULT).count()) > 0;
 	let plies = 0;
 	let drags = 0;
 	let idle = 0;
@@ -120,7 +159,7 @@ async function playGame(browser, n) {
 			continue;
 		}
 		idle = 0;
-		const move = Math.random() < DRAG ? await dragMove(mover) : await clickMove(mover);
+		const move = opts.phone ? await tapMove(mover) : Math.random() < DRAG ? await dragMove(mover) : await clickMove(mover);
 		if (move.err) {
 			errors.push(`ply ${plies}: ${move.err}`);
 			break;
@@ -140,9 +179,16 @@ async function playGame(browser, n) {
 		}
 		if (move.dragged) drags++;
 		plies++;
+		if (opts.phone) {
+			const bad = (await phoneLayout(w)) || (await phoneLayout(b)) || (plies === 10 ? await sheetOpensAndCloses(other) : '');
+			if (bad) {
+				errors.push(`ply ${plies}: ${bad}`);
+				break;
+			}
+		}
 	}
-	const result = (await w.locator('.result').innerText().catch(() => '')).replace(/\s*\n+\s*/g, ' · ');
-	const resultBlack = (await b.locator('.result').innerText().catch(() => '')).replace(/\s*\n+\s*/g, ' · ');
+	const result = (await w.locator(RESULT).innerText().catch(() => '')).replace(/\s*\n+\s*/g, ' · ');
+	const resultBlack = (await b.locator(RESULT).innerText().catch(() => '')).replace(/\s*\n+\s*/g, ' · ');
 	if (result !== resultBlack) errors.push(`the two sides show different results: "${result}" / "${resultBlack}"`);
 	const lost = await w.locator('.glyphs').evaluateAll((gs) => gs.map((g) => g.querySelectorAll('img').length));
 	await Promise.all(contexts.map((c) => c.close()));

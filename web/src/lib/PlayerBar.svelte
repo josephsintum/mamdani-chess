@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { formatClock } from './clock.ts';
-	import type { Color } from './game.ts';
-	import { pieceName } from './pieces.ts';
+	import { pieceName, type Color } from './game.ts';
 
 	let {
 		color,
 		you,
 		lost,
-		toMove,
+		pill = '',
+		pillTone = 'turn',
+		compact = false,
 		clockMs,
+		toMove = false,
 		ticking = false,
 		pausedForDice = false,
 		offline = false
@@ -16,9 +18,15 @@
 		color: Color;
 		you: boolean;
 		lost: string[];
-		toMove: boolean;
+		/** "Your move", "In check", "Waiting…", or "" for none (see pillFor). */
+		pill?: string;
+		pillTone?: 'turn' | 'check' | 'muted';
+		/** The phone's one-row bar: lost pieces after the name, nothing when none. */
+		compact?: boolean;
 		/** Time left, in ms; no clock is shown without it (the sandbox). */
 		clockMs?: number;
+		/** It's this side's turn: the clock is highlighted. */
+		toMove?: boolean;
 		/** The clock is counting down right now. */
 		ticking?: boolean;
 		/** It's this side's turn, but the clock waits for the dice. */
@@ -26,30 +34,38 @@
 		/** The player has no tab open on the game. */
 		offline?: boolean;
 	} = $props();
+
+	let side = $derived(color === 'white' ? 'White' : 'Black');
 </script>
 
-<div class="bar" class:to-move={toMove}>
+<div class="bar" class:compact>
 	<span class="swatch {color}" aria-hidden="true"></span>
 	<span class="who">
-		<span class="name">
-			{color === 'white' ? 'White' : 'Black'}{#if you}<span class="you">(you)</span>{/if}
-			{#if offline}<span class="offline">Disconnected</span>{/if}
-		</span>
-		<span class="lost">
-			Lost to potholes:
-			{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} />{/each}</span>{/if}
-		</span>
+		<span class="name"
+			>{side}{#if you}<span class="you">(you)</span>{/if}{#if offline}<span class="offline">{compact ? 'Offline' : 'Disconnected'}</span>{/if}</span
+		>
+		{#if compact}
+			{#if lost.length > 0}
+				<span class="glyphs" role="img" aria-label="Lost to potholes: {lost.map((p) => pieceName(p)).join(', ')}">
+					{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt="" />{/each}
+				</span>
+			{/if}
+		{:else}
+			<span class="lost">
+				Lost to potholes:
+				{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} />{/each}</span>{/if}
+			</span>
+		{/if}
 	</span>
-	{#if pausedForDice}<span class="note">Paused for dice</span>{/if}
-	{#if clockMs === undefined}
-		{#if toMove}<span class="turn">To move</span>{/if}
-	{:else}
+	{#if pill}<span class="pill {pillTone}">{pill}</span>{/if}
+	{#if pausedForDice && !compact}<span class="note">Paused for dice</span>{/if}
+	{#if clockMs !== undefined}
 		<span
 			class="clock"
 			class:active={toMove}
 			class:low={ticking && clockMs < 20_000}
 			role="timer"
-			aria-label="{color === 'white' ? 'White' : 'Black'} clock: {formatClock(clockMs)}">{formatClock(clockMs)}</span
+			aria-label="{side} clock: {formatClock(clockMs)}">{formatClock(clockMs)}</span
 		>
 	{/if}
 </div>
@@ -60,6 +76,12 @@
 		align-items: center;
 		gap: 12px;
 		min-height: 52px;
+	}
+	.bar.compact {
+		gap: 10px;
+		min-height: 44px;
+		height: 44px;
+		padding: 0 12px;
 	}
 	.swatch {
 		width: 14px;
@@ -81,9 +103,15 @@
 		flex-grow: 1;
 		min-width: 0;
 	}
+	.compact .who {
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+	}
 	.name {
 		font-weight: 600;
 		color: var(--text);
+		white-space: nowrap;
 	}
 	.you {
 		margin-left: 6px;
@@ -104,17 +132,17 @@
 		display: inline-flex;
 		gap: 1px;
 		vertical-align: middle;
+		overflow: hidden;
 	}
 	.glyphs img {
 		width: 18px;
 		height: 18px;
+		flex-shrink: 0;
 	}
-	.note {
-		font-size: 12px;
-		color: var(--text-muted);
-		text-align: right;
-	}
-	.turn {
+	.pill {
+		display: flex;
+		align-items: center;
+		flex-shrink: 0;
 		padding: 4px 10px;
 		border: 1px solid var(--accent-line);
 		border-radius: 999px;
@@ -122,7 +150,27 @@
 		font-weight: 600;
 		color: var(--accent);
 	}
+	.compact .pill {
+		height: 28px;
+		box-sizing: border-box;
+		padding: 0 12px;
+		font-size: 13px;
+	}
+	.pill.check {
+		border-color: var(--hazard);
+		color: var(--hazard-text);
+	}
+	.pill.muted {
+		border-color: var(--line);
+		color: var(--text-muted);
+	}
+	.note {
+		flex-shrink: 0;
+		font-size: 12px;
+		color: var(--text-muted);
+	}
 	.clock {
+		flex-shrink: 0;
 		min-width: 92px;
 		padding: 6px 12px;
 		box-sizing: border-box;
@@ -134,6 +182,13 @@
 		font-variant-numeric: tabular-nums;
 		text-align: center;
 		color: var(--text-body);
+	}
+	.compact .clock {
+		min-width: 64px;
+		height: 32px;
+		padding: 0 8px;
+		font-size: 16px;
+		line-height: 30px;
 	}
 	.clock.active {
 		border-color: var(--accent);
