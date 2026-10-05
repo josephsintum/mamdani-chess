@@ -4,7 +4,7 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
-	import { pillFor, stageAt } from '#lib/board.ts';
+	import { pillFor, repairsShown, stageAt } from '#lib/board.ts';
 	import type { Color, MoveJSON, View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
@@ -30,6 +30,7 @@
 
 	let rollKind = $state<RollKind>('empty');
 	let target = $state('d4');
+	let targetMode = $state<'square' | 'random'>('square');
 	let anySide = $state(false);
 	let slow = $state(false);
 	let instant = $state(false); // no animation at all, for fast play-testing
@@ -45,10 +46,29 @@
 		return m?.from && m?.to ? { from: m.from, to: m.to } : null;
 	});
 	let savedSquare = $derived(view.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < anim.shown)?.sq ?? '');
+	// The Mamdani's repairs, celebrated only on a turn that is playing out.
+	let repairs = $derived(anim.animated && !instant ? repairsShown(view, anim.shown) : []);
 	let needsTarget = $derived(rollKinds.find((r) => r.kind === rollKind)?.needsTarget ?? false);
 
 	function d8(): number {
 		return Math.floor(Math.random() * 8) + 1;
+	}
+
+	/**
+	 * Where the placement dice land: the typed square, or, with Random, two d8s
+	 * re-rolled past kings and open potholes as the server does.
+	 */
+	function placement(v: View): Pick<RollScript, 'rerolls' | 'target'> {
+		if (targetMode === 'square') return { target };
+		const rerolls: NonNullable<RollScript['rerolls']> = [];
+		for (let i = 0; i < 64; i++) {
+			const sq = 'abcdefgh'[d8() - 1] + d8();
+			const piece = sq === v.mamdani ? 'M' : v.board['abcdefgh'.indexOf(sq[0]) + (Number(sq[1]) - 1) * 8];
+			if (piece?.[1] === 'K') rerolls.push({ sq, reason: 'king' });
+			else if (v.potholes.some((h) => h.sq === sq)) rerolls.push({ sq, reason: 'pothole' });
+			else return { rerolls, target: sq };
+		}
+		return { rerolls, target };
 	}
 
 	function script(v: View): RollScript {
@@ -57,13 +77,15 @@
 				return { pothole: 1 };
 			case 'empty':
 			case 'falls':
-				return { pothole: 2, target };
+				return { pothole: 2, ...placement(v) };
 			case 'saved':
-				return { pothole: 4, target, save: 3 };
+				return { pothole: 4, ...placement(v), save: 3 };
 			case 'notSaved':
-				return { pothole: 4, target, save: 6 };
-			case 'rerollFalls':
-				return { pothole: 6, rerolls: ['e1'], target };
+				return { pothole: 4, ...placement(v), save: 6 };
+			case 'rerollFalls': {
+				const p = placement(v);
+				return { pothole: 6, rerolls: ['e1', ...(p.rerolls ?? [])], target: p.target };
+			}
 			case 'mamdaniFalls':
 				return v.mamdani ? { pothole: 8, target: v.mamdani, save: 2 } : { pothole: 1 };
 			case 'random': {
@@ -121,10 +143,14 @@
 				{#each rollKinds as r (r.kind)}
 					<label class="choice"><input type="radio" name="roll" value={r.kind} bind:group={rollKind} /> {r.label}</label>
 				{/each}
-				<label class="field" class:disabled={!needsTarget}>
-					Target square
-					<input type="text" bind:value={target} maxlength="2" disabled={!needsTarget} />
-				</label>
+				<fieldset class="target" class:disabled={!needsTarget} disabled={!needsTarget}>
+					<legend>Target</legend>
+					<label class="choice"><input type="radio" name="target" value="random" bind:group={targetMode} /> Random</label>
+					<label class="field">
+						<span class="choice"><input type="radio" name="target" value="square" bind:group={targetMode} /> Square</span>
+						<input type="text" bind:value={target} maxlength="2" aria-label="Target square" onfocus={() => (targetMode = 'square')} />
+					</label>
+				</fieldset>
 			</section>
 
 			<section class="panel" aria-labelledby="view-heading">
@@ -159,6 +185,7 @@
 					<button onclick={() => load(positions.blockedLines())}>Blocked lines</button>
 					<button onclick={() => load(positions.promotion())}>Promotion</button>
 					<button onclick={() => load(positions.castling())}>Castling</button>
+					<button onclick={() => load(positions.repair())}>Repair</button>
 				</div>
 			</section>
 
@@ -182,6 +209,7 @@
 				interactive={!anim.animating && view.status === 'playing'}
 				dim={!!view.result && !anim.animating}
 				saved={savedSquare}
+				{repairs}
 				onmove={move}
 			/>
 			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={pillFor(view, bottom, anim.animating).text} pillTone={pillFor(view, bottom, anim.animating).tone} />
@@ -275,8 +303,19 @@
 	.field {
 		justify-content: space-between;
 	}
-	.field.disabled {
+	.target.disabled {
 		opacity: 0.5;
+	}
+	.target {
+		margin: 4px 0 0;
+		padding: 0;
+		border: 0;
+	}
+	.target legend {
+		padding: 0;
+		margin-bottom: 4px;
+		color: var(--text-body);
+		font-size: 14px;
 	}
 	input[type='text'],
 	select {

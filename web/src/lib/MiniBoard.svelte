@@ -33,7 +33,7 @@
 		>
 			{#if holes.has(sq)}<span class="hole"></span>{/if}
 			{#if mamdani === sq}
-				<span class="mamdani">M</span>
+				<img class="mamdani" src="/mamdani/piece.webp" alt="" draggable="false" />
 			{:else if board[index]}
 				<img src="/pieces/{board[index]}.svg" alt="" draggable="false" />
 			{/if}
@@ -85,17 +85,13 @@
 		box-shadow: 0 0 0 max(1.5px, 0.5cqw) var(--hazard);
 	}
 	.mamdani {
-		display: grid;
-		place-items: center;
-		width: 72%;
+		box-sizing: border-box;
+		width: 74%;
+		height: auto;
 		aspect-ratio: 1;
-		border-radius: 50%;
-		background: var(--surface);
+		object-fit: cover;
+		border-radius: 22%;
 		border: max(1.5px, 0.5cqw) solid var(--accent);
-		color: var(--accent);
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: 5cqw;
-		line-height: 1;
+		background: var(--surface);
 	}
 </style>

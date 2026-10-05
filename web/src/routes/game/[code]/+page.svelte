@@ -13,7 +13,7 @@
 	import MovesSheet from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
-	import { checkSquare, pillFor, stageAt } from '#lib/board.ts';
+	import { checkSquare, matedByRoll, pillFor, repairsShown, stageAt } from '#lib/board.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
 	import { notify } from '#lib/toast.ts';
@@ -173,6 +173,8 @@
 	});
 	let checked = $derived(view && stage ? checkSquare(view, stage, { animating, guessing: optimistic?.seq === view.seq }) : '');
 	let savedSquare = $derived(view?.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '');
+	// The Mamdani's repairs, celebrated only on a turn that is playing out (never after a reload).
+	let repairs = $derived(view && anim.animated && !instant ? repairsShown(view, shown) : []);
 	let you = $derived(view?.you ?? 'spectator');
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
 	let top = $derived<Color>(bottom === 'white' ? 'black' : 'white');
@@ -328,7 +330,7 @@
 		let detail = `By ${why}.`;
 		let title = r.draw ? 'Draw' : `${winner} wins`;
 		if (r.reason === 'resignation') detail = `${loser} resigned.`;
-		if (r.reason === 'checkmate') detail = `${winner} mated with ${lastSan}.`;
+		if (r.reason === 'checkmate') detail = matedByRoll(view) ? `${winner} mated by a pothole after ${lastSan}.` : `${winner} mated with ${lastSan}.`;
 		if (r.reason === 'timeout') detail = `${loser} ran out of time.`;
 		if (r.reason === 'timeout_vs_insufficient')
 			detail = `${toMove} ran out of time; ${toMove === 'White' ? 'Black' : 'White'} couldn’t mate.`;
@@ -341,7 +343,7 @@
 			detail = 'Nobody joined within a day.';
 		}
 		return {
-			kicker: `${why} · Move ${Math.max(1, Math.ceil(view.seq / 2))}`,
+			kicker: `${matedByRoll(view) ? `${why} · by a pothole` : why} · Move ${Math.max(1, Math.ceil(view.seq / 2))}`,
 			title,
 			detail
 		};
@@ -397,6 +399,7 @@
 					dim={!!resultCard || view.status === 'waiting'}
 					check={checked}
 					saved={savedSquare}
+					{repairs}
 					onmove={move}
 				/>
 			</div>
@@ -551,6 +554,7 @@
 						dim={!!resultCard}
 						check={checked}
 						saved={savedSquare}
+						{repairs}
 						onmove={move}
 					/>
 					{#if resultCard}

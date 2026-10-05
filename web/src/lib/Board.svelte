@@ -13,6 +13,7 @@
 		dim = false,
 		check = '',
 		saved = '',
+		repairs = [],
 		onmove
 	}: {
 		stage: Stage;
@@ -25,6 +26,12 @@
 		check?: string;
 		/** A square whose piece just survived a saving roll, or "". */
 		saved?: string;
+		/**
+		 * Potholes the Mamdani has just repaired, to celebrate. `hole` is true
+		 * when an open pothole is fixed by the Mamdani's move, false when the
+		 * dice land next to it and the pothole never opens. Each key plays once.
+		 */
+		repairs?: { sq: string; key: string; hole: boolean }[];
 		onmove: (move: MoveJSON) => void;
 	} = $props();
 
@@ -61,6 +68,10 @@
 	let targets = $derived(new Set(legal.filter((m) => m.from === current).map((m) => m.to)));
 	let movable = $derived(new Set(active ? legal.map((m) => m.from) : []));
 	let blocked = $derived(new Set(current ? blockedSquares(stage, current) : []));
+	let repairedSquares = $derived(new Set(repairs.map((r) => r.sq)));
+	// A pothole fixed by the Mamdani's move waits for the Mamdani to arrive.
+	let glide = $derived(lastMove && lastMove.to === stage.mamdani && !reducedMotion() ? moveDuration(lastMove.from, lastMove.to) : 0);
+	let sparks = Array.from({ length: 10 }, (_, i) => i * 36);
 
 	// Each piece keeps an id across positions so it can glide (see pieces.ts).
 	// prevPieces is plain bookkeeping for the next reconcile, not state.
@@ -105,7 +116,12 @@
 		const piece = pieceAt(sq);
 		let text = sq;
 		if (piece) text += `, ${pieceName(piece)}`;
-		if (stage.potholes.some((h) => h.sq === sq)) text += ', pothole';
+		const hole = stage.potholes.find((h) => h.sq === sq);
+		if (hole) {
+			text += `, pothole (${hole.by === 'white' ? 'White' : 'Black'}’s`;
+			text += hole.left === 1 ? ', closes after their next move' : `, ${hole.left} rounds left`;
+			text += ')';
+		}
 		return text;
 	}
 
@@ -226,9 +242,34 @@
 		return { duration: ms(420), css: (t: number) => `transform: scale(${t < 0.7 ? t / 0.7 : 1 + 0.12 * Math.sin(((t - 0.7) / 0.3) * Math.PI)}) rotate(${(1 - t) * -20}deg); opacity: ${Math.min(1, t * 2)}` };
 	}
 
-	/** A pothole closes (its roller moved again, or the Mamdani repaired it). */
-	function closeUp(_node: Element) {
+	/**
+	 * A pothole closes on its schedule, or the cap closes it. A repaired one
+	 * hides at once: the celebration draws its own hole shrinking under the
+	 * cone. (1 ms, not 0: with Svelte 5.57, a turn whose leaving holes mixed a
+	 * 0 ms exit with a timed one left them all on the board.)
+	 */
+	function closeUp(_node: Element, { sq }: { sq: string }) {
+		if (repairedSquares.has(sq)) return { duration: ms(1), css: () => 'opacity: 0' };
 		return { duration: ms(350), css: (t: number) => `transform: scale(${t}); opacity: ${t}` };
+	}
+
+	/**
+	 * A repair celebration plays to the end even when the next move arrives
+	 * first (the opponent can reply as soon as the dice stop): the node stays
+	 * until its CSS animations are done.
+	 */
+	const CELEBRATION_MS = 2400;
+	function born(node: HTMLElement) {
+		node.dataset.born = String(performance.now());
+	}
+	function linger(node: Element) {
+		const age = performance.now() - Number((node as HTMLElement).dataset.born);
+		return { duration: Math.max(0, CELEBRATION_MS - age) };
+	}
+
+	/** A round passes: one of a hole's cones lifts away. */
+	function liftCone(_node: Element) {
+		return { duration: ms(300), css: (t: number) => `opacity: ${t}; transform: translateY(${(1 - t) * -60}%)` };
 	}
 
 	/** The target ring drops onto its square. */
@@ -236,6 +277,12 @@
 		return { duration: ms(260), css: (t: number) => `transform: scale(${1.5 - 0.5 * t}); opacity: ${t}` };
 	}
 </script>
+
+{#snippet coneShape()}
+	<path class="cone-body" d="M17.5 4h5l9.5 29h-24z" />
+	<path class="cone-band" d="M14.6 13h10.8l1.7 5H12.9zM11.6 22h16.8l1.7 5H9.9z" />
+	<rect class="cone-base" x="4" y="32" width="32" height="5" rx="1.5" />
+{/snippet}
 
 <div class="board" class:dim role="group" aria-label="Chessboard" {@attach dragArea}>
 	{#each order as index, n (index)}
@@ -250,6 +297,7 @@
 			class:movable={movable.has(sq)}
 			class:check={check === sq}
 			aria-label={label(sq)}
+			title={stage.potholes.some((h) => h.sq === sq) ? label(sq) : undefined}
 			aria-pressed={current === sq}
 			onclick={() => tap(sq)}
 			onpointerdown={(e) => pointerDown(e, sq)}
@@ -268,7 +316,18 @@
 
 	<div class="layer" aria-hidden="true">
 		{#each stage.potholes as h (h.sq)}
-			<span class="slot" style={place(h.sq)}><span class="hole" in:crack out:closeUp></span></span>
+			<span class="slot" style={place(h.sq)}>
+				<span class="hole" in:crack out:closeUp={{ sq: h.sq }}>
+					<!-- One cone per round left, on the hole's front edge. -->
+					<span class="cones">
+						{#each { length: h.left }, n (n)}
+							<svg class="mini-cone" class:last={h.left === 1} viewBox="0 0 40 40" out:liftCone>
+								{@render coneShape()}
+							</svg>
+						{/each}
+					</span>
+				</span>
+			</span>
 		{/each}
 		{#if stage.target}
 			{#key stage.target}
@@ -287,13 +346,31 @@
 			>
 				<span class="piece" out:leave={{ fell: stage.target === p.sq }}>
 					{#if p.code === 'M'}
-						<span class="mamdani">M</span>
+						<img class="mamdani" src="/mamdani/piece.webp" alt="" draggable="false" />
 					{:else}
 						<img src="/pieces/{p.code}.svg" alt="" draggable="false" />
 					{/if}
 				</span>
 			</span>
 		{/each}
+	</div>
+
+	<div class="layer celebrate" aria-hidden="true">
+		{#each repairs as r (r.key)}
+			<span class="slot fix" style="{place(r.sq)}; --delay: {r.hole ? glide : 0}ms" {@attach born} out:linger>
+				{#if r.hole}<span class="hole patched"></span>{/if}
+				<svg class="cone" viewBox="0 0 40 40">
+					{@render coneShape()}
+				</svg>
+				<span class="flash"></span>
+				{#each sparks as a, i (a)}<span class="spark" class:far={i % 2 === 0} style="--a: {a}deg"></span>{/each}
+			</span>
+		{/each}
+		{#if repairs.length > 0 && stage.mamdani}
+			{#key repairs[0].key}
+				<span class="slot fix" class:top={cell(stage.mamdani).row === 0} style="{place(stage.mamdani)}; --delay: {repairs[0].hole ? glide : 0}ms" {@attach born} out:linger|global><span class="thumb">👍</span></span>
+			{/key}
+		{/if}
 	</div>
 
 	{#if pending}
@@ -469,19 +546,15 @@
 		height: 92%;
 		filter: drop-shadow(0 2px 2px var(--hole));
 	}
-	.mamdani {
-		display: grid;
-		place-items: center;
-		width: 72%;
+	.piece .mamdani {
+		box-sizing: border-box;
+		width: 74%;
+		height: auto;
 		aspect-ratio: 1;
-		border-radius: 50%;
-		background: var(--surface);
+		object-fit: cover;
+		border-radius: 22%;
 		border: 3px solid var(--accent);
-		color: var(--accent);
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: clamp(14px, 4vmin, 28px);
-		box-shadow: 0 2px 4px var(--hole);
+		background: var(--surface);
 	}
 	.hole {
 		width: 76%;
@@ -491,6 +564,41 @@
 		box-shadow:
 			0 0 0 3px var(--hazard),
 			inset 0 4px 10px var(--bg);
+	}
+	/* Rounds left: one traffic cone per round, standing on the hole's front
+	   edge; the last one blinks. */
+	.hole {
+		position: relative;
+		display: grid;
+		place-items: center;
+	}
+	.cones {
+		position: absolute;
+		left: 50%;
+		bottom: -16%;
+		display: flex;
+		justify-content: center;
+		gap: 2%;
+		width: 116%;
+		transform: translateX(-50%);
+	}
+	.mini-cone {
+		width: 32%;
+		aspect-ratio: 1;
+		overflow: visible;
+		filter: drop-shadow(0 1px 1px var(--hole));
+	}
+	.mini-cone path,
+	.mini-cone rect {
+		stroke-width: 2.5;
+	}
+	.mini-cone.last {
+		animation: blink 1s ease-in-out infinite;
+	}
+	@keyframes blink {
+		50% {
+			opacity: 0.25;
+		}
 	}
 	.target {
 		width: 92%;
@@ -526,6 +634,215 @@
 		grid-column: 1 / -1;
 		color: var(--text);
 		font: inherit;
+	}
+	/* The Mamdani's repair: a cone drops on the hole, the hole shrinks under
+	   it, the cone lifts, sparks burst and the Mamdani gives a thumbs up.
+	   About 1.3 s after --delay; it never holds up the turn. */
+	.fix {
+		container-type: size;
+		z-index: 4;
+	}
+	.fix > * {
+		grid-area: 1 / 1;
+	}
+	.patched {
+		animation: patch 0.4s ease-in calc(var(--delay) + 250ms) both;
+	}
+	@keyframes patch {
+		to {
+			transform: scale(0);
+			opacity: 0;
+		}
+	}
+	.cone {
+		width: 62%;
+		height: 62%;
+		overflow: visible;
+		animation: cone 0.85s var(--delay) both;
+	}
+	.cone-body {
+		fill: var(--hazard);
+	}
+	.cone-band {
+		fill: var(--piece-light);
+	}
+	.cone-body,
+	.cone-band,
+	.cone-base {
+		stroke: var(--piece-dark);
+		stroke-width: 1.5;
+		stroke-linejoin: round;
+	}
+	.cone-base {
+		fill: var(--hazard);
+	}
+	@keyframes cone {
+		0% {
+			transform: translateY(-90%) scale(1.1);
+			opacity: 0;
+			animation-timing-function: cubic-bezier(0.5, 0, 1, 0.6);
+		}
+		22% {
+			transform: translateY(0) scale(1, 0.86);
+			opacity: 1;
+		}
+		30% {
+			transform: translateY(-6%) scale(1);
+		}
+		76% {
+			transform: translateY(0) scale(1);
+			opacity: 1;
+			animation-timing-function: ease-in;
+		}
+		100% {
+			transform: translateY(-40%) scale(0.7);
+			opacity: 0;
+		}
+	}
+	.flash {
+		width: 100%;
+		height: 100%;
+		border-radius: 50%;
+		background: radial-gradient(circle, var(--accent) 0%, transparent 65%);
+		opacity: 0;
+		animation: flash 0.55s ease-out calc(var(--delay) + 620ms) forwards;
+	}
+	@keyframes flash {
+		0% {
+			transform: scale(0.3);
+			opacity: 0.95;
+		}
+		100% {
+			transform: scale(1.9);
+			opacity: 0;
+		}
+	}
+	.spark {
+		width: 22%;
+		aspect-ratio: 1;
+		background: var(--accent);
+		clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+		opacity: 0;
+		animation: spark 0.5s ease-out calc(var(--delay) + 650ms) forwards;
+	}
+	@keyframes spark {
+		0% {
+			transform: rotate(var(--a)) translateY(0) scale(0.4);
+			opacity: 1;
+		}
+		70% {
+			opacity: 1;
+		}
+		100% {
+			transform: rotate(var(--a)) translateY(-300%) scale(1);
+			opacity: 0;
+		}
+	}
+	.spark.far {
+		width: 28%;
+		animation-name: spark-far;
+		animation-duration: 0.6s;
+	}
+	@keyframes spark-far {
+		0% {
+			transform: rotate(var(--a)) translateY(0) scale(0.4);
+			opacity: 1;
+		}
+		70% {
+			opacity: 1;
+		}
+		100% {
+			transform: rotate(var(--a)) translateY(-360%) scale(1.1) rotate(45deg);
+			opacity: 0;
+		}
+	}
+	.thumb {
+		font-size: 66cqh;
+		line-height: 1;
+		transform-origin: 50% 100%;
+		filter: drop-shadow(0 2px 2px var(--hole));
+		animation: thumb 1.1s calc(var(--delay) + 700ms) both;
+	}
+	/* On the top row the thumb would leave the board, so it drops in below. */
+	.top .thumb {
+		animation-name: thumb-below;
+	}
+	@keyframes thumb-below {
+		0% {
+			transform: translateY(20cqh) scale(0);
+			opacity: 0;
+			animation-timing-function: cubic-bezier(0.3, 1.6, 0.6, 1);
+		}
+		30% {
+			transform: translateY(62cqh) scale(1.15) rotate(-12deg);
+			opacity: 1;
+		}
+		45% {
+			transform: translateY(62cqh) scale(1) rotate(10deg);
+		}
+		78% {
+			transform: translateY(62cqh) scale(1) rotate(0);
+			opacity: 1;
+		}
+		100% {
+			transform: translateY(70cqh) scale(0.9);
+			opacity: 0;
+		}
+	}
+	@keyframes thumb {
+		0% {
+			transform: translateY(-20cqh) scale(0);
+			opacity: 0;
+			animation-timing-function: cubic-bezier(0.3, 1.6, 0.6, 1);
+		}
+		30% {
+			transform: translateY(-62cqh) scale(1.15) rotate(-12deg);
+			opacity: 1;
+		}
+		45% {
+			transform: translateY(-62cqh) scale(1) rotate(10deg);
+		}
+		58% {
+			transform: translateY(-64cqh) scale(1) rotate(-4deg);
+		}
+		78% {
+			transform: translateY(-68cqh) scale(1) rotate(0);
+			opacity: 1;
+		}
+		100% {
+			transform: translateY(-82cqh) scale(0.9);
+			opacity: 0;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.mini-cone.last {
+			animation: none;
+		}
+		.cone,
+		.spark,
+		.flash,
+		.patched {
+			display: none;
+		}
+		.thumb,
+		.top .thumb {
+			--rise: -58cqh;
+			animation: hold 1s both;
+		}
+		.top .thumb {
+			--rise: 58cqh;
+		}
+		@keyframes hold {
+			0%,
+			90% {
+				transform: translateY(var(--rise));
+				opacity: 1;
+			}
+			100% {
+				transform: translateY(var(--rise));
+				opacity: 0;
+			}
+		}
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.board.dim,
