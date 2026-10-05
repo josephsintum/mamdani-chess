@@ -242,6 +242,7 @@ func TestStaticAndFallback(t *testing.T) {
 		{"/game/K7F3QZ", "app shell", "no-cache", 200},
 		{"/favicon.svg", "<svg/>", "no-cache", 200},
 		{"/_app/immutable/app.js", "console.log(1)", "public, max-age=31536000, immutable", 200},
+		{"/_app/immutable/gone.js", "404 page not found", "no-cache", 404},
 		{"/api/nope", `{"error":"not found"}`, "", 404},
 		{"/healthz", `{"status":"ok"}`, "", 200},
 	}

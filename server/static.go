@@ -19,6 +19,13 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		name = "index.html"
 	}
 	if info, err := fs.Stat(s.assets, name); err != nil || info.IsDir() {
+		if strings.HasPrefix(name, "_app/") {
+			// A missing build asset (an old chunk after a deploy, say) is a
+			// real 404: the app shell in its place can't run as a script.
+			w.Header().Set("Cache-Control", "no-cache")
+			http.NotFound(w, r)
+			return
+		}
 		name = "index.html"
 	}
 	if strings.HasPrefix(name, "_app/immutable/") {
