@@ -82,9 +82,11 @@ func TestPlaceComesFirst(t *testing.T) {
 // live there, so these never appear.
 func TestStereotypePairsAreBlocked(t *testing.T) {
 	for _, name := range []string{
-		"chinatown-yapper", "harlem-hustler", "bronx-rat", "flushing-pigeon",
+		"chinatown-yapper", "harlem-hustler", "flushing-pigeon",
 		"williamsburg-landlord", "crown-heights-kvetch", "jackson-heights-cabbie",
-		"bensonhurst-vercetti", "elmhurst-npc",
+		"bensonhurst-vercetti", "elmhurst-npc", "harlem-raccoon",
+		"chinatown-rat-czar", "chinatown-hot-dog", "flushing-papaya-dog",
+		"sunset-park-dog-walker",
 	} {
 		if !blocked[name] {
 			t.Errorf("%q is not blocked", name)
@@ -94,6 +96,16 @@ func TestStereotypePairsAreBlocked(t *testing.T) {
 	for _, name := range []string{"chinatown-dumpling", "harlem-cheesecake", "flatbush-bike-lane"} {
 		if blocked[name] {
 			t.Errorf("%q is blocked", name)
+		}
+	}
+}
+
+// Plain "rat" is gone: it also means snitch, so "bronx-rat" read as an
+// insult. pizza-rat and rat-czar keep the joke.
+func TestNoPlainRat(t *testing.T) {
+	for _, n := range nouns {
+		if n == "rat" {
+			t.Fatal(`nouns still has "rat"`)
 		}
 	}
 }

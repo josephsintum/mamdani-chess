@@ -120,24 +120,25 @@ These are enforced by `names_test.go`:
 - **Place first.** A name is `place-noun`: `harlem-cheesecake`, `flatbush-bike-lane`, `chelsea-night-mayor`. Until 2026-10-05 it was `noun-place` (`pizza-rat-astoria`). Names are stored, so guests named before the switch, and games they sat down in, keep the old order.
 - **At most 3 words** (`names.MaxWords`). A two-word place takes a one-word noun and a two-word noun takes a one-word place: `manhattan-chopped-cheese`, never `jackson-heights-chopped-cheese`.
 - **At most 24 characters** (`names.MaxLen`). Since the 3-word rule, this rules out only 193 pairs, such as `brooklyn-borough-president`. The longest names are 24 characters, e.g. `brooklyn-public-advocate`.
-  - Where 24 characters don't fit, the page cuts the name with an ellipsis. On a phone's live-game card that applies to names over about 20 characters (1,638 of them).
+  - Where 24 characters don't fit, the page cuts the name with an ellipsis. On a phone's live-game card that applies to names over about 20 characters (1,636 of them).
   - Until 2026-10-05 the cap was 20 characters. That came from the original spec's free-text rename limit, which no longer exists.
 - Pairs that break a rule are skipped and both words redrawn, so every allowed name is equally likely.
 - **No duplicates** within a list.
-- **Enough names.** At least 2,000 must fit. Today it's 10,210:
-  - 109 nouns (72 one-word, 37 two-word) and 109 places (71 one-word, 38 two-word) make 11,881 pairs;
-  - the 3-word rule drops 1,406 of them, the length cap 193, and the blocked list 72 (73 entries; one is already too many words).
+- **Enough names.** At least 2,000 must fit. Today it's 10,093:
+  - 108 nouns (71 one-word, 37 two-word) and 109 places (71 one-word, 38 two-word) make 11,772 pairs;
+  - the 3-word rule drops 1,406 of them, the length cap 193, and the blocked list 80 (85 entries; five are already too many words).
 
   Before the second pass it was 10,448, and 9,128 after it (before the GTA words).
 
   The first list gave 2,987.
 - **Blocked pairs.** `blocked` holds pairs that read badly together, and they're redrawn. Things and food are never the problem (`chinatown-dumpling`, `harlem-cheesecake`); person words and animals next to a few neighborhoods are. With the place first, a person word reads as a label for the people who live there: `harlem-hustler` sounds like "the Harlem hustler", a type, where `hustler-harlem` read like one person's nickname.
   - **Echoes of well-known stereotypes:**
-    - rat, pizza rat, pigeon, raccoon, npc and yapper with Chinatown, Flushing, Sunset Park and Elmhurst, the city's large Chinese neighborhoods ("they eat rats", "they all look alike", "loud").
-    - hustler with Harlem, Bed-Stuy, Crown Heights, Canarsie, Jamaica, the Bronx, Mott Haven, Hunts Point, Corona and Jackson Heights (Black and Latino neighborhoods as crime).
+    - pizza rat, rat czar, pigeon, raccoon, hot dog, papaya dog, dog walker, npc and yapper with Chinatown, Flushing, Sunset Park and Elmhurst, the city's large Chinese neighborhoods ("they eat rats, pigeons and dogs", "they all look alike", "loud").
+    - hustler with Harlem, Bed-Stuy, Crown Heights, Canarsie, Jamaica, the Bronx, Mott Haven, Hunts Point, Corona and Jackson Heights (Black and Latino neighborhoods as crime), and raccoon with the same places ("coon" is a slur).
     - landlord and kvetch with Williamsburg and Crown Heights, large Hasidic neighborhoods (the "Jewish slumlord" and "complaining Jew" tropes).
     - GTA's crime bosses: `vercetti` with the hustler places and Bensonhurst, `lance-vance` with Harlem, the Bronx, Canarsie and Jamaica.
-  - **Judgment calls, blocked to be safe:** yapper and rat with the Black and Latino neighborhoods; landlord with Harlem and Bed-Stuy (a gentrification jab); `jackson-heights-cabbie` (a taxi-driver stereotype). Any of these could be allowed.
+  - **Judgment calls, blocked to be safe:** yapper with the Black and Latino neighborhoods; the dog words with the Chinese ones; landlord with Harlem and Bed-Stuy (a gentrification jab); `jackson-heights-cabbie` (a taxi-driver stereotype). Any of these could be allowed.
+  - **Removed instead of blocked:** plain `rat` (2026-10-05). It also means snitch, so `bronx-rat` read as an insult wherever it landed; `pizza-rat` and `rat-czar` keep the joke.
   - Every entry must be a real place-noun pair (`TestBlockedPairsExist`), so a typo can't quietly block nothing, and `TestStereotypePairsAreBlocked` pins the worst ones.
   - When you add a word, read it after each of those neighborhoods ("the Harlem ___") and block any that reads as a dig at the people who live there.
 
