@@ -28,10 +28,17 @@ export function paused(clock: ClockJSON, serverNow: number): boolean {
 	return clock.running !== undefined && clock.since !== undefined && serverNow < clock.since;
 }
 
-/** Time left to make a first move, in ms, or null when there is no deadline. */
+/** How long each side has for its first move (FirstMoveTime in game/clock.go). */
+export const FIRST_MOVE_MS = 60_000;
+
+/**
+ * Time left to make a first move, in ms, or null when there is no deadline.
+ * During the dice pause the deadline is more than a minute away; the
+ * countdown shows a full minute until the pause ends.
+ */
 export function firstMoveLeft(clock: ClockJSON, serverNow: number): number | null {
 	if (!clock.firstMoveDeadline) return null;
-	return Math.max(0, clock.firstMoveDeadline - serverNow);
+	return Math.min(FIRST_MOVE_MS, Math.max(0, clock.firstMoveDeadline - serverNow));
 }
 
 /** "9:59"; tenths in the last ten seconds: "0:07.3". */

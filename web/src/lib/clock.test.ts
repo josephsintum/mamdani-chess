@@ -33,6 +33,12 @@ describe('firstMoveLeft', () => {
 		expect(firstMoveLeft(c, 70_000)).toBe(0);
 		expect(firstMoveLeft(running, 0)).toBeNull();
 	});
+
+	it('never shows more than the minute a first move gets (during the dice pause)', () => {
+		const c: ClockJSON = { whiteMs: 600_000, blackMs: 600_000, now: 0, firstMoveDeadline: 62_000 };
+		expect(firstMoveLeft(c, 0)).toBe(60_000);
+		expect(firstMoveLeft(c, 12_000)).toBe(50_000);
+	});
 });
 
 describe('formatClock', () => {
