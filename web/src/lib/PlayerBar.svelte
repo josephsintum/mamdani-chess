@@ -4,6 +4,7 @@
 
 	let {
 		color,
+		name = '',
 		you,
 		lost,
 		pill = '',
@@ -16,6 +17,8 @@
 		offline = false
 	}: {
 		color: Color;
+		/** The player's name; the side ("White") when there's none. */
+		name?: string;
 		you: boolean;
 		lost: string[];
 		/** "Your move", "In check", "Waiting…", or "" for none (see pillFor). */
@@ -36,13 +39,14 @@
 	} = $props();
 
 	let side = $derived(color === 'white' ? 'White' : 'Black');
+	let label = $derived(name || side);
 </script>
 
 <div class="bar" class:compact>
 	<span class="swatch {color}" aria-hidden="true"></span>
 	<span class="who">
 		<span class="name"
-			>{side}{#if you}<span class="you">(you)</span>{/if}{#if offline}<span class="offline">{compact ? 'Offline' : 'Disconnected'}</span>{/if}</span
+			><span class="label" title={label}>{label}</span>{#if you}<span class="you">(you)</span>{/if}{#if offline}<span class="offline">{compact ? 'Offline' : 'Disconnected'}</span>{/if}</span
 		>
 		{#if compact}
 			{#if lost.length > 0}
@@ -109,9 +113,21 @@
 		gap: 8px;
 	}
 	.name {
+		display: flex;
+		align-items: baseline;
+		min-width: 0;
 		font-weight: 600;
 		color: var(--text);
 		white-space: nowrap;
+	}
+	/* A long name ends in an ellipsis; "(you)" and "Offline" always show. */
+	.label {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.you,
+	.offline {
+		flex-shrink: 0;
 	}
 	.you {
 		margin-left: 6px;

@@ -42,6 +42,8 @@ export interface View {
 	clock: ClockJSON;
 	/** Which players have the game open. */
 	online: { white: boolean; black: boolean };
+	/** Each player's name when they sat down; "" for an empty seat or an older game. */
+	players: { white: string; black: string };
 	/** Once the game is over: an offer waiting, a declined offer, or the new game's code. */
 	rematch: { offer?: Color; declined?: boolean; code?: string };
 }

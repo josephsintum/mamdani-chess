@@ -366,6 +366,7 @@
 			<PlayerBar
 				compact
 				color={top}
+				name={view.players[top]}
 				you={you === top}
 				lost={stage.lost[top]}
 				pill={phonePill(topPill, top)}
@@ -391,6 +392,7 @@
 			<PlayerBar
 				compact
 				color={bottom}
+				name={view.players[bottom]}
 				you={you === bottom}
 				lost={stage.lost[bottom]}
 				pill={phonePill(bottomPill, bottom)}
@@ -510,6 +512,7 @@
 			<div class="board-col">
 				<PlayerBar
 					color={top}
+					name={view.players[top]}
 					you={you === top}
 					lost={stage.lost[top]}
 					pill={topPill.text}
@@ -542,6 +545,7 @@
 				</div>
 				<PlayerBar
 					color={bottom}
+					name={view.players[bottom]}
 					you={you === bottom}
 					lost={stage.lost[bottom]}
 					pill={bottomPill.text}
