@@ -51,6 +51,13 @@ var migrations = []string{
 	 CREATE INDEX guests_name ON guests(name);
 	 ALTER TABLE games ADD COLUMN white_name TEXT;
 	 ALTER TABLE games ADD COLUMN black_name TEXT;`,
+	// 5: longer potholes (milestone 06c). rules says which rules a game's
+	// turns replay under; games saved before are rules 1. Rather than keep
+	// the old engine to replay them, unfinished ones end as 'retired', and
+	// only games under the current rules are ever loaded.
+	`ALTER TABLE games ADD COLUMN rules INTEGER NOT NULL DEFAULT 1;
+	 UPDATE games SET ended_at = CAST(strftime('%s','now') AS INTEGER) * 1000, result = 'retired'
+	  WHERE ended_at IS NULL;`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

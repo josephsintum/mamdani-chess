@@ -52,11 +52,15 @@ const (
 	Aborted rules.Reason = "aborted"
 	// Expired means nobody ever took Black's seat. Nobody wins.
 	Expired rules.Reason = "expired"
+	// Retired means the game was saved under rules since replaced, and
+	// the store ended it rather than replay it. Nobody wins. Retired games
+	// are never loaded, so no view ever shows this.
+	Retired rules.Reason = "retired"
 )
 
 // noWinner reports whether a finished game with reason r has no winner
 // and isn't a draw either.
-func noWinner(r rules.Reason) bool { return r == Aborted || r == Expired }
+func noWinner(r rules.Reason) bool { return r == Aborted || r == Expired || r == Retired }
 
 // winnerName is "white" or "black", or "" for a draw, a game nobody won,
 // or a game still on.

@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -138,5 +140,55 @@ func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A database from milestone 06a (schema version 4) has an unfinished game
+// and one that ended. Migration 5 retires the unfinished one, leaves the
+// finished one as it was, and neither loads again: their turns were played
+// under the old rules. A game created afterwards is saved under the current
+// rules and loads.
+func TestMigration5RetiresOldGames(t *testing.T) {
+	ctx := context.Background()
+	before := time.Now().UnixMilli()
+	s := openAt(t, 4,
+		fmt.Sprintf(`INSERT INTO games (code, white, black, created_at) VALUES ('OPEN01', 'a', 'b', %d)`, t0.UnixMilli()),
+		fmt.Sprintf(`INSERT INTO games (code, white, black, created_at, ended_at, result, winner)
+		 VALUES ('DONE01', 'a', 'b', %d, %d, 'checkmate', 'white')`, t0.UnixMilli(), t0.Add(time.Minute).UnixMilli()),
+	)
+	after := time.Now().UnixMilli()
+
+	type row struct {
+		ended  sql.NullInt64
+		result string
+		winner string
+		rules  int
+	}
+	read := func(code string) row {
+		var r row
+		must(t, s.db.QueryRowContext(ctx,
+			`SELECT ended_at, COALESCE(result, ''), COALESCE(winner, ''), rules FROM games WHERE code = ?`, code).Scan(&r.ended, &r.result, &r.winner, &r.rules))
+		return r
+	}
+	// strftime('%s') counts whole seconds.
+	if r := read("OPEN01"); r.result != "retired" || r.winner != "" || r.rules != 1 ||
+		r.ended.Int64 < before/1000*1000 || r.ended.Int64 > after {
+		t.Errorf("OPEN01 %+v, want retired between %d and %d under rules 1", r, before, after)
+	}
+	if r := read("DONE01"); r.result != "checkmate" || r.winner != "white" || r.ended.Int64 != t0.Add(time.Minute).UnixMilli() {
+		t.Errorf("DONE01 %+v, want unchanged", r)
+	}
+	if got, err := s.LoadForRestore(ctx, t0); err != nil || len(got) != 0 {
+		t.Fatalf("loaded %+v (%v), want no old games", got, err)
+	}
+
+	must(t, s.CreateGame(ctx, Game{Code: "NEW001", White: "a", CreatedAt: t0}))
+	if r := read("NEW001"); r.rules != 2 {
+		t.Errorf("NEW001 saved under rules %d, want 2", r.rules)
+	}
+	got, err := s.LoadForRestore(ctx, t0)
+	must(t, err)
+	if len(got) != 1 || got[0].Code != "NEW001" {
+		t.Fatalf("loaded %+v, want only NEW001", got)
 	}
 }

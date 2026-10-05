@@ -16,6 +16,11 @@ import (
 // ErrCodeTaken is returned by CreateGame when a saved game already has the code.
 var ErrCodeTaken = errors.New("game code already taken")
 
+// rulesVersion is the rules new games are saved under: 2 since potholes
+// last three rounds (milestone 06c). Games saved under other rules are
+// never loaded, since their turns would not replay the same.
+const rulesVersion = 2
+
 // Game is a saved game's seats. Black is "" until someone joins. The names
 // are the players' names when they sat down ("" for games saved before
 // names existed).
@@ -41,7 +46,7 @@ type Turn struct {
 }
 
 // Result is how a game ended. Winner is "white", "black", or "" for a draw
-// or a game nobody won (aborted, expired).
+// or a game nobody won (aborted, expired, retired).
 type Result struct {
 	EndedAt time.Time
 	Reason  string
@@ -58,8 +63,8 @@ type SavedGame struct {
 // CreateGame saves a new game.
 func (s *Store) CreateGame(ctx context.Context, g Game) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO games (code, white, black, white_name, black_name, created_at, rematch_of) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		g.Code, g.White, nullable(g.Black), nullable(g.WhiteName), nullable(g.BlackName), g.CreatedAt.UnixMilli(), nullable(g.RematchOf))
+		`INSERT INTO games (code, white, black, white_name, black_name, created_at, rematch_of, rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.Code, g.White, nullable(g.Black), nullable(g.WhiteName), nullable(g.BlackName), g.CreatedAt.UnixMilli(), nullable(g.RematchOf), rulesVersion)
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY {
 		return ErrCodeTaken
@@ -112,12 +117,13 @@ func (s *Store) ExpireWaiting(ctx context.Context, cutoff, now time.Time) (int64
 }
 
 // LoadForRestore returns every unfinished game and every game that ended
-// after endedAfter, oldest first, each with its turns in order.
+// after endedAfter, oldest first, each with its turns in order. Only games
+// saved under the current rules are returned.
 func (s *Store) LoadForRestore(ctx context.Context, endedAfter time.Time) ([]SavedGame, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT code, white, black, white_name, black_name, created_at, rematch_of, ended_at, result, winner
-		 FROM games WHERE ended_at IS NULL OR ended_at > ? ORDER BY created_at`,
-		endedAfter.UnixMilli())
+		 FROM games WHERE rules = ? AND (ended_at IS NULL OR ended_at > ?) ORDER BY created_at`,
+		rulesVersion, endedAfter.UnixMilli())
 	if err != nil {
 		return nil, err
 	}

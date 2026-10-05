@@ -179,29 +179,38 @@ func TestFreshNamesPreferUnusedOnes(t *testing.T) {
 	}
 }
 
-// A database from milestone 05 (schema version 3, a game without names)
-// gains the guests table and name columns, and its games still load.
-func TestMigration4KeepsOldGames(t *testing.T) {
-	ctx := context.Background()
+// openAt builds a database at schema version v, runs seed against it, and
+// opens it with Open, which applies every later migration.
+func openAt(t *testing.T, v int, seed ...string) *Store {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "old.db")
 	db, err := sql.Open("sqlite", "file:"+path)
 	must(t, err)
 	must(t, exec(db, `CREATE TABLE schema_version (version INTEGER NOT NULL)`))
-	for i, m := range migrations[:3] {
+	for i, m := range migrations[:v] {
 		must(t, exec(db, m))
 		must(t, exec(db, `INSERT INTO schema_version (version) VALUES (?)`, i+1))
 	}
-	must(t, exec(db, `INSERT INTO games (code, white, black, created_at) VALUES ('OLD123', 'alice', 'bob', ?)`, t0.UnixMilli()))
+	for _, q := range seed {
+		must(t, exec(db, q))
+	}
 	db.Close()
-
 	s, err := Open(path)
 	must(t, err)
-	defer s.Close()
-	got, err := s.LoadForRestore(ctx, t0)
-	must(t, err)
-	want := []SavedGame{{Game: Game{Code: "OLD123", White: "alice", Black: "bob", CreatedAt: t0}}}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("loaded\n%+v\nwant\n%+v", got, want)
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+// A database from milestone 05 (schema version 3, a game without names)
+// gains the guests table and name columns, and keeps its game.
+func TestMigration4KeepsOldGames(t *testing.T) {
+	ctx := context.Background()
+	s := openAt(t, 3, fmt.Sprintf(
+		`INSERT INTO games (code, white, black, created_at) VALUES ('OLD123', 'alice', 'bob', %d)`, t0.UnixMilli()))
+	var name sql.NullString
+	must(t, s.db.QueryRowContext(ctx, `SELECT white_name FROM games WHERE code = 'OLD123'`).Scan(&name))
+	if name.Valid {
+		t.Errorf("white_name %q, want NULL", name.String)
 	}
 	if _, err := s.EnsureGuest(ctx, "alice", draws(t, "pigeon-astoria")); err != nil {
 		t.Fatalf("guests table missing after migration: %v", err)
