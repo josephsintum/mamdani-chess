@@ -40,12 +40,12 @@ At widths under 640 px the game page renders the phone layout: a column filling 
 | Card slot | about 81 | Exactly one card (see below). |
 | Bottom bar | 65 + safe area | Two 44 px buttons; pinned to the bottom; `padding-bottom: max(12px, env(safe-area-inset-bottom))`. |
 
-The board's size comes from CSS: `--board: min(calc(100vw - 16px), calc(100dvh - var(--chrome)))`, where `--chrome` is the sum of the other rows (about 286 px with the bottom bar, about 245 px without it). It never scrolls; on very short screens (under about 560 px tall) it shrinks below 280 px, which is accepted.
+The bars and board sit in a flexible region with `container-type: size`; the board is `min(100cqw − 16px, 100cqh − 92px)` (92 = the two bars plus margins), so it takes exactly the space the header, card and bottom bar leave. On very short screens (under about 560 px tall) it shrinks below 280 px, which is accepted.
 
 ### The card slot
 
 One card at a time, in this priority:
-1. **Waiting** (`status === 'waiting'`, you are White): the share box, with the link field and "Copy link". The bottom bar is hidden.
+1. **Waiting** (`status === 'waiting'`, you are White): the share box, with the link field and "Copy link". The bottom bar is hidden. The board dims while waiting.
 2. **Resign confirmation** (`confirmResign`): "Resign this game? *White wins.*" with "Keep playing" and "Yes, resign". The bottom bar is hidden.
 3. **Game over** (`resultCard`): the headline ("YOU WIN", "WHITE WINS", "DRAW") with the kicker on the same row ("CHECKMATE · MOVE 2"), and one detail line.
 4. **Error** (`error` set): the error text, `role="alert"`, in hazard colours, until the next view clears it.
@@ -101,7 +101,7 @@ It reads the same events as `diceSteps()`, up to `shown`, so the chips fill in s
 | Repaired at once (next to the Mamdani) | `◇4 → b4 → repaired` (good) | "The Mamdani repairs b4 at once" (good) |
 | Re-rolls (king, already a pothole, exposes, checkmate) | the die, then each re-rolled square as a plain chip marked `↻` (`◇6 → e1↻ → h6 → opens`) | The final outcome's line; the re-roll reasons are in the sheet's step list |
 | A piece falls | `◇4 → g8 → falls` (bad) | "Black knight falls into g8" (hazard) |
-| A saving roll is saved | `◇4 → d5 → save 3` (good) | "Knight saved" (good) |
+| A saving roll is saved | `◇4 → d5 → save 3` (good) | "Black knight saved" (good) |
 | A saving roll is lost | `◇4 → d5 → save 6` (bad) | "Knight falls into d5" (hazard) |
 | The Mamdani falls | `◇8 → a5 → falls` (bad) | "The Mamdani falls into a5" (hazard) |
 | A move that ends the game (no roll) | none | "No roll: the game is over" (muted) |
@@ -128,8 +128,8 @@ Potholes closed or repaired by the move itself, before the roll (today's `notes`
 ## Testing
 
 - **Vitest:** `diceSummary()` covers every row of its table, including mid-animation `shown` values (chips filling in). `PlayerBar`'s pill rules come from a pure `pillFor(view, color, you, animating)` in `board.ts`, tested the same way.
-- **The play-test script gains `--phone`.** It plays as an iPhone 15 (WebKit, touch, 393×659): taps instead of clicks, and drags with touch.
-  - After every turn, it fails if the page scrolls (`scrollHeight > innerHeight`) or the board is narrower than `innerWidth − 20`.
+- **The play-test script gains `--phone`.** It plays as an iPhone 15 (WebKit, touch, 393×659): taps instead of clicks (touch drags are left to the hands-on phone check: Playwright has no touch-move).
+  - After every turn, it fails if the page scrolls (`scrollHeight > innerHeight`) or the board is narrower than 90% of `innerWidth` (a height-limited board is 365 px on a 393 px phone).
   - It opens and closes the moves sheet once per game, and resigns through the phone confirmation.
   - `pnpm --dir web playtest --phone --games 6` runs it locally, and against the live URL with `--turn-ms 15000`.
 - **Screenshots** of all six states at 393×659 in WebKit, compared by eye against the artboards.
