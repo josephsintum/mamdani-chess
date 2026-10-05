@@ -167,7 +167,7 @@ func (g *Game) Join(guest string) (*Sub, error) {
 			return
 		}
 		g.subs[sub] = struct{}{}
-		send(sub, g.view(guest))
+		send(sub, g.viewFor(g.roleOf(guest)))
 	})
 	if err != nil {
 		return nil, err
@@ -284,10 +284,38 @@ func (g *Game) status() Status {
 	return Playing
 }
 
-func (g *Game) broadcast() {
-	for sub := range g.subs {
-		send(sub, g.view(sub.guest))
+// role is who a view is for: a seated color, or roleSpectator. Everyone in
+// the same role sees the same view, so broadcast builds at most one per
+// role, not one per stream.
+type role int
+
+const roleSpectator = role(2)
+
+func (g *Game) roleOf(guest string) role {
+	if c, ok := g.seatOf(guest); ok {
+		return role(c)
 	}
+	return roleSpectator
+}
+
+// broadcast sends every stream its role's view. Streams in the same role
+// share one *View, so a View must never be changed once sent.
+func (g *Game) broadcast() {
+	var views [3]*View
+	for sub := range g.subs {
+		r := g.roleOf(sub.guest)
+		if views[r] == nil {
+			views[r] = g.viewFor(r)
+		}
+		send(sub, views[r])
+	}
+}
+
+// View returns guest's current view of the game.
+func (g *Game) View(guest string) (*View, error) {
+	var v *View
+	err := g.do(func() { v = g.viewFor(g.roleOf(guest)) })
+	return v, err
 }
 
 // send replaces whatever is waiting on the sub with v. Only the game's
@@ -300,7 +328,7 @@ func send(sub *Sub, v *View) {
 	sub.ch <- v
 }
 
-func (g *Game) view(guest string) *View {
+func (g *Game) viewFor(r role) *View {
 	p := &g.g.Pos
 	v := &View{
 		Code:     g.code,
@@ -317,7 +345,7 @@ func (g *Game) view(guest string) *View {
 		Stats:    g.stats,
 		Seq:      len(g.g.Turns),
 	}
-	color, seated := g.seatOf(guest)
+	color, seated := rules.Color(r), r != roleSpectator
 	if seated {
 		v.You = colorName(color)
 	}

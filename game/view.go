@@ -18,7 +18,8 @@ const (
 
 // View is one subscriber's picture of the game, sent as the SSE "state"
 // event after every change. It is the whole game, so a reconnecting browser
-// needs nothing else.
+// needs nothing else. Views are shared between streams: read them, never
+// change them.
 type View struct {
 	Code     string      `json:"code"`
 	Status   Status      `json:"status"`

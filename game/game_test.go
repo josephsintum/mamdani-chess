@@ -359,3 +359,37 @@ func TestWatchedGameInProgressIsKept(t *testing.T) {
 		}
 	})
 }
+
+func TestStreamsInOneRoleShareAView(t *testing.T) {
+	g := NewHub(odd{}).Create("alice")
+	a := join(t, g, "alice")
+	join(t, g, "bob")
+	c1, c2 := join(t, g, "carol"), join(t, g, "dave")
+	recv(t, a)
+	recv(t, c1)
+	recv(t, c2)
+	if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
+		t.Fatal(err)
+	}
+	v1, v2 := recv(t, c1), recv(t, c2)
+	if v1 != v2 {
+		t.Error("two spectators got separately built views")
+	}
+	if v1.You != "spectator" || len(v1.Legal) != 0 {
+		t.Errorf("shared spectator view: you=%s legal=%d", v1.You, len(v1.Legal))
+	}
+	if va := recv(t, a); va == v1 || va.You != "white" {
+		t.Errorf("white shares the spectators' view: you=%s", va.You)
+	}
+}
+
+func TestViewIsTheCallersRole(t *testing.T) {
+	g := NewHub(odd{}).Create("alice")
+	join(t, g, "bob")
+	for guest, want := range map[string]string{"alice": "white", "bob": "black", "carol": "spectator"} {
+		v, err := g.View(guest)
+		if err != nil || v.You != want {
+			t.Errorf("%s: view %+v err %v, want you=%s", guest, v, err, want)
+		}
+	}
+}
