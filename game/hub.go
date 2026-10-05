@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -156,10 +157,11 @@ func guestTag(id string) string {
 	return hex.EncodeToString(sum[:4])
 }
 
-// Get returns the game with code, if any.
+// Get returns the game with code, if any. Codes are upper case; a code
+// typed in lower case finds the same game.
 func (h *Hub) Get(code string) (*Game, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	g, ok := h.games[code]
+	g, ok := h.games[strings.ToUpper(code)]
 	return g, ok
 }

@@ -53,6 +53,18 @@ func New(create CreateFunc) *Queue {
 // Looking is how many guests are waiting.
 func (q *Queue) Looking() int { return int(q.looking.Load()) }
 
+// LookingFor is how many guests other than guest are waiting, so a guest
+// never sees themselves counted (say, just after cancelling).
+func (q *Queue) LookingFor(guest string) int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	n := len(q.line)
+	if q.byGuest[guest] != nil {
+		n--
+	}
+	return n
+}
+
 // Join puts guest in line, or adds a ticket to their place if another tab
 // already holds one, then pairs whoever can be paired.
 func (q *Queue) Join(guest string) *Ticket {

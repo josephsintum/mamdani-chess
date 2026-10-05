@@ -140,9 +140,9 @@ func TestRestoreShowsAFlagFallAsItWas(t *testing.T) {
 	}
 	for _, c := range cases {
 		h := NewHub(odd{}, nil)
-		code := "FLAG" + c.reason[:2]
+		code := "FLAG" + strings.ToUpper(c.reason[:2]) // real codes are upper case
 		h.Restore([]store.SavedGame{{
-			Game:   store.Game{Code: code, White: "a", Black: "b"},
+			Code: code, White: "a", Black: "b",
 			Turns:  turns,
 			Result: &store.Result{EndedAt: time.Now(), Reason: c.reason, Winner: c.winner},
 		}})
@@ -162,9 +162,9 @@ func TestRestoreShowsAFlagFallAsItWas(t *testing.T) {
 
 func TestRestoreSkipsAGameThatWontReplay(t *testing.T) {
 	saved := []store.SavedGame{
-		{Game: store.Game{Code: "BAD001", White: "a", Black: "b"},
+		{Code: "BAD001", White: "a", Black: "b",
 			Turns: []store.Turn{{Ply: 0, Move: "e2e5"}}}, // illegal
-		{Game: store.Game{Code: "OK0001", White: "a"}},
+		{Code: "OK0001", White: "a"},
 	}
 	h := NewHub(odd{}, nil)
 	if n := h.Restore(saved); n != 1 {

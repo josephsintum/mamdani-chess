@@ -17,6 +17,9 @@ type meJSON struct {
 	Name           *string `json:"name"`
 	ChangesLeft    int     `json:"changesLeft"`
 	ChangesResetAt *int64  `json:"changesResetAt"`
+	// Game is the code of the game the caller is playing right now, or
+	// null, so a page can offer to take them back to it.
+	Game *string `json:"game,omitempty"`
 }
 
 func newMeJSON(name string, a store.Allowance) meJSON {
@@ -46,7 +49,11 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "name allowance", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, newMeJSON(name, a))
+	out := newMeJSON(name, a)
+	if code := s.games.Active(guest); code != "" {
+		out.Game = &code
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // nameOffers returns the names the caller may change to. They stay the same

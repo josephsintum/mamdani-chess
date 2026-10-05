@@ -29,7 +29,7 @@ const liveGamesMax = 12
 func (s *Server) liveGames(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"games":   s.games.List(liveGamesMax),
-		"looking": s.match.Looking(),
+		"looking": s.match.LookingFor(guestID(w, r)),
 	})
 }
 

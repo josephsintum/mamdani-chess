@@ -1,6 +1,7 @@
 package game
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,36 @@ func TestLiveShowsTheGame(t *testing.T) {
 	}
 	if l := h.List(12)[0]; l.Move != 2 {
 		t.Fatalf("after e4 e5: move %d, want 2", l.Move)
+	}
+}
+
+func TestActiveIsYourGameBeingPlayed(t *testing.T) {
+	h := NewHub(odd{}, nil)
+	waiting := create(t, h, "alice")
+	if code := h.Active("alice"); code != "" {
+		t.Fatalf("a game still waiting for a friend counts as active: %s", code)
+	}
+	g := playing(t, h, "bob", "carol")
+	if h.Active("bob") != g.Code() || h.Active("carol") != g.Code() {
+		t.Fatalf("Active(bob)=%q Active(carol)=%q, want %s", h.Active("bob"), h.Active("carol"), g.Code())
+	}
+	join(t, g, "dave") // watching
+	if code := h.Active("dave"); code != "" {
+		t.Fatalf("a spectator has an active game: %s", code)
+	}
+	if err := g.Resign("bob"); err != nil {
+		t.Fatal(err)
+	}
+	if code := h.Active("bob"); code != "" {
+		t.Fatalf("a finished game counts as active: %s", code)
+	}
+	_ = waiting
+}
+
+func TestGetIgnoresCase(t *testing.T) {
+	h := NewHub(odd{}, nil)
+	g := create(t, h, "alice")
+	if _, ok := h.Get(strings.ToLower(g.Code())); !ok {
+		t.Fatalf("Get(%q) found nothing", strings.ToLower(g.Code()))
 	}
 }

@@ -13,6 +13,11 @@ import (
 // game's code. The caller gets a name first, so the game can show it.
 func (s *Server) matchStream(w http.ResponseWriter, r *http.Request) {
 	guest := guestID(w, r)
+	// One game at a time: a guest already playing is sent back to it.
+	if code := s.games.Active(guest); code != "" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "you're already in a game", "code": code})
+		return
+	}
 	if _, err := s.store.EnsureGuest(r.Context(), guest, names.Random); err != nil {
 		s.log.Error("guest name", "err", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})

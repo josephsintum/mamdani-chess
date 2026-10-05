@@ -22,6 +22,7 @@ type Live struct {
 	Watching int        `json:"watching"` // guests watching who aren't playing
 	status   Status
 	created  time.Time
+	seats    [2]string // guest IDs, for Active
 }
 
 // publish replaces the game's Live with its current state.
@@ -37,6 +38,7 @@ func (g *Game) publish() {
 		Watching: g.watching(),
 		status:   g.status(),
 		created:  g.created,
+		seats:    g.seats,
 	}
 	for s, pc := range p.Board {
 		l.Board[s] = pieceCode(pc)
@@ -63,6 +65,28 @@ func (g *Game) watching() int {
 		}
 	}
 	return len(seen)
+}
+
+// Active returns the code of the newest game being played with guest in a
+// seat, or "". A game waiting for a friend, a finished game, and games the
+// guest only watches don't count.
+func (h *Hub) Active(guest string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var newest *Live
+	for _, g := range h.games {
+		l := g.live.Load()
+		if l == nil || l.status != Playing || (l.seats[0] != guest && l.seats[1] != guest) {
+			continue
+		}
+		if newest == nil || l.created.After(newest.created) {
+			newest = l
+		}
+	}
+	if newest == nil {
+		return ""
+	}
+	return newest.Code
 }
 
 // List returns up to max games being played, most watched first, then

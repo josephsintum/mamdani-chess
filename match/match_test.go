@@ -133,3 +133,11 @@ func TestLeaveAfterAMatchIsHarmless(t *testing.T) {
 		t.Fatalf("looking %d", q.Looking())
 	}
 }
+
+func TestLookingForSomeoneCountsTheOthers(t *testing.T) {
+	q := newQueue(&games{})
+	q.Join("alice")
+	if q.LookingFor("alice") != 0 || q.LookingFor("bob") != 1 {
+		t.Fatalf("alice sees %d, bob sees %d; want 0 and 1", q.LookingFor("alice"), q.LookingFor("bob"))
+	}
+}

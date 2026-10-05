@@ -131,3 +131,42 @@ func TestMatchedEndsTheStreamWithALongRetry(t *testing.T) {
 		t.Fatalf("stream was %q", body)
 	}
 }
+
+func TestASeatedGuestCantQueue(t *testing.T) {
+	_, ts := newTestServer(t)
+	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
+	code := alice.create()
+	alice.stream(code).state()
+	bob.stream(code).state() // the game is on: alice is seated
+	if me := alice.me(); me.Game == nil || *me.Game != code {
+		t.Fatalf("GET /api/me game = %v, want %s", me.Game, code)
+	}
+	status, body := alice.get("/api/match")
+	var out struct{ Code string }
+	if status != http.StatusConflict || json.Unmarshal([]byte(body), &out) != nil || out.Code != code {
+		t.Fatalf("queueing while seated: %d %s, want 409 with the game's code", status, body)
+	}
+}
+
+func TestLookingLeavesYouOut(t *testing.T) {
+	_, ts := newTestServer(t)
+	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
+	alice.queue()
+	var a, b struct{ Looking int }
+	_, body := alice.get("/api/games")
+	json.Unmarshal([]byte(body), &a)
+	_, body = bob.get("/api/games")
+	json.Unmarshal([]byte(body), &b)
+	if a.Looking != 0 || b.Looking != 1 {
+		t.Fatalf("alice sees %d looking, bob sees %d; want 0 and 1", a.Looking, b.Looking)
+	}
+}
+
+func TestLowercaseCodeFindsTheGame(t *testing.T) {
+	_, ts := newTestServer(t)
+	alice := newPlayer(t, ts)
+	code := alice.create()
+	if status, body := alice.get("/api/games/" + strings.ToLower(code)); status != http.StatusOK {
+		t.Fatalf("GET with a lowercase code: %d %s", status, body)
+	}
+}
