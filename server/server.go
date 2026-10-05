@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,8 +63,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 	s.mux.ServeHTTP(rec, r)
+	// Health checks and moves log at debug level: moves are most of the
+	// traffic, and the game logs its own events (ended, aborted…) at INFO.
 	level := slog.LevelInfo
-	if r.URL.Path == "/healthz" {
+	if r.URL.Path == "/healthz" || (r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/move")) {
 		level = slog.LevelDebug
 	}
 	s.log.Log(r.Context(), level, "request",
