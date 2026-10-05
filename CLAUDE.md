@@ -33,7 +33,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Next step
 
-Milestone 07 (launch). Brainstorm it first; player history waits for milestone 08. 06b (watcher count and emoji reactions) moved to milestone 10, after 09 and before the security and UX reviews (11, 12). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Milestone 06c (longer potholes: 3 rounds, cap 5, a roll can mate, cones, the repair celebration; [spec](docs/superpowers/specs/2026-10-05-06c-longer-potholes-design.md)): write its plan, then build it. Its prototype is uncommitted in the working tree, with the Mamdani art for 07. Then 07 (launch), whose brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section, one spec. Player history waits for milestone 08. 06b (watcher count and emoji reactions) moved to milestone 10, after 09 and before the security and UX reviews (11, 12). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
