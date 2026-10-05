@@ -207,3 +207,96 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 	});
 	return steps;
 }
+
+/** One chip in the phone's dice card: a die, a square, or an outcome. */
+export interface DiceChip {
+	text: string;
+	kind: 'die' | 'square' | 'pending' | 'good' | 'bad' | 'plain';
+}
+
+/** The phone's one-line version of a turn's dice (the steps are in the moves sheet). */
+export interface DiceSummary {
+	who: Color | null; // whose roll; null before the first one
+	chips: DiceChip[]; // as far as the dice have played
+	line: string;
+	tone: 'normal' | 'good' | 'hazard' | 'muted';
+}
+
+/**
+ * Sums up the turn's dice as far as they have played (shown events of
+ * view.last), for the phone's dice card: chips that fill in step by step
+ * and one outcome line.
+ */
+export function diceSummary(view: View, shown: number): DiceSummary {
+	const mover = view.last.find((e) => e.kind === 'moved')?.color ?? null;
+	if (!view.last.some((e) => e.kind === 'rolled_pothole')) {
+		if (mover && view.result) return { who: mover, chips: [], line: 'No roll: the game is over', tone: 'muted' };
+		return { who: null, chips: [], line: 'The dice roll after every move.', tone: 'muted' };
+	}
+	const chips: DiceChip[] = [];
+	let line = 'Rolling the d8…';
+	let tone: DiceSummary['tone'] = 'muted';
+	let pending = true; // the next die or square is still to come
+	let square = '';
+	for (const e of view.last.slice(0, shown)) {
+		switch (e.kind) {
+			case 'rolled_pothole': {
+				const even = (e.roll ?? 1) % 2 === 0;
+				chips.push({ text: String(e.roll), kind: 'die' });
+				[line, tone, pending] = even ? ['Even: a pothole opens · finding its square…', 'normal', true] : ['Odd: nothing happens', 'muted', false];
+				break;
+			}
+			case 'target':
+				square = e.sq ?? '';
+				chips.push({ text: square, kind: 'square' });
+				pending = false;
+				break;
+			case 'reroll': {
+				chips[chips.length - 1] = { text: `${e.sq}↻`, kind: 'plain' };
+				const why = rerollReasons[e.reason ?? ''] ?? e.reason ?? '';
+				[line, tone, pending] = [`Re-roll: ${why.charAt(0).toLowerCase()}${why.slice(1)}`, 'muted', true];
+				break;
+			}
+			case 'saving_roll':
+				chips.push({ text: `save ${e.roll}`, kind: e.saved ? 'good' : 'bad' });
+				if (e.saved) [line, tone] = [`${capitalize(pieceName(e.piece))} saved`, 'good'];
+				break;
+			case 'fell':
+				if (chips[chips.length - 1]?.kind === 'square') chips.push({ text: 'falls', kind: 'bad' });
+				[line, tone] = [`${capitalize(pieceName(e.piece))} falls into ${e.sq}`, 'hazard'];
+				break;
+			case 'pothole_opened':
+				// After a fall the fall is the news; on an empty square the hole is.
+				if (chips[chips.length - 1]?.kind === 'square') {
+					chips.push({ text: 'opens', kind: 'bad' });
+					[line, tone] = [`Pothole on ${e.sq} · closes when ${colorTitle(e.color)} moves`, 'hazard'];
+				}
+				break;
+			case 'repaired':
+				if (square === e.sq) {
+					chips.push({ text: 'repaired', kind: 'good' });
+					[line, tone] = [`The Mamdani repairs ${e.sq} at once`, 'good'];
+				}
+				break;
+			case 'no_pothole':
+				chips.push({ text: 'none', kind: 'plain' });
+				[line, tone, pending] = ['No pothole: no square could take one', 'muted', false];
+				break;
+		}
+	}
+	if (pending) chips.push({ text: '?', kind: 'pending' });
+	const roll = view.last.find((e) => e.kind === 'rolled_pothole');
+	return { who: roll?.color ?? mover, chips, line, tone };
+}
+
+/** The pill on a player's bar: whose move, check, waiting, checkmated. */
+export function pillFor(view: View, color: Color, animating: boolean): { text: string; tone: 'turn' | 'check' | 'muted' } {
+	if (view.status === 'waiting') return color === 'black' ? { text: 'Waiting…', tone: 'muted' } : { text: '', tone: 'muted' };
+	if (view.result) {
+		const mated = view.result.reason === 'checkmate' && !view.result.draw && view.result.winner !== color;
+		return mated ? { text: 'Checkmated', tone: 'check' } : { text: '', tone: 'turn' };
+	}
+	if (animating || view.turn !== color) return { text: '', tone: 'turn' };
+	if (view.check) return { text: 'In check', tone: 'check' };
+	return { text: view.you === color ? 'Your move' : 'To move', tone: 'turn' };
+}
