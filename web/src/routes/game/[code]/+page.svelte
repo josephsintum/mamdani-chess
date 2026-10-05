@@ -79,7 +79,9 @@
 	onMount(() => {
 		let source: EventSource | null = null;
 		let retry: ReturnType<typeof setTimeout> | undefined;
+		let disposed = false; // the page has gone: open nothing more
 		const connect = () => {
+			if (disposed) return;
 			source = new EventSource(`/api/games/${code}/stream`);
 			source.onopen = () => (connected = true);
 			source.onerror = () => {
@@ -98,6 +100,17 @@
 			source.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
 		};
 		connect();
+		// The browser knows at once when the device loses its network; the
+		// stream can take much longer to notice. Show it, and when the network
+		// is back, start a fresh stream (the old one may be dead without
+		// knowing it): its first state resends a move made meanwhile.
+		const goneOffline = () => (connected = false);
+		const backOnline = () => {
+			source?.close();
+			connect();
+		};
+		window.addEventListener('offline', goneOffline);
+		window.addEventListener('online', backOnline);
 		const tick = setInterval(() => (serverNow = Date.now() + offset), 100);
 		// Coming back to a tab mid-animation jumps to the end of the roll.
 		const finishOnReturn = () => {
@@ -105,7 +118,10 @@
 		};
 		document.addEventListener('visibilitychange', finishOnReturn);
 		return () => {
+			disposed = true;
 			source?.close();
+			window.removeEventListener('offline', goneOffline);
+			window.removeEventListener('online', backOnline);
 			clearTimeout(retry);
 			clearTimeout(resendTimer);
 			clearInterval(tick);
