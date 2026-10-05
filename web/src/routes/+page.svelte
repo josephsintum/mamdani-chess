@@ -130,7 +130,7 @@
 		<div class="demo">
 			<MiniBoard
 				board={demo}
-				potholes={[{ sq: 'f4', by: 'white' }]}
+				potholes={[{ sq: 'f4', by: 'white', left: 3 }]}
 				mamdani="a5"
 				last={{ from: 'e7', to: 'e6' }}
 				label="A game in progress: a pothole is open on f4 and the Mamdani stands on a5."

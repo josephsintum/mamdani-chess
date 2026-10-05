@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockedSquares, checkSquare, diceSteps, diceSummary, firstDiceStep, pillFor, squareIndex, stageAt } from './board.ts';
+import { blockedSquares, checkSquare, diceSteps, diceSummary, firstDiceStep, matedByRoll, pillFor, repairsShown, squareIndex, stageAt } from './board.ts';
 import type { EventJSON, View } from './game.ts';
 
 /** A view with the given pieces ({"e1": "wK"}), potholes and Mamdani square. */
@@ -40,32 +40,32 @@ describe('squareIndex', () => {
 
 describe('blockedSquares', () => {
 	it('marks the squares a rook could reach past a pothole', () => {
-		const v = makeView({ a1: 'wR', h1: 'bN' }, { potholes: [{ sq: 'd1', by: 'black' }] });
+		const v = makeView({ a1: 'wR', h1: 'bN' }, { potholes: [{ sq: 'd1', by: 'black', left: 1 }] });
 		expect(blockedSquares(v, 'a1').sort()).toEqual(['e1', 'f1', 'g1', 'h1']);
 	});
 
 	it('stops at the mover’s own piece', () => {
-		const v = makeView({ a1: 'wR', f1: 'wK' }, { potholes: [{ sq: 'd1', by: 'black' }] });
+		const v = makeView({ a1: 'wR', f1: 'wK' }, { potholes: [{ sq: 'd1', by: 'black', left: 1 }] });
 		expect(blockedSquares(v, 'a1')).toEqual(['e1']);
 	});
 
 	it('marks nothing when a piece stands before the pothole', () => {
-		const v = makeView({ a1: 'wR', b1: 'wN' }, { potholes: [{ sq: 'd1', by: 'black' }] });
+		const v = makeView({ a1: 'wR', b1: 'wN' }, { potholes: [{ sq: 'd1', by: 'black', left: 1 }] });
 		expect(blockedSquares(v, 'a1')).toEqual([]);
 	});
 
 	it('follows diagonals for bishops and ignores the other lines', () => {
-		const v = makeView({ c1: 'wB' }, { potholes: [{ sq: 'e3', by: 'white' }, { sq: 'c4', by: 'black' }] });
+		const v = makeView({ c1: 'wB' }, { potholes: [{ sq: 'e3', by: 'white', left: 1 }, { sq: 'c4', by: 'black', left: 1 }] });
 		expect(blockedSquares(v, 'c1').sort()).toEqual(['f4', 'g5', 'h6']);
 	});
 
 	it('never marks a capture for the Mamdani', () => {
-		const v = makeView({ e8: 'bK' }, { mamdani: 'a4', potholes: [{ sq: 'c6', by: 'white' }] });
+		const v = makeView({ e8: 'bK' }, { mamdani: 'a4', potholes: [{ sq: 'c6', by: 'white', left: 1 }] });
 		expect(blockedSquares(v, 'a4').sort()).toEqual(['d7']);
 	});
 
 	it('marks nothing for pieces that jump or step', () => {
-		const v = makeView({ b1: 'wN', e1: 'wK' }, { potholes: [{ sq: 'c3', by: 'black' }, { sq: 'e2', by: 'black' }] });
+		const v = makeView({ b1: 'wN', e1: 'wK' }, { potholes: [{ sq: 'c3', by: 'black', left: 1 }, { sq: 'e2', by: 'black', left: 1 }] });
 		expect(blockedSquares(v, 'b1')).toEqual([]);
 		expect(blockedSquares(v, 'e1')).toEqual([]);
 	});
@@ -92,7 +92,7 @@ describe('firstDiceStep', () => {
 
 describe('stageAt', () => {
 	// The final position: the knight is gone and g8 holds White's pothole.
-	const final = makeView({ e4: 'wP', e1: 'wK' }, { last: fellOnG8, potholes: [{ sq: 'g8', by: 'white' }] });
+	const final = makeView({ e4: 'wP', e1: 'wK' }, { last: fellOnG8, potholes: [{ sq: 'g8', by: 'white', left: 1 }] });
 
 	it('keeps the fallen piece and hides the new pothole until they are revealed', () => {
 		const s = stageAt(final, 1);
@@ -115,8 +115,31 @@ describe('stageAt', () => {
 	it('shows the final position once every step is revealed', () => {
 		const s = stageAt(final, fellOnG8.length);
 		expect(s.board[squareIndex('g8')]).toBe('');
-		expect(s.potholes).toEqual([{ sq: 'g8', by: 'white' }]);
+		expect(s.potholes).toEqual([{ sq: 'g8', by: 'white', left: 1 }]);
 		expect(s.target).toBe('');
+	});
+
+	it('keeps a hole the cap closes until the new one opens', () => {
+		// Five holes were open; White's roll opens a sixth on d4 and the oldest, c4, closes.
+		const last: EventJSON[] = [
+			{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' },
+			{ kind: 'rolled_pothole', roll: 2, color: 'white' },
+			{ kind: 'target', sq: 'd4' },
+			{ kind: 'pothole_closed', sq: 'c4', color: 'black' },
+			{ kind: 'pothole_opened', sq: 'd4', color: 'white' }
+		];
+		const v = makeView({}, { last, potholes: [{ sq: 'd4', by: 'white', left: 3 }] });
+		expect(stageAt(v, 3).potholes).toEqual([{ sq: 'c4', by: 'black', left: 1 }]);
+		expect(stageAt(v, 5).potholes).toEqual([{ sq: 'd4', by: 'white', left: 3 }]);
+	});
+
+	it('closes a hole on its schedule before the roll at once', () => {
+		const last: EventJSON[] = [
+			{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' },
+			{ kind: 'pothole_closed', sq: 'c4', color: 'white' },
+			{ kind: 'rolled_pothole', roll: 1, color: 'white' }
+		];
+		expect(stageAt(makeView({}, { last }), 1).potholes).toEqual([]);
 	});
 
 	it('puts a fallen Mamdani back until its fall is revealed', () => {
@@ -128,7 +151,7 @@ describe('stageAt', () => {
 			{ kind: 'fell', sq: 'a5', piece: 'M' },
 			{ kind: 'pothole_opened', sq: 'a5', color: 'white' }
 		];
-		const v = makeView({}, { last, mamdani: '', potholes: [{ sq: 'a5', by: 'white' }] });
+		const v = makeView({}, { last, mamdani: '', potholes: [{ sq: 'a5', by: 'white', left: 1 }] });
 		expect(stageAt(v, 4).mamdani).toBe('a5');
 		expect(stageAt(v, 6).mamdani).toBe('');
 	});
@@ -171,6 +194,61 @@ describe('diceSteps', () => {
 		expect(steps[2].detail).toBe('The Mamdani on a5 has a clear line to d2.');
 		const odd = makeView({}, { last: [saved[0], { kind: 'rolled_pothole', roll: 7, color: 'black' }] });
 		expect(diceSteps(odd, 2)[0]).toMatchObject({ title: 'Odd. No pothole', dice: [7], tone: 'muted' });
+	});
+});
+
+describe('diceSteps for the cap', () => {
+	it('says when the cap closes the oldest hole, and how long the new one lasts', () => {
+		const last: EventJSON[] = [
+			{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' },
+			{ kind: 'pothole_closed', sq: 'h3', color: 'white' },
+			{ kind: 'rolled_pothole', roll: 2, color: 'white' },
+			{ kind: 'target', sq: 'd4' },
+			{ kind: 'pothole_closed', sq: 'c4', color: 'black' },
+			{ kind: 'pothole_opened', sq: 'd4', color: 'white' }
+		];
+		const steps = diceSteps(makeView({}, { last }), last.length);
+		expect(steps.map((s) => [s.title, s.detail])).toEqual([
+			['Even. A pothole opens', 'd8 rolled 2'],
+			['Square d4', 'File 4 = d, rank 4. Empty square'],
+			['At most 5 potholes', 'The oldest, on c4, closes'],
+			['Pothole opens on d4', 'It closes after 3 of White’s moves']
+		]);
+		const sum = diceSummary(makeView({}, { last }), last.length);
+		expect(sum.chips.map((c) => c.text)).toEqual(['2', 'd4', 'opens', 'c4 closes']);
+	});
+});
+
+describe('matedByRoll', () => {
+	const mate = { winner: 'white' as const, draw: false, reason: 'checkmate' };
+	it('is true when the game ended in checkmate after a roll', () => {
+		const last: EventJSON[] = [
+			{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' },
+			{ kind: 'rolled_pothole', roll: 2, color: 'white' }
+		];
+		expect(matedByRoll({ result: mate, last })).toBe(true);
+	});
+	it('is false for a mating move, which ends the game before any roll', () => {
+		expect(matedByRoll({ result: mate, last: [{ kind: 'moved', from: 'd1', to: 'h5', piece: 'wQ', color: 'white' }] })).toBe(false);
+		expect(matedByRoll({ result: { draw: true, reason: 'stalemate' }, last: [{ kind: 'rolled_pothole', roll: 2 }] })).toBe(false);
+	});
+});
+
+describe('repairsShown', () => {
+	const last: EventJSON[] = [
+		{ kind: 'moved', from: 'c3', to: 'e5', piece: 'M', color: 'white' },
+		{ kind: 'repaired', sq: 'f6' },
+		{ kind: 'rolled_pothole', roll: 2, color: 'white' },
+		{ kind: 'target', sq: 'd4' },
+		{ kind: 'repaired', sq: 'd4' }
+	];
+	const v = makeView({}, { last, seq: 7 });
+	it('lists repairs revealed so far: the move’s fixes an open hole, the roll’s fixes one before it opens', () => {
+		expect(repairsShown(v, 2)).toEqual([{ sq: 'f6', key: '7:1', hole: true }]);
+		expect(repairsShown(v, 5)).toEqual([
+			{ sq: 'f6', key: '7:1', hole: true },
+			{ sq: 'd4', key: '7:4', hole: false }
+		]);
 	});
 });
 
@@ -240,7 +318,7 @@ describe('diceSummary', () => {
 
 	it('opens a pothole on an empty square', () => {
 		const last: EventJSON[] = [moved, { kind: 'rolled_pothole', roll: 4, color: 'white' }, { kind: 'target', sq: 'd4' }, { kind: 'pothole_opened', sq: 'd4', color: 'white' }];
-		expect(sum(last)).toEqual({ who: 'white', chips: ['4:die', 'd4:square', 'opens:bad'], line: 'Pothole on d4 · closes when White moves', tone: 'hazard' });
+		expect(sum(last)).toEqual({ who: 'white', chips: ['4:die', 'd4:square', 'opens:bad'], line: 'Pothole on d4 · closes after 3 of White’s moves', tone: 'hazard' });
 	});
 
 	it('repairs a pothole next to the Mamdani at once', () => {

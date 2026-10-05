@@ -37,6 +37,21 @@ describe('Animator', () => {
 		expect(a.animating).toBe(false);
 	});
 
+	it('marks only a turn that plays out as animated, so one-off effects never replay', () => {
+		const a = new Animator(100);
+		a.receive(view(3, roll)); // first load
+		expect(a.animated).toBe(false);
+		a.receive(view(4, roll)); // the next turn
+		expect(a.animated).toBe(true);
+		vi.advanceTimersByTime(1000);
+		a.receive(view(4, roll)); // an update for the same turn keeps it
+		expect(a.animated).toBe(true);
+		a.receive(view(6, roll)); // a reconnect that skipped a turn
+		expect(a.animated).toBe(false);
+		a.receive(view(7, roll), { hidden: true }); // a hidden tab
+		expect(a.animated).toBe(false);
+	});
+
 	it('jumps straight to a view that skips turns', () => {
 		const a = new Animator(100);
 		a.receive(view(0));

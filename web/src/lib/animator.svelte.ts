@@ -15,6 +15,13 @@ export class Animator {
 	view = $state<View | null>(null);
 	/** Events of view.last revealed so far. */
 	shown = $state(0);
+	/**
+	 * Whether the current turn is playing out step by step, rather than shown
+	 * at once (first load, reconnect, a hidden tab). One-off effects such as a
+	 * repair celebration play only for an animated turn, so a reload never
+	 * replays them.
+	 */
+	animated = $state(false);
 	/** Delay between steps, in ms; applies from the next step on. */
 	stepMs: number;
 	#timer: ReturnType<typeof setTimeout> | undefined;
@@ -43,6 +50,7 @@ export class Animator {
 		}
 		const animate = this.view !== null && next.seq === this.view.seq + 1 && next.last.length > 0 && !hidden;
 		this.view = next;
+		this.animated = animate;
 		clearTimeout(this.#timer);
 		this.shown = animate ? firstDiceStep(next.last) : next.last.length;
 		this.#tick();

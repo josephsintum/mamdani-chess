@@ -3,7 +3,7 @@
 // plays through the real board, dice tray and animation code. This is not
 // the rules engine: the Go server is the only source of truth for play.
 
-import { squareIndex } from './board.ts';
+import { HOLE_CAP, HOLE_ROUNDS, squareIndex } from './board.ts';
 import { applyMove } from './pieces.ts';
 import type { Color, EventJSON, MoveJSON, View } from './game.ts';
 
@@ -11,8 +11,8 @@ import type { Color, EventJSON, MoveJSON, View } from './game.ts';
 export interface RollScript {
 	/** The pothole d8: odd means nothing happens. */
 	pothole: number;
-	/** Squares re-rolled (shown as "kings never fall") before the final target. */
-	rerolls?: string[];
+	/** Squares re-rolled before the final target: a bare square is a king ("kings never fall"). */
+	rerolls?: (string | { sq: string; reason: 'king' | 'pothole' })[];
 	/** The square the placement dice pick. */
 	target?: string;
 	/** A saving roll for a piece or the Mamdani on the target: odd saves. */
@@ -76,8 +76,8 @@ export const positions = {
 		const v = place(emptyView(), { e1: 'wK', a1: 'wR', c1: 'wB', d1: 'wQ', e8: 'bK', h8: 'bR', f8: 'bB' });
 		v.mamdani = 'h4';
 		v.potholes = [
-			{ sq: 'a4', by: 'black' },
-			{ sq: 'f4', by: 'white' }
+			{ sq: 'a4', by: 'black', left: 2 },
+			{ sq: 'f4', by: 'white', left: 1 }
 		];
 		return v;
 	},
@@ -85,6 +85,16 @@ export const positions = {
 	promotion: (): View => {
 		const v = place(emptyView(), { e1: 'wK', b7: 'wP', e8: 'bK', h7: 'bP' });
 		v.mamdani = 'a5';
+		return v;
+	},
+	/**
+	 * The Mamdani's repairs. Move it c3–e5 to fix the pothole on f6, or roll
+	 * "Pothole opens" on d4 (next to it) to see one fixed before it opens.
+	 */
+	repair: (): View => {
+		const v = place(emptyView(), { e1: 'wK', b2: 'wP', g2: 'wP', e8: 'bK', b7: 'bP', g7: 'bP' });
+		v.mamdani = 'c3';
+		v.potholes = [{ sq: 'f6', by: 'black', left: 3 }];
 		return v;
 	},
 	/** King and rooks on their squares: castle with e1–g1 or e1–c1. */
@@ -229,28 +239,40 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 	}
 	Object.assign(v, applyMove(v, move));
 
-	// Close the mover's own pothole, then repair any next to the Mamdani.
-	for (const p of v.potholes.filter((h) => h.by === mover)) ev.push({ kind: 'pothole_closed', sq: p.sq });
-	v.potholes = v.potholes.filter((h) => h.by !== mover);
+	// Count down the mover's potholes (one closes after HOLE_ROUNDS of its
+	// roller's moves), then repair any next to the Mamdani.
+	for (const h of v.potholes) if (h.by === mover) h.left--;
+	for (const p of v.potholes.filter((h) => h.left <= 0)) ev.push({ kind: 'pothole_closed', sq: p.sq, color: p.by });
+	v.potholes = v.potholes.filter((h) => h.left > 0);
+	const dice: string[] = []; // the move log's text, as the server's describe writes it
 	for (const p of v.potholes.filter((h) => v.mamdani && adjacent(h.sq, v.mamdani))) {
 		ev.push({ kind: 'repaired', sq: p.sq });
 		v.stats.repaired++;
+		dice.push(`repairs ${p.sq}`);
 	}
 	v.potholes = v.potholes.filter((h) => !(v.mamdani && adjacent(h.sq, v.mamdani)));
 
 	// The dice.
-	const dice: string[] = [`d8 ${roll.pothole}`];
+	dice.push(`d8 ${roll.pothole}`);
+	const rollPart = dice.length - 1;
 	ev.push({ kind: 'rolled_pothole', roll: roll.pothole, color: mover });
 	if (roll.pothole % 2 === 0 && roll.target) {
 		for (const r of roll.rerolls ?? []) {
-			ev.push({ kind: 'target', sq: r }, { kind: 'reroll', sq: r, reason: 'king' });
+			const { sq: rs, reason } = typeof r === 'string' ? { sq: r, reason: 'king' } : r;
+			ev.push({ kind: 'target', sq: rs }, { kind: 'reroll', sq: rs, reason });
 		}
 		const t = roll.target;
 		ev.push({ kind: 'target', sq: t });
 		let text = `→ ${t}`;
 		const occupant = t === v.mamdani ? 'M' : v.board[squareIndex(t)];
 		let opens = true;
-		if (v.potholes.some((h) => h.sq === t)) {
+		if (occupant?.[1] === 'K') {
+			// Kings never fall: the server re-rolls both d8s. A scripted target
+			// would land here again, so the sandbox stops at the re-roll.
+			ev.push({ kind: 'reroll', sq: t, reason: 'king' });
+			opens = false;
+			text += ' re-roll (kings never fall)';
+		} else if (v.potholes.some((h) => h.sq === t)) {
 			// Already a pothole: the server re-rolls both d8s. A scripted target
 			// would land here again, so the sandbox stops at the re-roll.
 			ev.push({ kind: 'reroll', sq: t, reason: 'pothole' });
@@ -285,11 +307,19 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 				}
 			}
 		}
+		dice[rollPart] += ` ${text}`;
 		if (opens) {
+			// Past the cap the oldest hole closes as the new one opens.
+			if (v.potholes.length >= HOLE_CAP) {
+				const oldest = v.potholes.shift();
+				if (oldest) {
+					ev.push({ kind: 'pothole_closed', sq: oldest.sq, color: oldest.by });
+					dice.push(`${oldest.sq} closes`);
+				}
+			}
 			ev.push({ kind: 'pothole_opened', sq: t, color: mover });
-			v.potholes.push({ sq: t, by: mover });
+			v.potholes.push({ sq: t, by: mover, left: HOLE_ROUNDS });
 		}
-		dice[0] += ` ${text}`;
 	}
 
 	v.last = ev;

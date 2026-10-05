@@ -68,15 +68,39 @@ describe('playTurn', () => {
 		expect(v.log).toEqual([{ san: 'e2–e4', color: 'white', dice: 'd8 1' }]);
 	});
 
-	it('opens a pothole on an empty square and closes it after the roller’s next move', () => {
+	it('opens a pothole on an empty square and closes it after 3 of the roller’s moves', () => {
 		let v = playTurn(startView(), { from: 'e2', to: 'e4' }, { pothole: 2, target: 'd4' });
-		expect(v.potholes).toEqual([{ sq: 'd4', by: 'white' }]);
+		expect(v.potholes).toEqual([{ sq: 'd4', by: 'white', left: 3 }]);
 		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole', 'target', 'pothole_opened']);
 		v = playTurn(v, { from: 'e7', to: 'e5' }, odd);
-		expect(v.potholes).toEqual([{ sq: 'd4', by: 'white' }]);
+		expect(v.potholes).toEqual([{ sq: 'd4', by: 'white', left: 3 }]); // Black's move doesn't count
 		v = playTurn(v, { from: 'g1', to: 'f3' }, odd);
+		v = playTurn(v, { from: 'b8', to: 'c6' }, odd);
+		v = playTurn(v, { from: 'b1', to: 'c3' }, odd);
+		expect(v.potholes).toEqual([{ sq: 'd4', by: 'white', left: 1 }]);
+		v = playTurn(v, { from: 'g8', to: 'f6' }, odd);
+		v = playTurn(v, { from: 'f1', to: 'e2' }, odd);
 		expect(v.potholes).toEqual([]);
-		expect(v.last[1]).toEqual({ kind: 'pothole_closed', sq: 'd4' });
+		expect(v.last[1]).toEqual({ kind: 'pothole_closed', sq: 'd4', color: 'white' });
+	});
+
+	it('closes the oldest hole when a sixth opens, and logs it as the server does', () => {
+		let v = startView();
+		// Targets away from the Mamdani on a5, so none is repaired on arrival.
+		const plies: [string, string, string][] = [
+			['a2', 'a3', 'd4'], ['h7', 'h6', 'e5'], ['b2', 'b3', 'f4'], ['g7', 'g6', 'c5'], ['c2', 'c3', 'h4'], ['f7', 'f6', 'd5']
+		];
+		for (const [from, to, target] of plies) v = playTurn(v, { from, to }, { pothole: 2, target });
+		expect(v.potholes.map((h) => h.sq)).toEqual(['e5', 'f4', 'c5', 'h4', 'd5']);
+		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole', 'target', 'pothole_closed', 'pothole_opened']);
+		expect(v.last[3]).toEqual({ kind: 'pothole_closed', sq: 'd4', color: 'white' });
+		expect(v.log.at(-1)?.dice).toBe('d8 2 → d5 · d4 closes');
+	});
+
+	it('logs a repair made by the Mamdani’s move, as the server does', () => {
+		const v = playTurn(positions.repair(), { from: 'c3', to: 'e5' }, odd);
+		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'repaired', 'rolled_pothole']);
+		expect(v.log.at(-1)?.dice).toBe('repairs f6 · d8 1');
 	});
 
 	it('drops a piece without a saving roll and counts it as lost', () => {
@@ -113,9 +137,16 @@ describe('playTurn', () => {
 		// The sandbox's default script: every even roll targets d4.
 		let v = playTurn(startView(), { from: 'e2', to: 'e4' }, { pothole: 2, target: 'd4' });
 		v = playTurn(v, { from: 'e7', to: 'e5' }, { pothole: 2, target: 'd4' });
-		expect(v.potholes).toEqual([{ sq: 'd4', by: 'white' }]);
+		expect(v.potholes).toEqual([{ sq: 'd4', by: 'white', left: 3 }]);
 		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole', 'target', 'reroll']);
 		expect(v.last.at(-1)).toEqual({ kind: 'reroll', sq: 'd4', reason: 'pothole' });
+	});
+
+	it('re-rolls a typed target on a king instead of dropping the king', () => {
+		const v = playTurn(startView(), { from: 'e2', to: 'e4' }, { pothole: 2, target: 'e1' });
+		expect(v.board[squareIndex('e1')]).toBe('wK');
+		expect(v.potholes).toEqual([]);
+		expect(v.last.at(-1)).toEqual({ kind: 'reroll', sq: 'e1', reason: 'king' });
 	});
 
 	it('plays re-rolls before the final target', () => {

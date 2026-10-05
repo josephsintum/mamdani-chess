@@ -29,7 +29,7 @@ export interface View {
 	you: Color | 'spectator';
 	board: string[]; // 64 entries, index 0 = a1; "" or "wP", "bQ", ...
 	mamdani: string; // "" once it has fallen
-	potholes: { sq: string; by: Color }[];
+	potholes: { sq: string; by: Color; left: number }[]; // left: the roller's moves until it closes (1 to 3)
 	turn: Color;
 	check: boolean;
 	legal: MoveJSON[];
@@ -183,8 +183,7 @@ export function pieceName(code = ''): string {
 const rerollReasons: Record<string, string> = {
 	king: 'kings never fall',
 	pothole: 'already a pothole',
-	exposes: 'would expose the roller’s king',
-	checkmate: 'would decide the game'
+	exposes: 'would expose the roller’s king'
 };
 
 /** One plain-English line per turn event. */
