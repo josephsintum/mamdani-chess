@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -22,12 +21,9 @@ func startSSE(w http.ResponseWriter) (http.Flusher, bool) {
 	return fl, true
 }
 
-// writeEvent writes one SSE event with a JSON payload and flushes it.
-func writeEvent(w http.ResponseWriter, fl http.Flusher, event string, v any) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
+// writeEvent writes one SSE event whose data is already-encoded JSON, and
+// flushes it.
+func writeEvent(w http.ResponseWriter, fl http.Flusher, event string, data []byte) error {
 	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data); err != nil {
 		return err
 	}
