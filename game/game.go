@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"slices"
+	"time"
 
 	"mamdani-chess/rules"
 )
@@ -35,6 +36,7 @@ const Resignation rules.Reason = "resignation"
 type Game struct {
 	code   string
 	dice   rules.Dice
+	idle   time.Duration
 	calls  chan call
 	done   chan struct{} // closed when the game stops
 	onExit func()        // tells the hub to forget the game
@@ -63,12 +65,14 @@ type call struct {
 	reply chan error
 }
 
-// newGame starts a game with White's seat taken by creator. onExit runs
-// when the game stops.
-func newGame(code, creator string, dice rules.Dice, onExit func()) *Game {
+// newGame starts a game with White's seat taken by creator. After idle with
+// no calls, the game stops if it is over or nobody is watching; onExit runs
+// when it stops.
+func newGame(code, creator string, dice rules.Dice, idle time.Duration, onExit func()) *Game {
 	g := &Game{
 		code:   code,
 		dice:   dice,
+		idle:   idle,
 		calls:  make(chan call),
 		done:   make(chan struct{}),
 		onExit: onExit,
@@ -81,17 +85,29 @@ func newGame(code, creator string, dice rules.Dice, onExit func()) *Game {
 }
 
 func (g *Game) loop() {
+	idle := time.NewTimer(g.idle)
+	defer idle.Stop()
 	for {
-		c := <-g.calls
-		if err := g.run(c.f); err != nil {
-			// A panic may have left the game half-updated (the position
-			// moved but the log didn't, say), so the game can't go on.
-			// Stop before replying, so the caller never sees it listed.
-			g.stop()
-			c.reply <- err
-			return
+		select {
+		case c := <-g.calls:
+			if err := g.run(c.f); err != nil {
+				// A panic may have left the game half-updated (the position
+				// moved but the log didn't, say), so the game can't go on.
+				// Stop before replying, so the caller never sees it listed.
+				g.stop()
+				c.reply <- err
+				return
+			}
+			c.reply <- nil
+			idle.Reset(g.idle)
+		case <-idle.C:
+			if g.g.Result.Over || len(g.subs) == 0 {
+				slog.Info("evicting idle game", "code", g.code)
+				g.stop()
+				return
+			}
+			idle.Reset(g.idle)
 		}
-		c.reply <- nil
 	}
 }
 

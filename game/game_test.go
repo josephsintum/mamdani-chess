@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"mamdani-chess/rules"
@@ -303,4 +304,58 @@ func TestResignAfterMateIsRefused(t *testing.T) {
 	if err := g.Resign("alice"); !errors.Is(err, ErrGameOver) {
 		t.Errorf("resign after checkmate: %v, want ErrGameOver", err)
 	}
+}
+
+func TestFinishedGameIsEvictedAfterAQuietDay(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHub(odd{})
+		g := h.Create("alice")
+		b := join(t, g, "bob") // still watching: a finished game goes anyway
+		if err := g.Resign("alice"); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(DefaultIdle + time.Minute)
+		synctest.Wait()
+		if _, ok := h.Get(g.Code()); ok {
+			t.Fatal("finished game still listed after a quiet day")
+		}
+		waitClosed(t, b)
+	})
+}
+
+func TestUnwatchedGameIsEvictedAfterAQuietDay(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHub(odd{})
+		g := h.Create("alice") // nobody ever opens the link
+		time.Sleep(DefaultIdle + time.Minute)
+		synctest.Wait()
+		if _, ok := h.Get(g.Code()); ok {
+			t.Fatal("unwatched game still listed after a quiet day")
+		}
+		if _, err := g.Join("alice"); !errors.Is(err, ErrGone) {
+			t.Errorf("join after eviction: got %v, want ErrGone", err)
+		}
+	})
+}
+
+func TestWatchedGameInProgressIsKept(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHub(odd{})
+		g := h.Create("alice")
+		a, b := join(t, g, "alice"), join(t, g, "bob")
+		time.Sleep(3 * DefaultIdle)
+		synctest.Wait()
+		if _, ok := h.Get(g.Code()); !ok {
+			t.Fatal("a game with both players watching was evicted")
+		}
+		// Once both leave it is unwatched, and goes after another quiet
+		// day. (synctest also needs the game's goroutine gone by the end.)
+		g.Leave(a)
+		g.Leave(b)
+		time.Sleep(DefaultIdle + time.Minute)
+		synctest.Wait()
+		if _, ok := h.Get(g.Code()); ok {
+			t.Fatal("game still listed a quiet day after everyone left")
+		}
+	})
 }
