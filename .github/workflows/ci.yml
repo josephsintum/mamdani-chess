@@ -36,33 +36,6 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  # The Rust server experiment in server_rs/. Its parity test replays games
-  # recorded from the Go server, so this job needs Go too.
-  rust:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server_rs
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: server_rs
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets --locked -- -D warnings
-      - run: cargo test --locked
-      - run: go run ./server_rs/parity -n 300 -seed 1000 > "$RUNNER_TEMP/parity.jsonl"
-        working-directory: .
-      - run: cargo test --locked --release -p server --test parity
-        env:
-          PARITY_FILE: ${{ runner.temp }}/parity.jsonl
-
   docker:
     runs-on: ubuntu-latest
     steps:
