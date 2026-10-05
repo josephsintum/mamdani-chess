@@ -2,7 +2,7 @@
 	import { blockedSquares, squareIndex, type Stage } from './board.ts';
 	import { squareName, type MoveJSON } from './game.ts';
 	import { reducedMotion } from './motion.ts';
-	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
+	import { moveDuration, pieceName, reconcile, type PieceRef } from './pieces.ts';
 
 	let {
 		stage,
@@ -34,7 +34,6 @@
 		{ promo: 'b', kind: 'B', name: 'Bishop' },
 		{ promo: 'n', kind: 'N', name: 'Knight' }
 	];
-	const names: Record<string, string> = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight', P: 'pawn' };
 
 	let selected = $state<string | null>(null);
 	let promoting = $state<{ from: string; to: string } | null>(null);
@@ -105,8 +104,7 @@
 	function label(sq: string): string {
 		const piece = pieceAt(sq);
 		let text = sq;
-		if (piece === 'M') text += ', the Mamdani';
-		else if (piece) text += `, ${piece[0] === 'w' ? 'white' : 'black'} ${names[piece[1]]}`;
+		if (piece) text += `, ${pieceName(piece)}`;
 		if (stage.potholes.some((h) => h.sq === sq)) text += ', pothole';
 		return text;
 	}
@@ -207,6 +205,12 @@
 		if (e.key === 'Escape') promoting = null;
 	}
 
+	// Focus the first choice when the picker opens, so Escape and the arrow
+	// keys work at once, without tabbing in.
+	function focusFirst(node: HTMLElement) {
+		node.querySelector('button')?.focus();
+	}
+
 	// Transitions. Each one collapses to nothing under reduced motion.
 	const ms = (n: number) => (reducedMotion() ? 0 : n);
 
@@ -293,7 +297,7 @@
 	</div>
 
 	{#if pending}
-		<div class="promote" role="dialog" aria-label="Promote to" tabindex="-1" onkeydown={promoKey}>
+		<div class="promote" role="dialog" aria-label="Promote to" tabindex="-1" onkeydown={promoKey} {@attach focusFirst}>
 			{#each promoOptions as option (option.promo)}
 				<button aria-label={option.name} onclick={() => promote(option.promo)}>
 					<img src="/pieces/{pieceAt(pending.from)[0]}{option.kind}.svg" alt="" draggable="false" />
@@ -521,6 +525,7 @@
 		font: inherit;
 	}
 	@media (prefers-reduced-motion: reduce) {
+		.board.dim,
 		.piece-slot,
 		.piece,
 		.square::after {

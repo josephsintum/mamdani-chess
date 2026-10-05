@@ -9,8 +9,8 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
-	import { stageAt } from '#lib/board.ts';
-	import { applyMove } from '#lib/pieces.ts';
+	import { checkSquare, stageAt } from '#lib/board.ts';
+	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { createGame, reasons, resign, sendMove, type Color, type MoveJSON, type View } from '#lib/game.ts';
 
 	const code = page.params.code ?? '';
@@ -35,7 +35,7 @@
 
 	function receive(next: View) {
 		error = '';
-		optimistic = null;
+		if (settlesGuess(optimistic, next)) optimistic = null;
 		anim.receive(next, { hidden: document.hidden });
 	}
 
@@ -72,11 +72,7 @@
 		if (optimistic?.seq !== view.seq) return base;
 		return { ...base, ...applyMove(base, optimistic.move) };
 	});
-	let checkSquare = $derived.by(() => {
-		if (!view?.check || !stage || animating) return '';
-		const i = stage.board.indexOf(view.turn === 'white' ? 'wK' : 'bK');
-		return i < 0 ? '' : 'abcdefgh'[i % 8] + (Math.floor(i / 8) + 1);
-	});
+	let checked = $derived(view && stage ? checkSquare(view, stage, { animating, guessing: optimistic?.seq === view.seq }) : '');
 	let savedSquare = $derived(view?.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '');
 	let you = $derived(view?.you ?? 'spectator');
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
@@ -215,7 +211,7 @@
 						flipped={bottom === 'black'}
 						interactive={!animating && !busy && !optimistic && playing}
 						dim={!!resultCard}
-						check={checkSquare}
+						check={checked}
 						saved={savedSquare}
 						onmove={move}
 					/>

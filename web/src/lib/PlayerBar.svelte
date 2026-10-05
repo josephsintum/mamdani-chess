@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Color } from './game.ts';
+	import { pieceName } from './pieces.ts';
 
 	let { color, you, lost, toMove }: { color: Color; you: boolean; lost: string[]; toMove: boolean } = $props();
 </script>
@@ -10,7 +11,7 @@
 		<span class="name">{color === 'white' ? 'White' : 'Black'}{#if you}<span class="you">(you)</span>{/if}</span>
 		<span class="lost">
 			Lost to potholes:
-			{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={p} />{/each}</span>{/if}
+			{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} />{/each}</span>{/if}
 		</span>
 	</span>
 	{#if toMove}<span class="turn">To move</span>{/if}

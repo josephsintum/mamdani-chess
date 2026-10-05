@@ -14,12 +14,14 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"test": "vitest run"
+		"test": "vitest run",
+		"playtest": "node scripts/playtest.js"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^4.0.0",
 		"@sveltejs/kit": "^3.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
+		"playwright": "^1.63.0",
 		"svelte": "^5.57.1",
 		"svelte-check": "^4.7.6",
 		"typescript": "^6.0.3",

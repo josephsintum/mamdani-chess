@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { squareIndex } from './board.ts';
-import { applyMove, moveDuration, reconcile, type PieceRef } from './pieces.ts';
+import { applyMove, moveDuration, pieceName, reconcile, settlesGuess, type PieceRef } from './pieces.ts';
 
 /** A board with the given pieces, e.g. { e1: 'wK' }. */
 function boardOf(pieces: Record<string, string>): string[] {
@@ -100,5 +100,29 @@ describe('reconcile', () => {
 		const before = start({ e1: 'wK' });
 		const after = reconcile(before, boardOf({ e1: 'wK', d4: 'bQ' }), '', id);
 		expect(new Set(after.map((p) => p.id)).size).toBe(2);
+	});
+});
+
+describe('settlesGuess', () => {
+	const guess = { seq: 7, move: { from: 'e2', to: 'e4' } };
+
+	it('keeps your instant move through an update that is not a new turn (clocks, reactions)', () => {
+		expect(settlesGuess(guess, { seq: 7 })).toBe(false);
+	});
+
+	it('drops it once the server moves on to a new turn', () => {
+		expect(settlesGuess(guess, { seq: 8 })).toBe(true);
+	});
+
+	it('has nothing to settle without a guess', () => {
+		expect(settlesGuess(null, { seq: 8 })).toBe(true);
+	});
+});
+
+describe('pieceName', () => {
+	it('names a piece for screen readers', () => {
+		expect(pieceName('bN')).toBe('black knight');
+		expect(pieceName('wQ')).toBe('white queen');
+		expect(pieceName('M')).toBe('the Mamdani');
 	});
 });

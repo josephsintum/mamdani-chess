@@ -13,6 +13,14 @@ export interface PieceRef {
 
 const files = 'abcdefgh';
 
+const kinds: Record<string, string> = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight', P: 'pawn' };
+
+/** A piece's name for screen readers: "black knight", or "the Mamdani". */
+export function pieceName(code: string): string {
+	if (code === 'M') return 'the Mamdani';
+	return `${code[0] === 'w' ? 'white' : 'black'} ${kinds[code[1]]}`;
+}
+
 function squareName(index: number): string {
 	return files[index % 8] + (Math.floor(index / 8) + 1);
 }
@@ -55,6 +63,15 @@ export function applyMove(state: { board: string[]; mamdani: string }, move: Mov
 		board[squareIndex(rookFrom)] = '';
 	}
 	return { board, mamdani: state.mamdani };
+}
+
+/**
+ * Whether a view from the server settles your instant move (the guess made
+ * at seq). Only a new turn does: an update for the same turn (a clock, a
+ * reaction) keeps the guess, or the piece would glide back and forth.
+ */
+export function settlesGuess(guess: { seq: number } | null, next: { seq: number }): boolean {
+	return guess === null || next.seq !== guess.seq;
 }
 
 /**

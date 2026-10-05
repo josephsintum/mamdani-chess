@@ -72,6 +72,17 @@ export function firstDiceStep(last: EventJSON[]): number {
 	return i < 0 ? last.length : i;
 }
 
+/**
+ * The square of the king in check, to glow, or "". It waits while the dice
+ * play out, and while your own move is in flight: until the server answers,
+ * view.check still describes the position before it.
+ */
+export function checkSquare(view: View, stage: Stage, { animating, guessing }: { animating: boolean; guessing: boolean }): string {
+	if (!view.check || animating || guessing) return '';
+	const i = stage.board.indexOf(view.turn === 'white' ? 'wK' : 'bK');
+	return i < 0 ? '' : 'abcdefgh'[i % 8] + (Math.floor(i / 8) + 1);
+}
+
 export interface Stage {
 	board: string[];
 	potholes: View['potholes'];
