@@ -83,7 +83,7 @@ func (s *Server) gameMove(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad move"})
 		return
 	}
-	writeGameResult(w, g.Move(guest, m, req.Seq))
+	writeGameResult(w, g, guest, g.Move(guest, m, req.Seq))
 }
 
 // gameResign ends the game; the caller's opponent wins.
@@ -94,12 +94,13 @@ func (s *Server) gameResign(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 		return
 	}
-	writeGameResult(w, g.Resign(guest))
+	writeGameResult(w, g, guest, g.Resign(guest))
 }
 
 // writeGameResult maps the outcome of a move or resignation to a response.
-// Success is 204: the new state arrives on the stream.
-func writeGameResult(w http.ResponseWriter, err error) {
+// Success is 204: the new state arrives on the stream. A conflict carries
+// the caller's current view, so the client can resync at once.
+func writeGameResult(w http.ResponseWriter, g *game.Game, guest string, err error) {
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
@@ -110,6 +111,10 @@ func writeGameResult(w http.ResponseWriter, err error) {
 	case errors.Is(err, rules.ErrBadDie), errors.Is(err, game.ErrInternal):
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	default:
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		body := map[string]any{"error": err.Error()}
+		if v, verr := g.View(guest); verr == nil {
+			body["state"] = v
+		}
+		writeJSON(w, http.StatusConflict, body)
 	}
 }

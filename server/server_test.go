@@ -343,3 +343,21 @@ func TestCrashedGameClosesStreamsAndIsGone(t *testing.T) {
 		t.Errorf("after the crash: %d %s, want 404", status, body)
 	}
 }
+
+func TestConflictCarriesTheCallersState(t *testing.T) {
+	_, ts := newTestServer(t)
+	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
+	code := alice.create()
+	bob.stream(code).state()
+	status, body := bob.post("/api/games/"+code+"/move", `{"from":"e7","to":"e5","seq":0}`)
+	var out struct {
+		Error string
+		State *game.View
+	}
+	if status != http.StatusConflict || json.Unmarshal([]byte(body), &out) != nil {
+		t.Fatalf("got %d %s, want a 409", status, body)
+	}
+	if out.Error != "not your turn" || out.State == nil || out.State.You != "black" || out.State.Seq != 0 {
+		t.Errorf("error %q state %+v", out.Error, out.State)
+	}
+}
