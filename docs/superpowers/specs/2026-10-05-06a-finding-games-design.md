@@ -10,7 +10,7 @@ Let people find a game without being sent a link: guest names, a real home page,
 
 **Done when:** two strangers find each other through quick match. Concretely: two browsers that have never met tap Play online, land in the same game, and see each other's names; a third browser sees that game under Live now and can watch it.
 
-Milestone 06 is split. This spec is **06a**. **06b** (a live watcher count over SSE, and emoji reactions) gets its own spec and plan after 06a ships.
+Milestone 06 is split. This spec is **06a**. **06b** (a live watcher count over SSE, and emoji reactions) gets its own spec and plan later: on 2026-10-05 it moved to milestone 10, after the launch.
 
 ## Decisions
 

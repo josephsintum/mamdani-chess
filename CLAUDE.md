@@ -33,7 +33,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Next step
 
-Milestone 06b (watching together: a live watcher count and emoji reactions), then 07 (launch). Brainstorm 06b first; player history waits for milestone 08. Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Milestone 07 (launch). Brainstorm it first; player history waits for milestone 08. 06b (watcher count and emoji reactions) moved to milestone 10, after 09 and before the security and UX reviews (11, 12). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
