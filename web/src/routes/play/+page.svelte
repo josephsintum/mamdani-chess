@@ -19,24 +19,40 @@
 
 	onMount(() => {
 		started = Date.now();
-		const es = new EventSource('/api/match');
-		es.addEventListener('queued', () => {
-			connected = true;
-			// Joining the queue gave the guest a name if they had none.
-			myName()
-				.then((n) => (name = n))
-				.catch(() => {});
-		});
-		es.addEventListener('matched', (e) => {
-			es.close(); // before the server ends the stream, so it isn't reopened
-			const { code } = JSON.parse((e as MessageEvent<string>).data);
-			goto(`/game/${code}`, { replace: true });
-		});
-		// EventSource reconnects by itself; the elapsed time keeps counting.
-		es.onerror = () => (connected = false);
+		let es: EventSource | undefined;
+		let retry: ReturnType<typeof setTimeout> | undefined;
+		let done = false; // matched, or the page has gone: open nothing more
+		const connect = () => {
+			if (done) return;
+			const stream = new EventSource('/api/match');
+			es = stream;
+			stream.addEventListener('queued', () => {
+				connected = true;
+				// Joining the queue gave the guest a name if they had none.
+				myName()
+					.then((n) => (name = n))
+					.catch(() => {});
+			});
+			stream.addEventListener('matched', (e) => {
+				done = true;
+				stream.close(); // before the server ends the stream, so it isn't reopened
+				const { code } = JSON.parse((e as MessageEvent<string>).data);
+				goto(`/game/${code}`, { replace: true });
+			});
+			// A network error reconnects by itself. An error answer (a proxy's
+			// 502 while the server restarts) closes the stream for good: open a
+			// new one. The elapsed time keeps counting either way.
+			stream.onerror = () => {
+				connected = false;
+				if (stream.readyState === EventSource.CLOSED) retry = setTimeout(connect, 2000);
+			};
+		};
+		connect();
 		const tick = setInterval(() => (now = Date.now()), 250);
 		return () => {
-			es.close();
+			done = true;
+			clearTimeout(retry);
+			es?.close();
 			clearInterval(tick);
 		};
 	});

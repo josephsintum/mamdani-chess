@@ -44,7 +44,9 @@
 <style>
 	.mini {
 		display: grid;
-		grid-template-columns: repeat(8, 1fr);
+		/* Fixed tracks: rows sized by their pieces would squash empty ranks. */
+		grid-template-columns: repeat(8, minmax(0, 1fr));
+		grid-template-rows: repeat(8, minmax(0, 1fr));
 		width: 100%;
 		aspect-ratio: 1;
 		border-radius: 6px;

@@ -45,9 +45,13 @@ export async function liveGames(): Promise<LiveGames> {
 /** Game codes use these characters: no lookalikes (0 O 1 I L). See game/dice.go. */
 export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
-/** What a typed code becomes: upper case, only code characters, at most 6. */
+/**
+ * What a typed or pasted code becomes: upper case, only code characters, at
+ * most 6. A pasted game link ("https://…/game/K7F3QZ") gives its code.
+ */
 export function normalizeCode(input: string): string {
-	return [...input.toUpperCase()]
+	const link = input.match(/\/game\/([^/?#\s]*)/i);
+	return [...(link ? link[1] : input).toUpperCase()]
 		.filter((c) => CODE_ALPHABET.includes(c))
 		.join('')
 		.slice(0, 6);

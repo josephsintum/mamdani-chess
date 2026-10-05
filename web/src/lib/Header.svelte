@@ -94,6 +94,8 @@
 		flex-shrink: 0;
 	}
 	.title {
+		overflow: hidden;
+		text-overflow: ellipsis;
 		font-family: var(--font-display);
 		font-weight: 800;
 		font-size: 26px;
@@ -181,12 +183,20 @@
 		clip-path: inset(50%);
 		white-space: nowrap;
 	}
-	/* Phones: no edition tag, and a long name ends in an ellipsis. */
+	/* Phones (canvas "Home (phone)"): a smaller mark, no edition tag, and the
+	   name as its initials; screen readers still hear the whole name. */
 	@media (max-width: 639px) {
 		.inner {
 			height: 60px;
 			padding: 0 16px;
 			gap: 8px;
+		}
+		.brand {
+			gap: 8px;
+		}
+		.brand svg {
+			width: 24px;
+			height: 24px;
 		}
 		.title {
 			font-size: 22px;
@@ -195,14 +205,15 @@
 			display: none;
 		}
 		.me {
+			flex-shrink: 0;
 			gap: 6px;
 		}
-		.badge {
-			display: none;
-		}
 		.name {
-			max-width: 13ch;
-			font-size: 14px;
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
 		}
 	}
 </style>

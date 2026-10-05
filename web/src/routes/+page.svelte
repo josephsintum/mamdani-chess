@@ -96,7 +96,6 @@
 						id="join-code"
 						type="text"
 						placeholder="K7F3QZ"
-						maxlength="6"
 						autocomplete="off"
 						autocapitalize="characters"
 						spellcheck="false"
