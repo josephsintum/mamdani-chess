@@ -1,6 +1,7 @@
 package game
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -36,6 +37,8 @@ type View struct {
 	Stats    StatsJSON   `json:"stats"`
 	Result   *ResultJSON `json:"result"`
 	Seq      int         `json:"seq"` // turns played; a move must quote it
+
+	data []byte // the encoded view, set once before it is shared (see JSON)
 }
 
 // Pothole is an open pothole and the color that rolled it.
@@ -205,4 +208,15 @@ func describe(events []rules.Event) string {
 		}
 	}
 	return strings.Join(parts, " · ")
+}
+
+// JSON returns v encoded as JSON. A view sent on streams was encoded once,
+// by the game, before it was shared, so every stream in a role writes the
+// same bytes instead of encoding the view again.
+func (v *View) JSON() []byte {
+	if v.data != nil {
+		return v.data
+	}
+	b, _ := json.Marshal(v) // a View is plain data: it always encodes
+	return b
 }

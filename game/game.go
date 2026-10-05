@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
-	"slices"
 	"time"
 
 	"mamdani-chess/rules"
@@ -167,7 +166,7 @@ func (g *Game) Join(guest string) (*Sub, error) {
 			return
 		}
 		g.subs[sub] = struct{}{}
-		send(sub, g.viewFor(g.roleOf(guest)))
+		send(sub, sealed(g.viewFor(g.roleOf(guest))))
 	})
 	if err != nil {
 		return nil, err
@@ -203,14 +202,13 @@ func (g *Game) move(guest string, m rules.Move, seq int) error {
 		return ErrNotYourTurn
 	case seq != len(g.g.Turns):
 		return ErrStale
-	case !slices.Contains(g.g.Pos.LegalMoves(), m):
-		return ErrIllegalMove
 	}
-	san := g.g.Pos.SAN(m) // before the move: SAN reads the old position
-	ev, err := g.g.Play(m, g.dice)
+	before := g.g.Pos              // SAN reads the position the move was made in
+	ev, err := g.g.Play(m, g.dice) // an illegal move is refused here, unchanged
 	if err != nil {
 		return err
 	}
+	san := before.SAN(m)
 	g.last = ev
 	g.log = append(g.log, LogEntry{SAN: san, Color: colorName(color), Dice: describe(ev)})
 	g.tally(ev)
@@ -305,10 +303,16 @@ func (g *Game) broadcast() {
 	for sub := range g.subs {
 		r := g.roleOf(sub.guest)
 		if views[r] == nil {
-			views[r] = g.viewFor(r)
+			views[r] = sealed(g.viewFor(r))
 		}
 		send(sub, views[r])
 	}
+}
+
+// sealed encodes v for the streams it is about to be shared with.
+func sealed(v *View) *View {
+	v.data = v.JSON()
+	return v
 }
 
 // View returns guest's current view of the game.

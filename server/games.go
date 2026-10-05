@@ -48,7 +48,7 @@ func (s *Server) gameStream(w http.ResponseWriter, r *http.Request) {
 			if !open { // the game stopped
 				return
 			}
-			if writeEvent(w, fl, "state", v) != nil {
+			if writeEvent(w, fl, "state", v.JSON()) != nil {
 				return
 			}
 		case <-ticker.C:

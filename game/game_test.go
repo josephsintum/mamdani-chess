@@ -1,6 +1,7 @@
 package game
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -392,4 +393,52 @@ func TestViewIsTheCallersRole(t *testing.T) {
 			t.Errorf("%s: view %+v err %v, want you=%s", guest, v, err, want)
 		}
 	}
+}
+
+func TestIllegalMoveChangesNothing(t *testing.T) {
+	g := NewHub(odd{}).Create("alice")
+	a := join(t, g, "alice")
+	join(t, g, "bob")
+	recv(t, a)
+	if err := g.Move("alice", mv(t, "e2e5"), 0); !errors.Is(err, ErrIllegalMove) {
+		t.Fatalf("got %v, want ErrIllegalMove", err)
+	}
+	select {
+	case v := <-a.C:
+		t.Fatalf("an illegal move broadcast a view: seq %d", v.Seq)
+	case <-time.After(50 * time.Millisecond):
+	}
+	v, err := g.View("alice")
+	if err != nil || v.Seq != 0 || len(v.Log) != 0 || v.Board[12] != "wP" {
+		t.Errorf("after an illegal move: seq %d log %v e2 %q err %v", v.Seq, v.Log, v.Board[12], err)
+	}
+}
+
+func TestStreamsInOneRoleShareOneEncoding(t *testing.T) {
+	g := NewHub(odd{}).Create("alice")
+	join(t, g, "bob")
+	c1, c2 := join(t, g, "carol"), join(t, g, "dave")
+	recv(t, c1)
+	recv(t, c2)
+	if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
+		t.Fatal(err)
+	}
+	e1, e2 := recv(t, c1).JSON(), recv(t, c2).JSON()
+	if len(e1) == 0 || &e1[0] != &e2[0] {
+		t.Error("each spectator's view was encoded separately")
+	}
+	want, err := json.Marshal(recvView(t, g, "carol"))
+	if err != nil || string(e1) != string(want) {
+		t.Errorf("encoded view differs from json.Marshal:\n got %s\nwant %s", e1, want)
+	}
+}
+
+// recvView is guest's current view, built fresh (not the shared one).
+func recvView(t *testing.T, g *Game, guest string) *View {
+	t.Helper()
+	v, err := g.View(guest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
 }
