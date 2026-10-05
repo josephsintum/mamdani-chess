@@ -112,6 +112,7 @@ func (h *Hub) create(sg store.Game) (*Game, error) {
 		g.startCounting(now)
 	}
 	slog.Info("game created", "code", sg.Code, "white", guestTag(sg.White), "rematch_of", sg.RematchOf)
+	g.publish() // listed as soon as Create returns
 	go g.loop()
 	return g, nil
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"sync/atomic"
 	"time"
 
 	"mamdani-chess/names"
@@ -37,14 +38,18 @@ const Resignation rules.Reason = "resignation"
 
 // Game is one live game.
 type Game struct {
-	code   string
-	hub    *Hub // creates rematches
-	dice   rules.Dice
-	store  Store
-	idle   time.Duration
-	calls  chan call
-	done   chan struct{} // closed when the game stops
-	onExit func()        // tells the hub to forget the game
+	code    string
+	hub     *Hub // creates rematches
+	dice    rules.Dice
+	store   Store
+	idle    time.Duration
+	calls   chan call
+	done    chan struct{} // closed when the game stops
+	onExit  func()        // tells the hub to forget the game
+	created time.Time     // orders the live games list
+	// live is the game as the live games list shows it, replaced after
+	// every call so the hub can list games without asking each one.
+	live atomic.Pointer[Live]
 
 	// Owned by the loop goroutine.
 	g       *rules.Game
@@ -82,19 +87,20 @@ type call struct {
 // watching; onExit runs when it stops.
 func newGame(h *Hub, sg store.Game, onExit func()) *Game {
 	return &Game{
-		code:   sg.Code,
-		hub:    h,
-		dice:   h.dice,
-		store:  h.store,
-		idle:   h.Idle,
-		calls:  make(chan call),
-		done:   make(chan struct{}),
-		onExit: onExit,
-		g:      rules.NewGame(),
-		seats:  [2]string{sg.White, sg.Black},
-		names:  [2]string{sg.WhiteName, sg.BlackName},
-		subs:   map[*Sub]struct{}{},
-		clock:  newClock(),
+		code:    sg.Code,
+		hub:     h,
+		dice:    h.dice,
+		store:   h.store,
+		idle:    h.Idle,
+		calls:   make(chan call),
+		done:    make(chan struct{}),
+		onExit:  onExit,
+		created: sg.CreatedAt,
+		g:       rules.NewGame(),
+		seats:   [2]string{sg.White, sg.Black},
+		names:   [2]string{sg.WhiteName, sg.BlackName},
+		subs:    map[*Sub]struct{}{},
+		clock:   newClock(),
 	}
 }
 
@@ -126,6 +132,7 @@ func (g *Game) loop() {
 				c.reply <- err
 				return
 			}
+			g.publish() // before the reply, so the caller's next List sees it
 			c.reply <- nil
 			idle.Reset(g.idle)
 			arm()
@@ -135,6 +142,7 @@ func (g *Game) loop() {
 				return
 			}
 			arm()
+			g.publish()
 		case <-idle.C:
 			if g.g.Result.Over || len(g.subs) == 0 {
 				if !g.g.Result.Over { // still waiting for Black: nobody came
