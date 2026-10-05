@@ -44,7 +44,7 @@ func (h *Hub) restore(sg store.SavedGame, now time.Time) error {
 	if h.games[sg.Code] != nil {
 		return fmt.Errorf("already running")
 	}
-	g := newGame(h, sg.Code, [2]string{sg.White, sg.Black}, nil)
+	g := newGame(h, sg.Game, nil)
 	for _, t := range sg.Turns {
 		if err := g.replay(t); err != nil {
 			return fmt.Errorf("ply %d (%s): %w", t.Ply, t.Move, err)

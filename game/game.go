@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"mamdani-chess/names"
 	"mamdani-chess/rules"
 	"mamdani-chess/store"
 )
@@ -48,6 +49,7 @@ type Game struct {
 	// Owned by the loop goroutine.
 	g       *rules.Game
 	seats   [2]string // guest ID per color; "" while empty
+	names   [2]string // each player's name when they sat down; "" if unknown
 	subs    map[*Sub]struct{}
 	last    []rules.Event
 	log     []LogEntry
@@ -74,13 +76,13 @@ type call struct {
 	reply chan error
 }
 
-// newGame returns a game with the given seats, not yet running: the caller
-// starts it with go g.loop() once its state is set. After idle with no
-// calls, the game stops if it is over or nobody is watching; onExit runs
-// when it stops.
-func newGame(h *Hub, code string, seats [2]string, onExit func()) *Game {
+// newGame returns the game sg describes (code, seats, names), not yet
+// running: the caller starts it with go g.loop() once its state is set.
+// After idle with no calls, the game stops if it is over or nobody is
+// watching; onExit runs when it stops.
+func newGame(h *Hub, sg store.Game, onExit func()) *Game {
 	return &Game{
-		code:   code,
+		code:   sg.Code,
 		hub:    h,
 		dice:   h.dice,
 		store:  h.store,
@@ -89,7 +91,8 @@ func newGame(h *Hub, code string, seats [2]string, onExit func()) *Game {
 		done:   make(chan struct{}),
 		onExit: onExit,
 		g:      rules.NewGame(),
-		seats:  seats,
+		seats:  [2]string{sg.White, sg.Black},
+		names:  [2]string{sg.WhiteName, sg.BlackName},
 		subs:   map[*Sub]struct{}{},
 		clock:  newClock(),
 	}
@@ -232,11 +235,19 @@ func (g *Game) Join(guest string) (*Sub, error) {
 	sub := &Sub{C: ch, ch: ch, guest: guest}
 	err := g.do(func() {
 		if g.seats[rules.Black] == "" && guest != g.seats[rules.White] && !g.g.Result.Over {
-			g.save("black", func(ctx context.Context) error { return g.store.SeatBlack(ctx, g.code, guest, "") })
+			var name string
+			g.save("black", func(ctx context.Context) error {
+				var err error
+				if name, err = g.store.EnsureGuest(ctx, guest, names.Random); err != nil {
+					return err
+				}
+				return g.store.SeatBlack(ctx, g.code, guest, name)
+			})
 			if g.failed != nil {
 				return
 			}
 			g.seats[rules.Black] = guest
+			g.names[rules.Black] = name
 			g.startCounting(time.Now()) // White's first-move deadline
 			slog.Info("black joined", "code", g.code, "black", guestTag(guest))
 			g.subs[sub] = struct{}{}
@@ -488,6 +499,7 @@ func (g *Game) viewFor(r role) *View {
 		Seq:      len(g.g.Turns),
 		Clock:    g.clockJSON(now),
 		Online:   OnlineJSON{White: g.connected(rules.White), Black: g.connected(rules.Black)},
+		Players:  PlayersJSON{White: g.names[rules.White], Black: g.names[rules.Black]},
 		Rematch:  g.rematchJSON(),
 	}
 	color, seated := rules.Color(r), r != roleSpectator

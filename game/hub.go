@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"mamdani-chess/names"
 	"mamdani-chess/rules"
 	"mamdani-chess/store"
 )
@@ -43,9 +44,40 @@ func NewHub(dice rules.Dice, st Store) *Hub {
 	return &Hub{dice: dice, store: st, newCode: NewCode, Idle: DefaultIdle, games: map[string]*Game{}, reserved: map[string]bool{}}
 }
 
-// Create starts a game with creator in White's seat.
+// Create starts a friend game with creator in White's seat, giving them a
+// name first if they have none.
 func (h *Hub) Create(creator string) (*Game, error) {
-	return h.create(store.Game{White: creator})
+	name, err := h.name(creator)
+	if err != nil {
+		return nil, err
+	}
+	return h.create(store.Game{White: creator, WhiteName: name})
+}
+
+// CreatePair starts a game between two guests, both seated (quick match),
+// giving each a name first if they have none. White's first-move deadline
+// starts at once.
+func (h *Hub) CreatePair(white, black string) (*Game, error) {
+	whiteName, err := h.name(white)
+	if err != nil {
+		return nil, err
+	}
+	blackName, err := h.name(black)
+	if err != nil {
+		return nil, err
+	}
+	return h.create(store.Game{White: white, WhiteName: whiteName, Black: black, BlackName: blackName})
+}
+
+// name returns the guest's name, creating it if they have none.
+func (h *Hub) name(guest string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	name, err := h.store.EnsureGuest(ctx, guest, names.Random)
+	if err != nil {
+		return "", fmt.Errorf("guest name: %w", err)
+	}
+	return name, nil
 }
 
 // create saves and starts a game with sg's seats under a fresh code. A
@@ -74,7 +106,7 @@ func (h *Hub) create(sg store.Game) (*Game, error) {
 	}
 	h.mu.Lock()
 	delete(h.reserved, sg.Code)
-	g := h.add(sg.Code, [2]string{sg.White, sg.Black})
+	g := h.add(sg)
 	h.mu.Unlock()
 	if sg.Black != "" {
 		g.startCounting(now)
@@ -105,13 +137,13 @@ func (h *Hub) unreserve(code string) {
 }
 
 // add puts a new, not yet running game in the hub. The caller holds h.mu.
-func (h *Hub) add(code string, seats [2]string) *Game {
-	g := newGame(h, code, seats, func() {
+func (h *Hub) add(sg store.Game) *Game {
+	g := newGame(h, sg, func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()
-		delete(h.games, code)
+		delete(h.games, sg.Code)
 	})
-	h.games[code] = g
+	h.games[sg.Code] = g
 	return g
 }
 
