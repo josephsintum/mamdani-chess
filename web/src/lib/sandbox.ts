@@ -4,6 +4,7 @@
 // the rules engine: the Go server is the only source of truth for play.
 
 import { squareIndex } from './board.ts';
+import { applyMove } from './pieces.ts';
 import type { Color, EventJSON, MoveJSON, View } from './game.ts';
 
 /** What the dice do on the next turn. */
@@ -218,22 +219,11 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 
 	// The move.
 	ev.push({ kind: 'moved', from: move.from, to: move.to, piece, color: mover, ...(move.promo ? { promo: move.promo } : {}) });
-	if (isMamdani) {
-		v.mamdani = move.to;
-	} else {
+	if (!isMamdani) {
 		const captured = v.board[squareIndex(move.to)];
 		if (captured) ev.push({ kind: 'captured', sq: move.to, piece: captured });
-		v.board[squareIndex(move.from)] = '';
-		v.board[squareIndex(move.to)] = move.promo ? piece[0] + move.promo.toUpperCase() : piece;
-		// Castling moves the rook too.
-		const df = move.to.charCodeAt(0) - move.from.charCodeAt(0);
-		if (piece[1] === 'K' && Math.abs(df) === 2) {
-			const rank = move.from[1];
-			const [rookFrom, rookTo] = df > 0 ? ['h' + rank, 'f' + rank] : ['a' + rank, 'd' + rank];
-			v.board[squareIndex(rookTo)] = v.board[squareIndex(rookFrom)];
-			v.board[squareIndex(rookFrom)] = '';
-		}
 	}
+	Object.assign(v, applyMove(v, move));
 
 	// Close the mover's own pothole, then repair any next to the Mamdani.
 	for (const p of v.potholes.filter((h) => h.by === mover)) ev.push({ kind: 'pothole_closed', sq: p.sq });
