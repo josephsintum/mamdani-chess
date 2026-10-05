@@ -250,7 +250,7 @@ func TestStaticAndFallback(t *testing.T) {
 		{"/_app/immutable/app.js", "console.log(1)", "public, max-age=31536000, immutable", 200},
 		{"/_app/immutable/gone.js", "404 page not found", "no-cache", 404},
 		{"/api/nope", `{"error":"not found"}`, "", 404},
-		{"/healthz", `{"status":"ok"}`, "", 200},
+		{"/healthz", `"status":"ok"`, "", 200},
 	}
 	for _, c := range cases {
 		resp, err := http.Get(ts.URL + c.path)

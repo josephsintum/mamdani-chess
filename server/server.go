@@ -23,6 +23,9 @@ type Server struct {
 	mux       *http.ServeMux
 	done      chan struct{} // closed by Close to end SSE streams
 	closeOnce sync.Once
+	// Version is the deployed build (a commit), reported by /healthz so a
+	// deploy can be checked without touching game data. "" reads as "dev".
+	Version string
 }
 
 // New returns a Server for the games in hub that serves the frontend from
@@ -97,7 +100,11 @@ func (r *statusRecorder) Flush() {
 func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	version := s.Version
+	if version == "" {
+		version = "dev"
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": version})
 }
 
 func (s *Server) apiNotFound(w http.ResponseWriter, r *http.Request) {
