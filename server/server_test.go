@@ -2,6 +2,8 @@ package server
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -39,6 +41,8 @@ func newTestServerWith(t *testing.T, dice rules.Dice) (*Server, *httptest.Server
 		"index.html":            {Data: []byte("<!doctype html>app shell")},
 		"_app/immutable/app.js": {Data: []byte("console.log(1)")},
 		"favicon.svg":           {Data: []byte("<svg/>")},
+		"favicon.svg.br":        {Data: []byte("brotli bytes")},
+		"favicon.svg.gz":        {Data: svgGzip},
 	}
 	s := New(st, game.NewHub(dice), assets)
 	ts := httptest.NewServer(s)
@@ -361,5 +365,53 @@ func TestConflictCarriesTheCallersState(t *testing.T) {
 	}
 	if out.Error != "not your turn" || out.State == nil || out.State.You != "black" || out.State.Seq != 0 {
 		t.Errorf("error %q state %+v", out.Error, out.State)
+	}
+}
+
+// svgGzip is "<svg/>" gzipped, the way `precompress` writes favicon.svg.gz.
+// It must be real gzip: Go's default client asks for gzip and unpacks it.
+var svgGzip = func() []byte {
+	var b bytes.Buffer
+	zw := gzip.NewWriter(&b)
+	zw.Write([]byte("<svg/>"))
+	zw.Close()
+	return b.Bytes()
+}()
+
+func get(t *testing.T, url, acceptEncoding string) *http.Response {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	if acceptEncoding != "" {
+		req.Header.Set("Accept-Encoding", acceptEncoding)
+	}
+	// A bare Transport would add gzip itself and hide the header we sent.
+	resp, err := (&http.Transport{DisableCompression: true}).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
+}
+
+func TestPrecompressedFiles(t *testing.T) {
+	_, ts := newTestServer(t)
+	for _, c := range []struct{ accept, wantEncoding, wantBody string }{
+		{"gzip, deflate, br", "br", "brotli bytes"},
+		{"gzip", "gzip", string(svgGzip)},
+		{"GZIP", "gzip", string(svgGzip)},
+		{"br;q=0, gzip", "gzip", string(svgGzip)},
+		{"", "", "<svg/>"},
+	} {
+		resp := get(t, ts.URL+"/favicon.svg", c.accept)
+		body, _ := io.ReadAll(resp.Body)
+		if got := resp.Header.Get("Content-Encoding"); got != c.wantEncoding || string(body) != c.wantBody {
+			t.Errorf("Accept-Encoding %q: encoding %q body %q", c.accept, got, body)
+		}
+		if ct := resp.Header.Get("Content-Type"); ct != "image/svg+xml" {
+			t.Errorf("Accept-Encoding %q: Content-Type %q", c.accept, ct)
+		}
+		if resp.Header.Get("Vary") != "Accept-Encoding" {
+			t.Errorf("Accept-Encoding %q: missing Vary", c.accept)
+		}
 	}
 }
