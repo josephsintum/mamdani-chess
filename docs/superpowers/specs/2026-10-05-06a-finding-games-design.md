@@ -61,7 +61,7 @@ ALTER TABLE games ADD COLUMN black_name TEXT;
 
 | Method | Path | Answer |
 | --- | --- | --- |
-| `GET` | `/api/me` | `{name, changesLeft, changesResetAt}`; `name` is null for a guest without one, and `changesResetAt` (Unix ms) is null while no change is used. Never creates a name. |
+| `GET` | `/api/me` | `{name, changesLeft, changesResetAt, game?}`; `game` is the code of the game the guest is playing right now (from `Hub.Active`), for the Rejoin banner; `name` is null for a guest without one, and `changesResetAt` (Unix ms) is null while no change is used. Never creates a name. |
 | `GET` | `/api/me/names` | `{names: [3], changesLeft, changesResetAt}`. 409 before the guest has played; 429 `{changesResetAt}` when no changes are left. |
 | `POST` | `/api/me/name` | `{name}` must be one of the offers. Answers `{name, changesLeft, changesResetAt}`; 409 for a name not on offer; 429 when no changes are left. |
 
@@ -83,7 +83,8 @@ ALTER TABLE games ADD COLUMN black_name TEXT;
   - `move` is the full-move number; `last` is the latest move's from and to squares, or null.
   - `watching` counts distinct guests with a stream open who aren't seated, so two tabs count once.
 - `Hub.List(max)` takes `mu`, copies the pointers of games whose status is playing, and sorts them: most watched first, then newest by creation time. It never waits on a game's goroutine.
-- `GET /api/games` → `{games: [...], looking: n}`, where `looking` is the number of guests in the quick-match queue.
+- `GET /api/games` → `{games: [...], looking: n}`, where `looking` is the number of *other* guests in the quick-match queue (`Queue.LookingFor`), so you never see yourself counted, say just after cancelling.
+- **Codes are case-insensitive:** `Hub.Get` upper-cases, and the game page shows the upper-case code in the address bar.
 
 ## Quick match
 
@@ -99,6 +100,7 @@ A new package, `match`.
 
 ### `GET /api/match`
 
+- **One game at a time:** a guest seated in a game being played (`Hub.Active`) gets 409 `{code}` instead of a place in line.
 - Calls `EnsureGuest`, then `startSSE` and joins the queue.
 - Events: `queued {looking}` once at the start, `matched {code}`, and the 15 s heartbeat (`writeHeartbeat`).
 - `matched` goes out with an SSE `retry: 3600000`, and then the server ends the stream. Without the long retry, EventSource would reconnect at once and queue the guest again before the page has gone to the game. The page also closes the EventSource as soon as `matched` arrives.
@@ -142,7 +144,16 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 - **Arriving at a game nobody has moved in yet** (a friend's link, or a rematch, which swaps colors), a player gets a toast with their color and opponent: "You joined pizza-rat-astoria · You're Black".
 - After a quick match there's no toast: the opponent-found screen already said it (`page.state.matched`).
 - Spectators, and players reconnecting to a game with moves, get none.
-- `joinNotice` and `matchCard` in `#lib/game.ts` decide the text, unit-tested. Toasts last 4 s, pause on hover and while the tab is hidden, and go on a tap or a swipe.
+- `joinNotice` and `matchCard` in `#lib/game.ts` decide the text, unit-tested.
+- Toasts last 4 s (3 s on phones, where they cover the top player bar). They pause on hover and while the tab is hidden (`pauseWhenPageIsHidden`), and go with their ✕ button or a swipe.
+
+## Getting back to your game
+
+- **Home:** shows "You're in a game · Rejoin" while the guest is seated in a game being played, refreshed with the live list.
+- **`/play`:** first asks `/api/me`.
+  - If the guest is in a game nobody has moved in yet (say they reloaded the opponent-found screen), it goes straight back to it.
+  - If moves have been made, it shows "You're in a game" with Rejoin instead of queueing.
+  - A 409 from `/api/match` leads to the same check.
 - **To check:** svelte-sonner marks its container and each toast `aria-live="polite"`. Nested live regions can make some screen readers read a toast twice. Check with VoiceOver before relying on it for important notices.
 
 ## Testing

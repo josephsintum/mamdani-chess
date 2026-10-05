@@ -31,6 +31,18 @@ export interface Me {
 	name: string | null;
 	changesLeft: number;
 	changesResetAt: number | null;
+	/** The code of the game the caller is playing right now, if any. */
+	game?: string;
+}
+
+/** A refused API call, with its HTTP status (409 stale or taken, 429 none left…). */
+export class ApiError extends Error {
+	constructor(
+		message: string,
+		readonly status: number
+	) {
+		super(message);
+	}
 }
 
 /** Name changes a guest gets in any 24 hours (store.NameChanges on the server). */
@@ -62,7 +74,7 @@ export async function chooseName(name: string): Promise<Me> {
 		body: JSON.stringify({ name })
 	});
 	const body = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error(body.error ?? `could not change your name (${res.status})`);
+	if (!res.ok) throw new ApiError(body.error ?? `could not change your name (${res.status})`, res.status);
 	return body;
 }
 

@@ -21,6 +21,21 @@
 	let busy = $state(false);
 	let elapsed = $derived(now - started);
 	let found = $state<{ code: string; card: ReturnType<typeof matchCard> } | null>(null);
+	// The game the guest is already playing, if any: one game at a time.
+	let already = $state('');
+
+	// Back to a game the guest is seated in: straight in if nobody has
+	// moved yet (a reload of the opponent-found screen), otherwise ask.
+	async function resume(code: string) {
+		try {
+			const res = await fetch(`/api/games/${code}`);
+			const view = (await res.json()) as View;
+			if (res.ok && view.seq === 0) return play(code);
+		} catch {
+			// fall through to asking
+		}
+		already = code;
+	}
 	let foundTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function play(code: string) {
@@ -47,7 +62,7 @@
 		let retry: ReturnType<typeof setTimeout> | undefined;
 		let done = false; // matched, or the page has gone: open nothing more
 		const connect = () => {
-			if (done) return;
+			if (done || already) return;
 			const stream = new EventSource('/api/match');
 			es = stream;
 			stream.addEventListener('queued', () => {
@@ -68,10 +83,22 @@
 			// new one. The elapsed time keeps counting either way.
 			stream.onerror = () => {
 				connected = false;
-				if (stream.readyState === EventSource.CLOSED) retry = setTimeout(connect, 2000);
+				if (stream.readyState !== EventSource.CLOSED) return;
+				// Refused (409: already in a game) or a proxy error: check which.
+				retry = setTimeout(async () => {
+					const m = await me().catch(() => null);
+					if (m?.game) return resume(m.game);
+					connect();
+				}, 2000);
 			};
 		};
-		connect();
+		me()
+			.then((m) => {
+				user = m;
+				if (m.game) resume(m.game);
+				else connect();
+			})
+			.catch(() => connect());
 		const tick = setInterval(() => (now = Date.now()), 250);
 		return () => {
 			done = true;
@@ -101,7 +128,19 @@
 <Header bind:me={user} />
 
 <main>
-	{#if found}
+	{#if already}
+		<div class="ring done" aria-hidden="true">
+			<span class="outer"></span>
+			<span class="middle"></span>
+			<span class="inner"></span>
+		</div>
+		<div class="text" role="status">
+			<h1>You're in a game</h1>
+			<p>One game at a time: finish that one, then find another.</p>
+		</div>
+		<a class="cancel rejoin" href="/game/{already}">Rejoin game</a>
+		<a class="cancel" href="/">Home</a>
+	{:else if found}
 		<div class="ring done" aria-hidden="true">
 			<span class="outer"></span>
 			<span class="middle"></span>
@@ -352,6 +391,11 @@
 			transform: scaleX(1);
 		}
 	}
+	.rejoin {
+		border-color: var(--accent);
+		background: var(--accent);
+		color: var(--accent-text);
+	}
 	.go {
 		background: transparent;
 		font: inherit;
@@ -366,26 +410,49 @@
 		clip-path: inset(50%);
 		white-space: nowrap;
 	}
+	/* Phones: everything down to Cancel fits on an iPhone SE (320×568). */
 	@media (max-width: 639px) {
 		main {
-			gap: 24px;
-			padding: 32px 16px;
+			gap: 18px;
+			padding: 20px 16px;
 		}
 		.ring {
-			width: 200px;
-			height: 200px;
+			width: 150px;
+			height: 150px;
 		}
 		.middle {
-			inset: 30px;
+			inset: 22px;
 		}
 		.inner {
-			inset: 46px;
+			inset: 36px;
 		}
 		.time {
+			font-size: 26px;
+		}
+		h1 {
 			font-size: 34px;
 		}
+		.text {
+			gap: 8px;
+		}
 		.text p {
-			font-size: 16px;
+			font-size: 15px;
+		}
+		.chips {
+			gap: 6px;
+		}
+		.chips li {
+			padding: 6px 10px;
+			font-size: 12px;
+		}
+		.cancel {
+			height: 48px;
+		}
+		.hint {
+			margin-top: -10px;
+		}
+		.bar {
+			margin-top: -12px;
 		}
 	}
 </style>

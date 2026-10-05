@@ -46,7 +46,7 @@
 	<span class="swatch {color}" aria-hidden="true"></span>
 	<span class="who">
 		<span class="name"
-			><span class="label" title={label}>{label}</span>{#if you}<span class="you">(you)</span>{/if}{#if offline}<span class="offline">{compact ? 'Offline' : 'Disconnected'}</span>{/if}</span
+			><span class="label" title={label}>{label}</span>{#if you}<span class="you" class:sr-only={compact}>(you)</span>{/if}{#if offline}<span class="offline">{compact ? 'Offline' : 'Disconnected'}</span>{/if}</span
 		>
 		{#if compact}
 			{#if lost.length > 0}
@@ -128,6 +128,17 @@
 	.you,
 	.offline {
 		flex-shrink: 0;
+	}
+	/* On a phone your bar is always the bottom one, so "(you)" is for screen
+	   readers only and the name gets the room. */
+	.you.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.you {
 		margin-left: 6px;

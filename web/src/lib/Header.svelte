@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { chooseName, initials, NAME_CHANGES, nameOffers, untilText, type Me } from './lobby.ts';
+	import { ApiError, chooseName, initials, me as fetchMe, NAME_CHANGES, nameOffers, untilText, type Me } from './lobby.ts';
 	import { reducedMotion } from './motion.ts';
 
 	// The site header on the home and quick-match pages: the logo, and the
@@ -12,21 +12,34 @@
 	let open = $state(false);
 	let offers = $state<string[] | null>(null);
 	let busy = $state(false);
+	let choosing = $state<string | null>(null); // the offer being saved
 	let error = $state('');
+	let loadFailed = $state(false); // offers didn't load: show a retry
+	let note = $state(''); // e.g. the offers were out of date
+	let now = $state(Date.now());
 	let announce = $state(''); // read out after a change, not on every load
 	let pill: HTMLDivElement | undefined = $state();
 	let die: HTMLButtonElement | undefined = $state();
 
 	let name = $derived(me?.name ?? null);
 	let left = $derived(me?.changesLeft ?? 0);
-	let wait = $derived(me?.changesResetAt ? untilText(me.changesResetAt, Date.now()) : '');
+	let wait = $derived(me?.changesResetAt ? untilText(me.changesResetAt, now) : 'a moment');
 	let dieLabel = $derived(left > 0 ? `New name (${left} ${left === 1 ? 'change' : 'changes'} left today)` : `New names again in ${wait}`);
 
-	async function toggle() {
-		if (open) return close();
-		open = true;
-		error = '';
+	// What the server says now: another tab may have changed the name, or
+	// the 24 hours may be up.
+	async function refresh() {
+		try {
+			me = await fetchMe();
+		} catch {
+			// keep what's shown
+		}
+		now = Date.now();
+	}
+
+	async function loadOffers() {
 		offers = null;
+		loadFailed = false;
 		if (left === 0) return; // the panel says when names come back
 		try {
 			const o = await nameOffers();
@@ -36,21 +49,41 @@
 				offers = o.names;
 			}
 		} catch {
-			error = 'Could not load new names. Try again.';
+			loadFailed = true;
 		}
+	}
+
+	async function toggle() {
+		if (open) return close();
+		open = true;
+		error = '';
+		note = '';
+		offers = null;
+		await refresh();
+		await loadOffers();
 	}
 
 	async function choose(next: string) {
 		busy = true;
+		choosing = next;
 		error = '';
+		note = '';
 		try {
 			me = await chooseName(next);
 			announce = `Your name is now ${next}`;
 			close();
-		} catch {
-			error = 'Could not change your name. Try again.';
+		} catch (e) {
+			if (e instanceof ApiError && (e.status === 409 || e.status === 429)) {
+				// Another tab changed the name or used the last change.
+				await refresh();
+				await loadOffers();
+				note = left > 0 ? 'That list was out of date. Here are new names.' : '';
+			} else {
+				error = 'Could not change your name. Try again.';
+			}
 		} finally {
 			busy = false;
+			choosing = null;
 		}
 	}
 
@@ -67,10 +100,21 @@
 		if (open && pill && !pill.contains(e.target as Node)) open = false;
 	}
 
+	// Tabbing out of the picker closes it.
+	function onFocusOut(e: FocusEvent) {
+		const to = e.relatedTarget as Node | null;
+		if (open && pill && to && !pill.contains(to)) open = false;
+	}
+
 	const flip = (node: Element) => fly(node, { y: reducedMotion() ? 0 : -10, duration: reducedMotion() ? 0 : 180 });
 </script>
 
 <svelte:window onkeydown={onKey} onpointerdown={onPointer} />
+<svelte:document
+	onvisibilitychange={() => {
+		if (!document.hidden && me?.name) refresh();
+	}}
+/>
 
 <header>
 	<div class="inner">
@@ -85,7 +129,7 @@
 			<span class="edition">Mamdani Edition</span>
 		</a>
 		{#if name}
-			<div class="me" bind:this={pill}>
+			<div class="me" bind:this={pill} onfocusout={onFocusOut}>
 				<span class="badge" aria-hidden="true">{initials(name)}</span>
 				{#key name}
 					<span class="name" title={name} in:flip>{name}</span>
@@ -124,8 +168,9 @@
 							</span>
 						</div>
 						{#if left === 0}
-							<p class="quiet">New names again in {wait}.</p>
+							<p class="quiet">You're {name}. New names again in {wait}.</p>
 						{:else}
+							{#if note}<p class="quiet">{note}</p>{/if}
 							{#if offers}
 								<ul>
 									{#each offers as offer, i (offer)}
@@ -135,14 +180,18 @@
 												class="offer"
 												onclick={() => choose(offer)}
 												disabled={busy}
+												aria-busy={choosing === offer}
 												{@attach (el) => {
 													if (i === 0) el.focus();
-												}}>{offer}</button
+												}}>{choosing === offer ? `Saving ${offer}…` : offer}</button
 											>
 										</li>
 									{/each}
 								</ul>
-							{:else if !error}
+							{:else if loadFailed}
+								<p class="error" role="alert">Could not load new names.</p>
+								<button type="button" class="offer retry" onclick={loadOffers}>Try again</button>
+							{:else}
 								<p class="quiet">Drawing names…</p>
 							{/if}
 							<p class="quiet">Choosing one uses a change.</p>
@@ -366,9 +415,11 @@
 		clip-path: inset(50%);
 		white-space: nowrap;
 	}
-	/* Phones (canvas "Home (phone)"): a smaller mark, no edition tag, and the
-	   name as its initials; screen readers still hear the whole name. */
-	@media (max-width: 639px) {
+	/* Phones and narrow windows (canvas "Home (phone)"): a smaller mark, no
+	   edition tag, and the name as its initials; screen readers still hear the
+	   whole name. Wider than the page's 640 px phone layout, so a long name
+	   never squeezes the logo. */
+	@media (max-width: 799px) {
 		.inner {
 			height: 60px;
 			padding: 0 16px;

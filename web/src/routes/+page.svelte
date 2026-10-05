@@ -25,17 +25,28 @@
 		}
 	}
 
-	onMount(() => {
+	// Your name, changes and any game you're in (the Rejoin banner).
+	function refreshMe() {
 		me()
 			.then((m) => (user = m))
 			.catch(() => {});
+	}
+
+	onMount(() => {
+		refreshMe();
 		refresh();
 		// Every 10 s while the tab is visible, and at once when it comes back.
 		const timer = setInterval(() => {
-			if (!document.hidden) refresh();
+			if (!document.hidden) {
+				refresh();
+				refreshMe();
+			}
 		}, REFRESH_MS);
 		const onVisible = () => {
-			if (!document.hidden) refresh();
+			if (!document.hidden) {
+				refresh();
+				refreshMe();
+			}
 		};
 		document.addEventListener('visibilitychange', onVisible);
 		return () => {
@@ -70,6 +81,13 @@
 <Header bind:me={user} />
 
 <main>
+	{#if user?.game}
+		<a class="rejoin" href="/game/{user.game}">
+			<span class="dot" aria-hidden="true"></span>
+			<span class="rejoin-text"><strong>You're in a game.</strong> Your opponent is waiting.</span>
+			<span class="rejoin-go">Rejoin</span>
+		</a>
+	{/if}
 	<section class="hero">
 		<div class="pitch">
 			<p class="eyebrow">A chess variant · 10+5 · No sign-up</p>
@@ -198,6 +216,33 @@
 		max-width: 1280px;
 		margin: 0 auto;
 		padding: 0 32px;
+	}
+	.rejoin {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-top: 24px;
+		padding: 14px 18px;
+		border: 1px solid var(--accent);
+		border-radius: 12px;
+		background: var(--accent-wash);
+		color: var(--text);
+		text-decoration: none;
+	}
+	.rejoin .dot {
+		background: var(--accent);
+	}
+	.rejoin-text {
+		flex-grow: 1;
+		min-width: 0;
+	}
+	.rejoin-go {
+		flex-shrink: 0;
+		padding: 8px 16px;
+		border-radius: 8px;
+		background: var(--accent);
+		color: var(--accent-text);
+		font-weight: 600;
 	}
 	.hero {
 		display: grid;
