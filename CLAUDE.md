@@ -27,13 +27,14 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 ## Where things stand (2026-10-05)
 
 - **Done:** milestones 01–05 (skeleton, rules engine, playable friend game, game screen with dice tray, resign and result card; 10+5 clocks, games saved to SQLite and restored after a restart, rematch), milestone 06a (guest names, re-roll only, from `names/` ([how the words were chosen](docs/guest-names.md)); the home page with join by code and the live games list; quick match on `/play`), the `/dev/board` sandbox, and [Plan 04b](docs/superpowers/plans/2026-10-05-04b-omcb-feel.md): the board feels like One Million Chessboards (gliding pieces, instant moves, cross-fade captures, pothole effects, tumbling dice, cburnett pieces, reduced motion). A pre-05 pass added instant mode, the playtest script, and keeps an instant move through same-turn updates (`settlesGuess`), which milestone 05's clocks rely on.
+- **Done: milestone 06c** ([plan](docs/superpowers/plans/2026-10-05-06c-longer-potholes.md)): potholes last 3 rounds with at most 5 open (the oldest closes), a roll can checkmate, traffic cones count each hole down, the Mamdani's repairs are celebrated (cone, sparks, 👍), and the Mamdani art is on the boards. Games saved under the old rules were retired by migration 5. Checked with whole games: Chromium 8/8, WebKit 8/8, phone 4/4 in instant mode, and 3/3 in each browser with full animations; the playtest now also fails if a closed pothole stays drawn.
 - **Also in the repo, from another session:** the Rust server experiment in `server_rs/`, and two side plans (Go server improvements, Go rules speed).
 - **Checked:** whole games through the UI with the playtest script, 24 in Chromium and 18 in WebKit (Safari's engine), all clean; WebKit at phone size also glides and takes touch taps.
 - **Pending:** a playtest with friends, on their phones.
 
 ## Next step
 
-Milestone 06c (longer potholes: 3 rounds, cap 5, a roll can mate, cones, the repair celebration; [spec](docs/superpowers/specs/2026-10-05-06c-longer-potholes-design.md)): write its plan, then build it. Its prototype is uncommitted in the working tree, with the Mamdani art for 07. Then 07 (launch), whose brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section, one spec. Player history waits for milestone 08. 06b (watcher count and emoji reactions) moved to milestone 10, after 09 and before the security and UX reviews (11, 12). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Milestone 07 (launch). Its brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08. Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
