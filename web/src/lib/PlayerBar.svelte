@@ -2,8 +2,6 @@
 	import type { Color } from './game.ts';
 
 	let { color, you, lost, toMove }: { color: Color; you: boolean; lost: string[]; toMove: boolean } = $props();
-
-	const glyphs: Record<string, string> = { Q: '♛︎', R: '♜︎', B: '♝︎', N: '♞︎', P: '♟︎' };
 </script>
 
 <div class="bar" class:to-move={toMove}>
@@ -12,7 +10,7 @@
 		<span class="name">{color === 'white' ? 'White' : 'Black'}{#if you}<span class="you">(you)</span>{/if}</span>
 		<span class="lost">
 			Lost to potholes:
-			{#if lost.length === 0}none{:else}<span class="glyphs" class:white={color === 'white'}>{lost.map((p) => glyphs[p[1]]).join('')}</span>{/if}
+			{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={p} />{/each}</span>{/if}
 		</span>
 	</span>
 	{#if toMove}<span class="turn">To move</span>{/if}
@@ -58,15 +56,13 @@
 		color: var(--text-muted);
 	}
 	.glyphs {
-		font-family: 'Apple Symbols', 'Segoe UI Symbol', 'Noto Sans Symbols 2', serif;
-		font-size: 16px;
-		letter-spacing: 2px;
-		color: var(--piece-dark);
-		-webkit-text-stroke: 1px var(--text-muted);
+		display: inline-flex;
+		gap: 1px;
+		vertical-align: middle;
 	}
-	.glyphs.white {
-		color: var(--piece-light);
-		-webkit-text-stroke: 0;
+	.glyphs img {
+		width: 18px;
+		height: 18px;
 	}
 	.turn {
 		padding: 4px 10px;

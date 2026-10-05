@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { fly } from 'svelte/transition';
+	import { reducedMotion } from '#lib/motion.ts';
 	import { page } from '$app/state';
 	import Board from '#lib/Board.svelte';
 	import DiceTray from '#lib/DiceTray.svelte';
@@ -7,6 +9,7 @@
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { stageAt } from '#lib/board.ts';
+	import { applyMove } from '#lib/pieces.ts';
 	import { createGame, reasons, resign, sendMove, type Color, type MoveJSON, type View } from '#lib/game.ts';
 
 	const code = page.params.code ?? '';
@@ -14,6 +17,10 @@
 	const anim = new Animator();
 	let view = $derived(anim.view);
 	let shown = $derived(anim.shown);
+	// Your move, shown before the server confirms it (One Million Chessboards
+	// style): the piece glides at once. If the server refuses the move, the
+	// guess is dropped and the piece glides back.
+	let optimistic = $state<{ seq: number; move: MoveJSON } | null>(null);
 	let connected = $state(false);
 	let notFound = $state(false);
 	let lost = $state(false);
@@ -24,6 +31,7 @@
 
 	function receive(next: View) {
 		error = '';
+		optimistic = null;
 		anim.receive(next, { hidden: document.hidden });
 	}
 
@@ -54,11 +62,23 @@
 	});
 
 	let animating = $derived(anim.animating);
-	let stage = $derived(view ? stageAt(view, shown) : null);
+	let stage = $derived.by(() => {
+		if (!view) return null;
+		const base = stageAt(view, shown);
+		if (optimistic?.seq !== view.seq) return base;
+		return { ...base, ...applyMove(base, optimistic.move) };
+	});
+	let checkSquare = $derived.by(() => {
+		if (!view?.check || !stage || animating) return '';
+		const i = stage.board.indexOf(view.turn === 'white' ? 'wK' : 'bK');
+		return i < 0 ? '' : 'abcdefgh'[i % 8] + (Math.floor(i / 8) + 1);
+	});
+	let savedSquare = $derived(view?.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '');
 	let you = $derived(view?.you ?? 'spectator');
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
 	let top = $derived<Color>(bottom === 'white' ? 'black' : 'white');
 	let lastMove = $derived.by(() => {
+		if (optimistic && optimistic.seq === view?.seq) return { from: optimistic.move.from, to: optimistic.move.to };
 		const m = view?.last.find((e) => e.kind === 'moved');
 		return m?.from && m?.to ? { from: m.from, to: m.to } : null;
 	});
@@ -68,8 +88,15 @@
 	async function move(m: MoveJSON) {
 		if (!view || busy) return;
 		busy = true;
-		error = (await sendMove(code, m, view.seq)) ?? '';
-		busy = false;
+		optimistic = { seq: view.seq, move: m };
+		try {
+			error = (await sendMove(code, m, view.seq)) ?? '';
+		} catch {
+			error = 'Could not reach the server. Try again.';
+		} finally {
+			busy = false;
+		}
+		if (error) optimistic = null; // refused or unsent: glide back
 	}
 
 	async function doResign() {
@@ -182,12 +209,14 @@
 						legal={view.legal}
 						{lastMove}
 						flipped={bottom === 'black'}
-						interactive={!animating && !busy && playing}
+						interactive={!animating && !busy && !optimistic && playing}
 						dim={!!resultCard}
+						check={checkSquare}
+						saved={savedSquare}
 						onmove={move}
 					/>
 					{#if resultCard}
-						<div class="result" role="status">
+						<div class="result" role="status" in:fly={{ y: -24, duration: reducedMotion() ? 0 : 500 }}>
 							<span class="kicker">{resultCard.kicker}</span>
 							<h1>{resultCard.title}</h1>
 							<p>{resultCard.detail}</p>

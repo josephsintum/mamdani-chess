@@ -42,6 +42,7 @@
 		const m = view.last.find((e) => e.kind === 'moved');
 		return m?.from && m?.to ? { from: m.from, to: m.to } : null;
 	});
+	let savedSquare = $derived(view.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < anim.shown)?.sq ?? '');
 	let needsTarget = $derived(rollKinds.find((r) => r.kind === rollKind)?.needsTarget ?? false);
 
 	function d8(): number {
@@ -167,6 +168,7 @@
 				flipped={bottom === 'black'}
 				interactive={!anim.animating && view.status === 'playing'}
 				dim={!!view.result && !anim.animating}
+				saved={savedSquare}
 				onmove={move}
 			/>
 			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} toMove={!view.result && view.turn === bottom && !anim.animating} />

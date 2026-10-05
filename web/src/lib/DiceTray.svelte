@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { diceSteps } from './board.ts';
+	import Die from './Die.svelte';
 	import type { View } from './game.ts';
 
 	let { view, shown }: { view: View; shown: number } = $props();
@@ -39,7 +40,7 @@
 					{#if step.dice.length}
 						<span class="dice">
 							{#each step.dice as d, j (j)}
-								<span class="die"><span>{d}</span></span>
+								<Die value={d} highlight={step.tone === 'good'} />
 							{/each}
 						</span>
 					{/if}
@@ -117,23 +118,6 @@
 		gap: 6px;
 		flex-shrink: 0;
 	}
-	.die {
-		display: grid;
-		place-items: center;
-		width: 30px;
-		height: 30px;
-		margin: 6px;
-		transform: rotate(45deg);
-		background: var(--line);
-		border-radius: 5px;
-	}
-	.die span {
-		transform: rotate(-45deg);
-		font-family: var(--font-mono);
-		font-weight: 600;
-		font-size: 15px;
-		color: var(--text);
-	}
 	.text {
 		display: flex;
 		flex-direction: column;
@@ -156,12 +140,6 @@
 		background: var(--accent-wash);
 		border: 1px solid var(--accent-line);
 		border-radius: 12px;
-	}
-	li.good .die {
-		background: var(--accent);
-	}
-	li.good .die span {
-		color: var(--accent-text);
 	}
 	li.good .title {
 		color: var(--accent);
