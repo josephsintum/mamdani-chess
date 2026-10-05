@@ -1,6 +1,7 @@
 // Plays whole games through the real UI, as two guests per game, with random
 // legal moves, and reports how each one ended. It fails (exit 1) on any page
-// error, console error, move that never lands, or board that gets stuck.
+// error, console error, move that never lands, board that gets stuck, or
+// pothole left drawn after it closed.
 //
 // Needs the Go server (:8080) and the dev server (:5173) running; it uses the
 // game page's dev-only ?instant mode, so a whole game takes seconds.
@@ -117,6 +118,25 @@ async function dragMove(page) {
 let pairing = Promise.resolve();
 
 /** Both guests tap Play online, the second once the first is queued. */
+/**
+ * Whether the potholes drawn match the board's own model (each pothole
+ * square's label says so). A hole can still be shrinking when the turn
+ * lands, so a mismatch is checked again after its exit has had time to end.
+ */
+async function holesMatch(page) {
+	const count = () =>
+		page.evaluate(() => [
+			document.querySelectorAll('.layer .slot > .hole:not(.patched)').length,
+			document.querySelectorAll('.square[aria-label*="pothole"]').length
+		]);
+	let [drawn, model] = await count();
+	if (drawn !== model) {
+		await sleep(600);
+		[drawn, model] = await count();
+	}
+	return drawn === model ? '' : `the board draws ${drawn} potholes but has ${model}`;
+}
+
 async function quickMatch(first, second) {
 	for (const p of [first, second]) {
 		await p.goto(`${opts.base}/`);
@@ -201,6 +221,11 @@ async function playGame(browser, n) {
 		}
 		if (move.dragged) drags++;
 		plies++;
+		const holes = (await holesMatch(w)) || (await holesMatch(b));
+		if (holes) {
+			errors.push(`ply ${plies}: ${holes}`);
+			break;
+		}
 		if (opts.phone) {
 			const bad = (await phoneLayout(w)) || (await phoneLayout(b)) || (plies === 10 ? await sheetOpensAndCloses(other) : '');
 			if (bad) {
