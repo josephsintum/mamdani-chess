@@ -177,18 +177,9 @@ func (p *Position) resolve(s Square, mover Color, dice Dice, ev []Event) []Event
 // same rank, file or diagonal, nothing in between. That is all a saving
 // roll needs.
 func (p *Position) mamdaniReaches(s Square) bool {
-	m := p.Mamdani
-	if m == NoSquare || m == s {
+	if p.Mamdani == NoSquare || p.Mamdani == s {
 		return false
 	}
-	df, dr := s.File()-m.File(), s.Rank()-m.Rank()
-	if df != 0 && dr != 0 && abs(df) != abs(dr) {
-		return false
-	}
-	for t := m.Offset(sign(df), sign(dr)); t != s; t = t.Offset(sign(df), sign(dr)) {
-		if p.Blocked(t) {
-			return false
-		}
-	}
-	return true
+	path, aligned := between(p.Mamdani, s)
+	return aligned && path&p.blocked() == 0
 }
