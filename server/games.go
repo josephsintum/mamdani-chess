@@ -21,6 +21,18 @@ func (s *Server) createGame(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"code": g.Code()})
 }
 
+// liveGamesMax is how many games the home page lists.
+const liveGamesMax = 12
+
+// liveGames lists games being played, most watched first, and how many
+// guests are waiting in quick match.
+func (s *Server) liveGames(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"games":   s.games.List(liveGamesMax),
+		"looking": s.match.Looking(),
+	})
+}
+
 // gameView returns the caller's view of the game without opening a stream
 // or taking a seat. The page uses it to tell "game not found" from a
 // server that is restarting.

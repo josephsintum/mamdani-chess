@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // startSSE sets the event-stream headers and returns the flusher.
@@ -29,6 +30,16 @@ func writeEvent(w http.ResponseWriter, fl http.Flusher, event string, data []byt
 	}
 	fl.Flush()
 	return nil
+}
+
+// writeLastEvent writes one SSE event that also tells the browser to wait
+// retry before reconnecting, for a stream the server is about to end on
+// purpose.
+func writeLastEvent(w http.ResponseWriter, fl http.Flusher, event string, data []byte, retry time.Duration) error {
+	if _, err := fmt.Fprintf(w, "retry: %d\n", retry.Milliseconds()); err != nil {
+		return err
+	}
+	return writeEvent(w, fl, event, data)
 }
 
 // writeHeartbeat writes an SSE comment so idle connections stay open.
