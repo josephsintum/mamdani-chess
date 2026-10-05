@@ -13,6 +13,28 @@ var migrations = []string{
 	 INSERT INTO honks (id, count) VALUES (1, 0);`,
 	// 2: the honk demo is gone.
 	`DROP TABLE honks;`,
+	// 3: saved games (milestone 05). A game is rebuilt by replaying its turns.
+	`CREATE TABLE games (
+		code       TEXT PRIMARY KEY,
+		white      TEXT NOT NULL,
+		black      TEXT,
+		created_at INTEGER NOT NULL,
+		ended_at   INTEGER,
+		result     TEXT,
+		winner     TEXT,
+		rematch_of TEXT REFERENCES games(code)
+	 );
+	 CREATE INDEX games_ended_at ON games(ended_at);
+	 CREATE TABLE turns (
+		game     TEXT NOT NULL REFERENCES games(code),
+		ply      INTEGER NOT NULL,
+		move     TEXT NOT NULL,
+		dice     TEXT NOT NULL,
+		white_ms INTEGER NOT NULL,
+		black_ms INTEGER NOT NULL,
+		at       INTEGER NOT NULL,
+		PRIMARY KEY (game, ply)
+	 );`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
