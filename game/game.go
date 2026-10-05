@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
-	"slices"
 	"time"
 
 	"mamdani-chess/rules"
@@ -203,14 +202,13 @@ func (g *Game) move(guest string, m rules.Move, seq int) error {
 		return ErrNotYourTurn
 	case seq != len(g.g.Turns):
 		return ErrStale
-	case !slices.Contains(g.g.Pos.LegalMoves(), m):
-		return ErrIllegalMove
 	}
-	san := g.g.Pos.SAN(m) // before the move: SAN reads the old position
-	ev, err := g.g.Play(m, g.dice)
+	before := g.g.Pos              // SAN reads the position the move was made in
+	ev, err := g.g.Play(m, g.dice) // an illegal move is refused here, unchanged
 	if err != nil {
 		return err
 	}
+	san := before.SAN(m)
 	g.last = ev
 	g.log = append(g.log, LogEntry{SAN: san, Color: colorName(color), Dice: describe(ev)})
 	g.tally(ev)

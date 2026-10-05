@@ -393,3 +393,22 @@ func TestViewIsTheCallersRole(t *testing.T) {
 		}
 	}
 }
+
+func TestIllegalMoveChangesNothing(t *testing.T) {
+	g := NewHub(odd{}).Create("alice")
+	a := join(t, g, "alice")
+	join(t, g, "bob")
+	recv(t, a)
+	if err := g.Move("alice", mv(t, "e2e5"), 0); !errors.Is(err, ErrIllegalMove) {
+		t.Fatalf("got %v, want ErrIllegalMove", err)
+	}
+	select {
+	case v := <-a.C:
+		t.Fatalf("an illegal move broadcast a view: seq %d", v.Seq)
+	case <-time.After(50 * time.Millisecond):
+	}
+	v, err := g.View("alice")
+	if err != nil || v.Seq != 0 || len(v.Log) != 0 || v.Board[12] != "wP" {
+		t.Errorf("after an illegal move: seq %d log %v e2 %q err %v", v.Seq, v.Log, v.Board[12], err)
+	}
+}
