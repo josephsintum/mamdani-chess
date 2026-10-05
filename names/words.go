@@ -88,22 +88,44 @@ var places = []string{
 }
 
 // Pairs that read badly together, mostly as a stereotype about who lives
-// somewhere. Checked as "noun-place"; every entry must be a real pair
-// (TestBlockedPairsExist).
+// somewhere: with the place first, a person word reads as a label for the
+// people who live there ("harlem-hustler"). Checked as "place-noun"; every
+// entry must be a real pair (TestBlockedPairsExist). Why each is here:
+// docs/guest-names.md.
 var blocked = map[string]bool{
-	"hustler-harlem": true, "hustler-bed-stuy": true, "hustler-mott-haven": true,
-	"hustler-hunts-point": true, "hustler-bronx": true, "hustler-canarsie": true,
-	"hustler-jamaica": true,
-	"rat-chinatown":   true, "pizza-rat-chinatown": true, "pigeon-chinatown": true,
-	"raccoon-chinatown": true, "rat-flushing": true, "pizza-rat-flushing": true,
-	"landlord-harlem": true,
-	"npc-chinatown":   true, "npc-flushing": true,
-	"rat-sunset-park": true, "pigeon-sunset-park": true, "raccoon-sunset-park": true,
-	"npc-sunset-park": true, "rat-elmhurst": true, "pizza-rat-elmhurst": true,
-	"pigeon-elmhurst": true, "raccoon-elmhurst": true, "npc-elmhurst": true,
-	"vercetti-bensonhurst": true, "vercetti-harlem": true, "vercetti-bed-stuy": true,
-	"vercetti-mott-haven": true, "vercetti-hunts-point": true, "vercetti-bronx": true,
-	"vercetti-canarsie": true, "vercetti-jamaica": true,
-	"lance-vance-harlem": true, "lance-vance-bronx": true, "lance-vance-canarsie": true,
-	"lance-vance-jamaica": true,
+	// crime and loud-people tropes about Black and Latino neighborhoods
+	"harlem-hustler": true, "bed-stuy-hustler": true, "crown-heights-hustler": true,
+	"canarsie-hustler": true, "jamaica-hustler": true, "bronx-hustler": true,
+	"mott-haven-hustler": true, "hunts-point-hustler": true, "corona-hustler": true,
+	"jackson-heights-hustler": true,
+	"harlem-yapper":           true, "bed-stuy-yapper": true, "crown-heights-yapper": true,
+	"canarsie-yapper": true, "jamaica-yapper": true, "bronx-yapper": true,
+	"mott-haven-yapper": true, "hunts-point-yapper": true, "corona-yapper": true,
+	"jackson-heights-yapper": true,
+	"harlem-rat":             true, "bed-stuy-rat": true, "crown-heights-rat": true, "canarsie-rat": true,
+	"jamaica-rat": true, "bronx-rat": true, "mott-haven-rat": true, "hunts-point-rat": true,
+	"corona-rat": true, "jackson-heights-rat": true,
+	// "they eat rats", "all look alike" and "loud" tropes about Chinese neighborhoods
+	"chinatown-yapper": true, "flushing-yapper": true, "sunset-park-yapper": true,
+	"elmhurst-yapper": true,
+	"chinatown-rat":   true, "flushing-rat": true, "sunset-park-rat": true, "elmhurst-rat": true,
+	"chinatown-pizza-rat": true, "flushing-pizza-rat": true, "sunset-park-pizza-rat": true,
+	"elmhurst-pizza-rat": true,
+	"chinatown-pigeon":   true, "flushing-pigeon": true, "sunset-park-pigeon": true,
+	"elmhurst-pigeon":   true,
+	"chinatown-raccoon": true, "flushing-raccoon": true, "sunset-park-raccoon": true,
+	"elmhurst-raccoon": true,
+	"chinatown-npc":    true, "flushing-npc": true, "sunset-park-npc": true, "elmhurst-npc": true,
+	// slumlord and complainer tropes about Hasidic neighborhoods; gentrification
+	"harlem-landlord": true, "bed-stuy-landlord": true, "williamsburg-landlord": true,
+	"crown-heights-landlord": true,
+	"williamsburg-kvetch":    true, "crown-heights-kvetch": true,
+	// taxi-driver stereotype
+	"jackson-heights-cabbie": true,
+	// GTA's crime bosses next to real neighborhoods
+	"bensonhurst-vercetti": true, "harlem-vercetti": true, "bed-stuy-vercetti": true,
+	"mott-haven-vercetti": true, "hunts-point-vercetti": true, "bronx-vercetti": true,
+	"canarsie-vercetti": true, "jamaica-vercetti": true,
+	"harlem-lance-vance": true, "bronx-lance-vance": true, "canarsie-lance-vance": true,
+	"jamaica-lance-vance": true,
 }

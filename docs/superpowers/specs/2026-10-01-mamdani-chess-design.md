@@ -14,7 +14,7 @@ A browser game where friends — and strangers via quick match — play Pothole 
 
 | Topic | Decision |
 | --- | --- |
-| Identity | Guests only, identified by a cookie; the server keeps only its SHA-256 (milestone 05). A guest gets a generated name (e.g. `pizza-rat-astoria`) when they first play, and can change it to one of 3 offered names, 3 times a day, but not type one (milestone 06a, [guest names](../../guest-names.md)). |
+| Identity | Guests only, identified by a cookie; the server keeps only its SHA-256 (milestone 05). A guest gets a generated name (e.g. `astoria-pizza-rat`) when they first play, and can change it to one of 3 offered names, 3 times a day, but not type one (milestone 06a, [guest names](../../guest-names.md)). |
 | Visibility | All games are public. |
 | Time control | One fixed clock for every game: 10+5 (10 minutes each, +5 seconds per move). |
 | Matchmaking | Quick match only: first-come-first-served queue, random colors. |

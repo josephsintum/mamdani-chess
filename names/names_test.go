@@ -28,7 +28,7 @@ func TestEnoughNamesFit(t *testing.T) {
 	fit := 0
 	for _, n := range nouns {
 		for _, p := range places {
-			if ok(n + "-" + p) {
+			if ok(p + "-" + n) {
 				fit++
 			}
 		}
@@ -60,12 +60,40 @@ func TestBlockedPairsExist(t *testing.T) {
 	pairs := map[string]bool{}
 	for _, n := range nouns {
 		for _, p := range places {
-			pairs[n+"-"+p] = true
+			pairs[p+"-"+n] = true
 		}
 	}
 	for name := range blocked {
 		if !pairs[name] {
-			t.Errorf("blocked %q is not a noun-place pair", name)
+			t.Errorf("blocked %q is not a place-noun pair", name)
+		}
+	}
+}
+
+// The place comes first, the way New Yorkers say it: "harlem-cheesecake".
+func TestPlaceComesFirst(t *testing.T) {
+	first := func(int) int { return 0 }
+	if got, want := New(first), places[0]+"-"+nouns[0]; got != want {
+		t.Fatalf("New = %q, want %q", got, want)
+	}
+}
+
+// With the place first, a person word reads as a label for the people who
+// live there, so these never appear.
+func TestStereotypePairsAreBlocked(t *testing.T) {
+	for _, name := range []string{
+		"chinatown-yapper", "harlem-hustler", "bronx-rat", "flushing-pigeon",
+		"williamsburg-landlord", "crown-heights-kvetch", "jackson-heights-cabbie",
+		"bensonhurst-vercetti", "elmhurst-npc",
+	} {
+		if !blocked[name] {
+			t.Errorf("%q is not blocked", name)
+		}
+	}
+	// Harmless pairs with the same places stay possible.
+	for _, name := range []string{"chinatown-dumpling", "harlem-cheesecake", "flatbush-bike-lane"} {
+		if blocked[name] {
+			t.Errorf("%q is blocked", name)
 		}
 	}
 }

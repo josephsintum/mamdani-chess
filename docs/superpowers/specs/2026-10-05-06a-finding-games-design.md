@@ -16,7 +16,7 @@ Milestone 06 is split. This spec is **06a**. **06b** (a live watcher count over 
 
 | Topic | Decision | Why |
 | --- | --- | --- |
-| Names | Generated from `names/` (e.g. `pizza-rat-astoria`; how the words were chosen: [guest-names](../../guest-names.md)). A die offers 3 new names to pick from, 3 changes in any 24 hours; there is no free text. | All games are public and nobody moderates. Sites where strangers meet never let anonymous players pick a name: Lichess shows "Anonymous", chess.com guests get a generated `Guest…` name. Picking from offers gives some personality while strangers only ever see words from our list. |
+| Names | Generated from `names/` (e.g. `astoria-pizza-rat`, place first; how the words were chosen: [guest-names](../../guest-names.md)). A die offers 3 new names to pick from, 3 changes in any 24 hours; there is no free text. | All games are public and nobody moderates. Sites where strangers meet never let anonymous players pick a name: Lichess shows "Anonymous", chess.com guests get a generated `Guest…` name. Picking from offers gives some personality while strangers only ever see words from our list. |
 | Where names live | A `guests` table keyed by the guest ID (the cookie's SHA-256). Stored, never derived from the ID. | A name derived from the ID would change for everyone whenever the word list changes. The cookie stays an opaque ID, so nobody can choose a name by editing it. |
 | When a guest gets a name | Only when playing needs one: creating a friend game, joining quick match, or taking a seat. Visiting, browsing and watching never create one. | Every row in `guests` belongs to someone who played, so the table needs no pruning. |
 | Names in games | Each seat keeps a snapshot of its player's name. | A name change mid-game doesn't rename anyone in that game, a restored game keeps its names, and old games never need rewriting. |
@@ -128,7 +128,7 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 - **How it works:** the canvas's three steps, checked against `RULES.md`: d8 throughout, and a saving roll needs a clear line from the Mamdani (the canvas said "could reach next turn").
 - **Footer:** the Pot-Hole Chess credit, as on the canvas.
 
-**The mini board is its own component, `MiniBoard.svelte`**, not `Board`. `Board`'s squares are `<button>`s, so twelve of them inside card links would put 768 buttons inside links: invalid HTML and a keyboard trap. `MiniBoard` is one `role="img"` with a label ("pizza-rat-astoria against bagel-soho, move 12"), drawn with plain elements: squares, the last move, potholes, pieces and the Mamdani, sized from the board's width (`cqw`).
+**The mini board is its own component, `MiniBoard.svelte`**, not `Board`. `Board`'s squares are `<button>`s, so twelve of them inside card links would put 768 buttons inside links: invalid HTML and a keyboard trap. `MiniBoard` is one `role="img"` with a label ("astoria-pizza-rat against soho-bagel, move 12"), drawn with plain elements: squares, the last move, potholes, pieces and the Mamdani, sized from the board's width (`cqw`).
 
 ### Quick match `/play`
 
@@ -140,8 +140,8 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 
 ## Notices
 
-- **When a friend sits down**, White gets a toast: "bagel-soho joined · You're White, your move".
-- **Arriving at a game nobody has moved in yet** (a friend's link, or a rematch, which swaps colors), a player gets a toast with their color and opponent: "You joined pizza-rat-astoria · You're Black".
+- **When a friend sits down**, White gets a toast: "soho-bagel joined · You're White, your move".
+- **Arriving at a game nobody has moved in yet** (a friend's link, or a rematch, which swaps colors), a player gets a toast with their color and opponent: "You joined astoria-pizza-rat · You're Black".
 - After a quick match there's no toast: the opponent-found screen already said it (`page.state.matched`).
 - Spectators, and players reconnecting to a game with moves, get none.
 - `joinNotice` and `matchCard` in `#lib/game.ts` decide the text, unit-tested.

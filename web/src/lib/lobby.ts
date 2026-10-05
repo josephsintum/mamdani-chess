@@ -109,7 +109,7 @@ export function isCode(code: string): boolean {
 	return code.length === 6 && normalizeCode(code) === code;
 }
 
-/** Two letters for a name's badge: its first and last words. "pizza-rat-astoria" → "PA". */
+/** Two letters for a name's badge: its first and last words. "astoria-pizza-rat" → "AR". */
 export function initials(name: string): string {
 	const words = name.split('-').filter(Boolean);
 	if (words.length === 0) return '';
