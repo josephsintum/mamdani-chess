@@ -23,6 +23,27 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 - Stage only the files you changed (`git add <paths>`), never `git add -A`. `go.mod` and `names/` (guest-name generator) were written separately; don't move or rewrite them without asking.
 - The Mamdani photo on the canvas is a placeholder; the shipped game needs art we have rights to.
 
+## Where things stand (2026-10-05)
+
+- **Merged to `main`:** milestones 01–04 (skeleton, rules engine, playable friend game, game screen with dice tray, resign and result card), plus the `/dev/board` sandbox. The roadmap shows milestone 04 as done; a playtest with friends is still pending.
+- **Also on `main`, from another session:** the Rust server experiment in `server_rs/`, and two side plans (Go server improvements, Go rules speed). Local `main` is ahead of `origin/main` with that work, not pushed.
+- **Waiting for review:** [Plan 04b](docs/superpowers/plans/2026-10-05-04b-omcb-feel.md) on branch `omcb-feel`. It makes the board feel like One Million Chessboards: gliding pieces, instant moves, cross-fade captures, lift on hover, full-square highlights, pothole effects, tumbling dice, cburnett pieces, reduced motion. Every code block in it was built and checked in a scratch copy, and a dry run from `main` matches. The user chose: keep the road-works look, click plus drag, full-square fills. Next: get the user's OK, then run it inline.
+- **After 04b:** milestone 05 (clocks, saved games, rematch). See the roadmap.
+
 ## Next step
 
-Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`: a playable game first, the Railway launch last. Plans 01 (walking skeleton, minus the deploy) and 02 (rules engine) are merged; next is Plan 03, a rough playable game. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`: a playable game first, the Railway launch last. Repo: https://github.com/josephsintum/mamdani-chess (public).
+
+## Working notes
+
+- **Run it:** `go run ./cmd/server` (:8080) and `pnpm --dir web dev` (:5173, forwards `/api`). `/dev/board` is a dev-only sandbox: one browser plays both sides, dice are scripted, and nothing goes to the server.
+- **Two players in one browser:** `localhost` and `[::1]` (or `127.0.0.1` against the Go server) keep separate cookies, so each origin is a different guest.
+- **Tests:** `go test -race -short ./...` (the rules engine's full random-game suite takes about 2 min under `-race`), `pnpm --dir web check`, `pnpm --dir web test` (Vitest), `pnpm --dir web build`.
+- **SvelteKit 3 and Svelte 5 traps hit so far:**
+  - use `$app/env`, not `$app/environment`;
+  - `#lib/...` imports need the file extension (`#lib/game.ts`), and there is no `$lib`;
+  - transition functions take `(node, params)`;
+  - `$state.snapshot` only works in `.svelte`/`.svelte.ts` files;
+  - run `npx @sveltejs/mcp svelte-autofixer` on every component and avoid `$effect`.
+- **Board pointer rule:** capture the pointer only once a drag has moved more than 6px. Capturing on pointerdown sends the click to the board, and taps stop working.
+- **How plans have been written:** build the code in a scratch copy, check it in tests and a browser, write the plan from those files, dry-run the plan task by task from `main`, then execute it inline on a branch with one final whole-branch review.
