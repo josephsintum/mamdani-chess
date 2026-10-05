@@ -24,6 +24,10 @@ var (
 	ErrInternal    = errors.New("internal error in this game")
 )
 
+// Resignation is the result reason when a player resigns. The other
+// reasons come from the rules package.
+const Resignation rules.Reason = "resignation"
+
 // Game is one live game.
 type Game struct {
 	code  string
@@ -35,7 +39,9 @@ type Game struct {
 	seats [2]string // guest ID per color; "" while empty
 	subs  map[*Sub]struct{}
 	last  []rules.Event
-	log   []string
+	log   []LogEntry
+	lost  [2][]string // piece codes lost to potholes, by color
+	stats StatsJSON
 }
 
 // Sub is one open stream. C always holds the newest View: a reader that
@@ -145,7 +151,55 @@ func (g *Game) move(guest string, m rules.Move, seq int) error {
 		return err
 	}
 	g.last = ev
-	g.log = append(g.log, describe(san, ev))
+	g.log = append(g.log, LogEntry{SAN: san, Color: colorName(color), Dice: describe(ev)})
+	g.tally(ev)
+	g.broadcast()
+	return nil
+}
+
+// tally adds a turn's events to the game's stats.
+func (g *Game) tally(ev []rules.Event) {
+	for _, e := range ev {
+		switch e.Kind {
+		case rules.Fell:
+			if e.Piece == rules.MamdaniPiece {
+				g.stats.MamdaniFell = true
+			} else {
+				c := e.Piece.Color()
+				g.lost[c] = append(g.lost[c], pieceCode(e.Piece))
+			}
+		case rules.SavingRoll:
+			g.stats.SavingRolls++
+			if e.Saved {
+				g.stats.Saved++
+			}
+		case rules.Repaired:
+			g.stats.Repaired++
+		}
+	}
+}
+
+// Resign ends the game with guest's opponent as the winner.
+func (g *Game) Resign(guest string) error {
+	var err error
+	if perr := g.do(func() { err = g.resign(guest) }); perr != nil {
+		return perr
+	}
+	return err
+}
+
+func (g *Game) resign(guest string) error {
+	color, seated := g.seatOf(guest)
+	switch {
+	case !seated:
+		return ErrNotPlayer
+	case g.g.Result.Over:
+		return ErrGameOver
+	case g.status() == Waiting:
+		return ErrWaiting
+	}
+	g.g.Result = rules.Result{Over: true, Winner: color.Other(), Reason: Resignation}
+	g.last = nil
 	g.broadcast()
 	return nil
 }
@@ -197,7 +251,9 @@ func (g *Game) view(guest string) *View {
 		Check:    p.InCheck(p.Turn),
 		Legal:    []MoveJSON{},
 		Last:     []EventJSON{},
-		Log:      append([]string{}, g.log...),
+		Log:      append([]LogEntry{}, g.log...),
+		Lost:     LostJSON{White: append([]string{}, g.lost[rules.White]...), Black: append([]string{}, g.lost[rules.Black]...)},
+		Stats:    g.stats,
 		Seq:      len(g.g.Turns),
 	}
 	color, seated := g.seatOf(guest)

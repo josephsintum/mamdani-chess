@@ -32,9 +32,17 @@ export interface View {
 	check: boolean;
 	legal: MoveJSON[];
 	last: EventJSON[];
-	log: string[];
+	log: LogEntry[];
+	lost: { white: string[]; black: string[] };
+	stats: { savingRolls: number; saved: number; repaired: number; mamdaniFell: boolean };
 	result: { winner?: Color; draw: boolean; reason: string } | null;
 	seq: number;
+}
+
+export interface LogEntry {
+	san: string;
+	color: Color;
+	dice: string;
 }
 
 export function squareName(index: number): string {
@@ -71,6 +79,17 @@ const pieceNames: Record<string, string> = {
 	Q: 'queen',
 	K: 'king'
 };
+
+/** Ends the game; the caller's opponent wins. Returns null or the error. */
+export async function resign(code: string): Promise<string | null> {
+	const res = await fetch(`/api/games/${code}/resign`, { method: 'POST' });
+	if (res.ok) return null;
+	try {
+		return (await res.json()).error ?? res.statusText;
+	} catch {
+		return res.statusText;
+	}
+}
 
 /** "white knight", "the Mamdani". */
 export function pieceName(code = ''): string {
@@ -115,8 +134,9 @@ export function eventText(e: EventJSON): string {
 	return e.kind;
 }
 
-const reasons: Record<string, string> = {
+export const reasons: Record<string, string> = {
 	checkmate: 'checkmate',
+	resignation: 'resignation',
 	stalemate: 'stalemate',
 	fifty_moves: 'the 50-move rule',
 	repetition: 'threefold repetition',

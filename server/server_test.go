@@ -152,7 +152,7 @@ func TestFriendGameOverHTTP(t *testing.T) {
 	if status, body := alice.post("/api/games/"+code+"/move", `{"from":"e2","to":"e4","seq":0}`); status != http.StatusNoContent {
 		t.Fatalf("alice e2e4: %d %s", status, body)
 	}
-	if v := b.state(); v.Seq != 1 || v.Board[28] != "wP" || len(v.Legal) != 32 || v.Log[0] != "e4 · d8 1" {
+	if v := b.state(); v.Seq != 1 || v.Board[28] != "wP" || len(v.Legal) != 32 || v.Log[0] != (game.LogEntry{SAN: "e4", Color: "white", Dice: "d8 1"}) {
 		t.Fatalf("bob after e4: seq=%d e4=%q legal=%d log=%q", v.Seq, v.Board[28], len(v.Legal), v.Log)
 	}
 	if v := a.state(); v.Seq != 1 || len(v.Legal) != 0 {
@@ -278,4 +278,29 @@ func TestCloseEndsStreamsButNotRequests(t *testing.T) {
 		t.Fatal("stream still open 1s after Close")
 	}
 	alice.create() // other requests still work
+}
+
+func TestResignOverHTTP(t *testing.T) {
+	_, ts := newTestServer(t)
+	alice, bob, carol := newPlayer(t, ts), newPlayer(t, ts), newPlayer(t, ts)
+	code := alice.create()
+	alice.stream(code).state()
+	b := bob.stream(code)
+	b.state()
+	resign := "/api/games/" + code + "/resign"
+	if status, body := carol.post(resign, ""); status != http.StatusForbidden {
+		t.Errorf("spectator resigns: %d %s", status, body)
+	}
+	if status, body := alice.post(resign, ""); status != http.StatusNoContent {
+		t.Fatalf("alice resigns: %d %s", status, body)
+	}
+	if v := b.state(); v.Result == nil || v.Result.Winner != "black" || v.Result.Reason != game.Resignation {
+		t.Fatalf("bob sees result %+v", v.Result)
+	}
+	if status, _ := bob.post(resign, ""); status != http.StatusConflict {
+		t.Errorf("resign after the game ended: %d, want 409", status)
+	}
+	if status, _ := alice.post("/api/games/NOPE99/resign", ""); status != http.StatusNotFound {
+		t.Errorf("unknown game: %d, want 404", status)
+	}
 }

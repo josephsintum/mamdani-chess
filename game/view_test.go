@@ -56,7 +56,7 @@ func TestDescribe(t *testing.T) {
 		{Kind: rules.Target, Square: rules.D2},
 		{Kind: rules.SavingRoll, Roll: 5, Saved: true},
 	}
-	if got, want := describe("e4", ev), "e4 · d8 4 → e1 (re-roll: king) → d2 · save 5 ✓"; got != want {
+	if got, want := describe(ev), "d8 4 → e1 (re-roll: king) → d2 · save 5 ✓"; got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
 	ev = []rules.Event{
@@ -66,7 +66,7 @@ func TestDescribe(t *testing.T) {
 		{Kind: rules.Target, Square: rules.G8},
 		{Kind: rules.Fell, Piece: rules.NewPiece(rules.Black, rules.Knight)},
 	}
-	if got, want := describe("Mc5", ev), "Mc5 · repairs d4 · d8 2 → g8 · bN falls"; got != want {
+	if got, want := describe(ev), "repairs d4 · d8 2 → g8 · bN falls"; got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
 }

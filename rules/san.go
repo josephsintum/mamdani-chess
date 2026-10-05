@@ -6,8 +6,9 @@ var sanLetters = map[Kind]string{Knight: "N", Bishop: "B", Rook: "R", Queen: "Q"
 
 // SAN returns m in standard algebraic notation for the log: "e4", "Nbd2",
 // "exd5", "e8=Q", "O-O", "Qh5+". A Mamdani move is "M" plus its square:
-// "Mb5". The check mark reflects the position before the pothole roll.
-// m must be legal in p.
+// "Mb5". "#" marks checkmate: a mating move ends the game with no pothole
+// roll, so it is final. "+" marks check before the pothole roll. m must be
+// legal in p.
 func (p *Position) SAN(m Move) string {
 	var b strings.Builder
 	pc := p.Board[m.From]
@@ -40,7 +41,10 @@ func (p *Position) SAN(m Move) string {
 	}
 	q := *p
 	q.play(m, nil)
-	if q.InCheck(q.Turn) {
+	switch {
+	case q.Mated():
+		b.WriteByte('#')
+	case q.InCheck(q.Turn):
 		b.WriteByte('+')
 	}
 	return b.String()

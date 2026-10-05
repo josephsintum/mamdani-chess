@@ -19,6 +19,7 @@ func TestSAN(t *testing.T) {
 		{"4k3/8/8/8/8/8/8/R4RK1 w - - 0 1", NoSquare, "a1d1", "Rad1"},
 		{"4k3/8/8/8/8/R7/8/R3K3 w - - 0 1", NoSquare, "a1a2", "R1a2"},
 		{"4k3/8/8/8/8/8/8/4K2Q w - - 0 1", NoSquare, "h1h5", "Qh5+"},
+		{"rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq g3 0 2", NoSquare, "d8h4", "Qh4#"},
 	}
 	for _, c := range cases {
 		p := setup(t, c.fen, c.mamdani, NoSquare, NoSquare)
