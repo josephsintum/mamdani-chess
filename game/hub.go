@@ -45,9 +45,12 @@ func (h *Hub) Create(creator string) (*Game, error) {
 	return h.create(store.Game{White: creator})
 }
 
-// create saves and starts a game with sg's seats under a fresh code.
+// create saves and starts a game with sg's seats under a fresh code. A
+// game with both seats filled (a rematch) starts with White's first-move
+// deadline running.
 func (h *Hub) create(sg store.Game) (*Game, error) {
-	sg.CreatedAt = time.Now()
+	now := time.Now()
+	sg.CreatedAt = now
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for tries := 0; ; tries++ {
@@ -67,6 +70,9 @@ func (h *Hub) create(sg store.Game) (*Game, error) {
 		break
 	}
 	g := h.add(sg.Code, [2]string{sg.White, sg.Black})
+	if sg.Black != "" {
+		g.startCounting(now)
+	}
 	slog.Info("game created", "code", sg.Code, "white", guestTag(sg.White), "rematch_of", sg.RematchOf)
 	go g.loop()
 	return g, nil

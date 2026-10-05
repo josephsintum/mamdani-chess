@@ -51,6 +51,7 @@ func TestRestoreRebuildsAGameInProgress(t *testing.T) {
 		t.Fatal("restored game isn't in the hub")
 	}
 	got := recvView(t, g2, "bob")
+	want.Online = OnlineJSON{} // nobody has reconnected yet
 	sameGame(t, got, want)
 	if got.Clock.WhiteMS != want.Clock.WhiteMS || got.Clock.BlackMS != want.Clock.BlackMS {
 		t.Errorf("clocks %+v, want %+v", got.Clock, want.Clock)
@@ -81,6 +82,7 @@ func TestRestoreKeepsAFinishedGamesResult(t *testing.T) {
 		t.Fatal("a game that ended today should be restored")
 	}
 	got := recvView(t, g2, "alice")
+	want.Online = OnlineJSON{}
 	sameGame(t, got, want)
 	if got.Result == nil || got.Result.Winner != "white" || got.Result.Reason != Resignation {
 		t.Fatalf("result %+v", got.Result)

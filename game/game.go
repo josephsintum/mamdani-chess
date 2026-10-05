@@ -24,6 +24,7 @@ var (
 	ErrGameOver    = rules.ErrGameOver
 	ErrIllegalMove = rules.ErrIllegalMove
 	ErrInternal    = errors.New("internal error in this game")
+	ErrNotOver     = errors.New("the game isn't over")
 	// ErrGone is returned once a game has stopped: it sat idle and was
 	// evicted, or a panic retired it.
 	ErrGone = errors.New("game not found")
@@ -45,14 +46,15 @@ type Game struct {
 	onExit func()        // tells the hub to forget the game
 
 	// Owned by the loop goroutine.
-	g     *rules.Game
-	seats [2]string // guest ID per color; "" while empty
-	subs  map[*Sub]struct{}
-	last  []rules.Event
-	log   []LogEntry
-	lost  [2][]string // piece codes lost to potholes, by color
-	stats StatsJSON
-	clock clock
+	g       *rules.Game
+	seats   [2]string // guest ID per color; "" while empty
+	subs    map[*Sub]struct{}
+	last    []rules.Event
+	log     []LogEntry
+	lost    [2][]string // piece codes lost to potholes, by color
+	stats   StatsJSON
+	clock   clock
+	rematch rematch
 	// failed is set when a save fails. The loop then retires the game
 	// before anyone sees the change that wasn't saved.
 	failed error
@@ -241,7 +243,13 @@ func (g *Game) Join(guest string) (*Sub, error) {
 			g.broadcast() // White's view changes from waiting to playing
 			return
 		}
+		c, seated := g.seatOf(guest)
+		returning := seated && !g.connected(c)
 		g.subs[sub] = struct{}{}
+		if returning {
+			g.broadcast() // the opponent sees them connected again
+			return
+		}
 		send(sub, sealed(g.viewFor(g.roleOf(guest))))
 	})
 	if err != nil {
@@ -250,9 +258,30 @@ func (g *Game) Join(guest string) (*Sub, error) {
 	return sub, nil
 }
 
-// Leave closes a stream. Seats are kept, so the player can come back.
+// Leave closes a stream. Seats are kept, so the player can come back. A
+// player's rematch offer lasts until their last stream closes.
 func (g *Game) Leave(sub *Sub) {
-	g.do(func() { delete(g.subs, sub) })
+	g.do(func() {
+		delete(g.subs, sub)
+		c, seated := g.seatOf(sub.guest)
+		if !seated || g.connected(c) {
+			return
+		}
+		if g.rematch.offered && g.rematch.from == c {
+			g.rematch.offered = false
+		}
+		g.broadcast() // the opponent sees them disconnected
+	})
+}
+
+// connected reports whether c's player has a stream open.
+func (g *Game) connected(c rules.Color) bool {
+	for sub := range g.subs {
+		if sub.guest == g.seats[c] {
+			return true
+		}
+	}
+	return false
 }
 
 // Move plays guest's move. seq must equal the number of turns played so far,
@@ -458,6 +487,8 @@ func (g *Game) viewFor(r role) *View {
 		Stats:    g.stats,
 		Seq:      len(g.g.Turns),
 		Clock:    g.clockJSON(now),
+		Online:   OnlineJSON{White: g.connected(rules.White), Black: g.connected(rules.Black)},
+		Rematch:  g.rematchJSON(),
 	}
 	color, seated := rules.Color(r), r != roleSpectator
 	if seated {

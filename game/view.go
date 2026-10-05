@@ -38,6 +38,8 @@ type View struct {
 	Result   *ResultJSON `json:"result"`
 	Seq      int         `json:"seq"` // turns played; a move must quote it
 	Clock    ClockJSON   `json:"clock"`
+	Online   OnlineJSON  `json:"online"`  // which players have the game open
+	Rematch  RematchJSON `json:"rematch"` // only once the game is over
 
 	data []byte // the encoded view, set once before it is shared (see JSON)
 }
@@ -89,6 +91,12 @@ type StatsJSON struct {
 	Saved       int  `json:"saved"`
 	Repaired    int  `json:"repaired"` // potholes the Mamdani fixed
 	MamdaniFell bool `json:"mamdaniFell"`
+}
+
+// OnlineJSON says which players have a stream open.
+type OnlineJSON struct {
+	White bool `json:"white"`
+	Black bool `json:"black"`
 }
 
 // ResultJSON is how the game ended. Winner is "" for a draw, and for an
