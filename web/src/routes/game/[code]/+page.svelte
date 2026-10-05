@@ -11,7 +11,18 @@
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
 	import { checkSquare, stageAt } from '#lib/board.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
-	import { createGame, reasons, resign, sendMove, type Color, type MoveJSON, type View } from '#lib/game.ts';
+	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
+	import {
+		createGame,
+		gameExists,
+		reasons,
+		rematch,
+		resign,
+		sendMove,
+		type Color,
+		type MoveJSON,
+		type View
+	} from '#lib/game.ts';
 
 	const code = page.params.code ?? '';
 
@@ -25,7 +36,13 @@
 	// style): the piece glides at once. If the server refuses the move, the
 	// guess is dropped and the piece glides back.
 	let optimistic = $state<{ seq: number; move: MoveJSON } | null>(null);
+	// The guess couldn't reach the server; it is sent again once it can.
+	let unsent = $state(false);
 	let connected = $state(false);
+	// The server's clock minus ours, and the server's time now: the clocks
+	// count down from it.
+	let offset = 0;
+	let serverNow = $state(Date.now());
 	let notFound = $state(false);
 	let lost = $state(false);
 	let error = $state('');
@@ -35,31 +52,55 @@
 
 	function receive(next: View) {
 		error = '';
-		if (settlesGuess(optimistic, next)) optimistic = null;
+		offset = next.clock.now - Date.now();
+		serverNow = next.clock.now;
+		if (settlesGuess(optimistic, next)) {
+			optimistic = null;
+			unsent = false;
+		}
 		anim.receive(next, { hidden: document.hidden });
+		if (unsent) resend();
+		// Accepted rematch: players go to the new game (spectators get a link).
+		if (next.rematch.code && (next.you === 'white' || next.you === 'black') && !leaving) {
+			leaving = true;
+			location.assign(`/game/${next.rematch.code}`); // a full load gives the new game a fresh stream
+		}
 	}
+	let leaving = false;
 
 	onMount(() => {
-		const source = new EventSource(`/api/games/${code}/stream`);
-		source.onopen = () => (connected = true);
-		source.onerror = () => {
-			connected = false;
-			// A 404 or other error status closes the stream for good; network
-			// errors reconnect by themselves. Games live in memory for now, so a
-			// server restart is the usual way a game in progress disappears.
-			if (source.readyState === EventSource.CLOSED) {
-				if (view) lost = true;
-				else notFound = true;
-			}
+		let source: EventSource | null = null;
+		let retry: ReturnType<typeof setTimeout> | undefined;
+		const connect = () => {
+			source = new EventSource(`/api/games/${code}/stream`);
+			source.onopen = () => (connected = true);
+			source.onerror = () => {
+				connected = false;
+				// Network errors reconnect by themselves. An error status (a
+				// proxy's 502 while the server restarts, or a 404) closes the
+				// stream for good: ask whether the game still exists, and if it
+				// might, open a new stream.
+				if (source?.readyState !== EventSource.CLOSED) return;
+				retry = setTimeout(async () => {
+					if (await gameExists(code)) connect();
+					else if (view) lost = true;
+					else notFound = true;
+				}, 2000);
+			};
+			source.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
 		};
-		source.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
+		connect();
+		const tick = setInterval(() => (serverNow = Date.now() + offset), 100);
 		// Coming back to a tab mid-animation jumps to the end of the roll.
 		const finishOnReturn = () => {
 			if (!document.hidden) anim.finish();
 		};
 		document.addEventListener('visibilitychange', finishOnReturn);
 		return () => {
-			source.close();
+			source?.close();
+			clearTimeout(retry);
+			clearTimeout(resendTimer);
+			clearInterval(tick);
 			anim.stop();
 			document.removeEventListener('visibilitychange', finishOnReturn);
 		};
@@ -92,11 +133,41 @@
 		try {
 			error = (await sendMove(code, m, view.seq)) ?? '';
 		} catch {
-			error = 'Could not reach the server. Try again.';
+			// No connection (a train in a tunnel, say): keep the move on the
+			// board and send it again when the server can be reached.
+			unsent = true;
+			retryLater();
 		} finally {
 			busy = false;
 		}
-		if (error) optimistic = null; // refused or unsent: glide back
+		if (error) optimistic = null; // refused: glide back
+	}
+
+	let resendTimer: ReturnType<typeof setTimeout> | undefined;
+	function retryLater() {
+		clearTimeout(resendTimer);
+		resendTimer = setTimeout(resend, 1500);
+	}
+
+	// Sends an unsent move again. The same seq means the server refuses a
+	// copy of a move it already has; then the stream's state settles it.
+	async function resend() {
+		const guess = optimistic;
+		if (!unsent || !guess || view?.seq !== guess.seq) return;
+		if (!connected) return retryLater();
+		unsent = false;
+		try {
+			if ((await sendMove(code, guess.move, guess.seq)) && optimistic === guess) optimistic = null;
+		} catch {
+			unsent = true;
+			retryLater();
+		}
+	}
+
+	async function offerRematch(decline = false) {
+		busy = true;
+		error = (await rematch(code, decline).catch(() => 'Could not reach the server. Try again.')) ?? '';
+		busy = false;
 	}
 
 	async function doResign() {
@@ -128,15 +199,24 @@
 		}
 	}
 
+	let clockFor = (c: Color) => (view ? timeLeft(view.clock, c, serverNow) : 0);
+	let pausedForDice = $derived(!!view && paused(view.clock, serverNow));
+	let firstMove = $derived(view ? firstMoveLeft(view.clock, serverNow) : null);
+
 	let status = $derived.by(() => {
 		if (!view) return '';
 		if (view.status === 'waiting')
 			return you === 'white' ? 'Waiting for your friend to open the link…' : 'Waiting for White’s friend to join…';
 		if (view.result) return animating ? 'Last move played…' : 'Game over';
+		if (unsent) return connected ? 'Sending your move…' : 'Reconnecting — your move will be sent';
 		if (animating) return 'Dice are rolling…';
 		const side = view.turn === 'white' ? 'White' : 'Black';
-		const check = view.check ? ' — check!' : '';
-		return (view.turn === you ? 'Your move' : `${side} to move`) + check;
+		const yours = view.turn === you;
+		let text = yours ? 'Your move' : `${side} to move`;
+		// Name who is in check: a bare "check!" was read as the reader's own king.
+		if (view.check) text += yours ? ' — you’re in check' : ` — ${side} is in check`;
+		if (firstMove !== null) text += ` · ${Math.ceil(firstMove / 1000)}s to make the first move`;
+		return text;
 	});
 
 	let resultCard = $derived.by(() => {
@@ -146,12 +226,25 @@
 		const winner = r.winner === 'white' ? 'White' : 'Black';
 		const loser = r.winner === 'white' ? 'Black' : 'White';
 		const lastSan = view.log.at(-1)?.san ?? '';
+		const toMove = view.turn === 'white' ? 'White' : 'Black';
 		let detail = `By ${why}.`;
+		let title = r.draw ? 'Draw' : `${winner} wins`;
 		if (r.reason === 'resignation') detail = `${loser} resigned.`;
 		if (r.reason === 'checkmate') detail = `${winner} mated with ${lastSan}.`;
+		if (r.reason === 'timeout') detail = `${loser} ran out of time.`;
+		if (r.reason === 'timeout_vs_insufficient')
+			detail = `${toMove} ran out of time, but ${toMove === 'White' ? 'Black' : 'White'} couldn’t have mated.`;
+		if (r.reason === 'aborted') {
+			title = 'Aborted';
+			detail = `${toMove} didn’t make a first move in time. Nobody wins.`;
+		}
+		if (r.reason === 'expired') {
+			title = 'Expired';
+			detail = 'Nobody joined within a day.';
+		}
 		return {
 			kicker: `${why} · Move ${Math.max(1, Math.ceil(view.seq / 2))}`,
-			title: r.draw ? 'Draw' : `${winner} wins`,
+			title,
 			detail
 		};
 	});
@@ -170,8 +263,7 @@
 
 	{#if lost}
 		<p class="error" role="alert">
-			Lost the connection to this game. If the server restarted, the game is gone.
-			<a href={`/game/${code}`} data-sveltekit-reload>Reload</a> or <a href="/">start a new one</a>.
+			This game is no longer on the server. <a href="/">Start a new one</a>.
 		</p>
 	{/if}
 
@@ -202,7 +294,16 @@
 			</div>
 
 			<div class="board-col">
-				<PlayerBar color={top} you={you === top} lost={stage.lost[top]} toMove={playing && view.turn === top && !animating} />
+				<PlayerBar
+					color={top}
+					you={you === top}
+					lost={stage.lost[top]}
+					toMove={playing && view.turn === top && !animating}
+					clockMs={clockFor(top)}
+					ticking={view.clock.running === top && !pausedForDice}
+					pausedForDice={playing && view.turn === top && pausedForDice}
+					offline={view.status !== 'waiting' && !view.online[top]}
+				/>
 				<div class="board-wrap">
 					<Board
 						{stage}
@@ -228,6 +329,10 @@
 					you={you === bottom}
 					lost={stage.lost[bottom]}
 					toMove={playing && view.turn === bottom && !animating}
+					clockMs={clockFor(bottom)}
+					ticking={view.clock.running === bottom && !pausedForDice}
+					pausedForDice={playing && view.turn === bottom && pausedForDice}
+					offline={view.status !== 'waiting' && !view.online[bottom]}
 				/>
 			</div>
 
@@ -245,8 +350,27 @@
 						</div>
 						{#if view.stats.mamdaniFell}<div><dt>The Mamdani</dt><dd>fell in</dd></div>{/if}
 					</dl>
+					{#if isPlayer && view.result?.reason !== 'expired'}
+						{@const offer = view.rematch.offer}
+						<div class="actions" aria-live="polite">
+							{#if view.rematch.code}
+								<span class="note">Starting the rematch…</span>
+							{:else if offer && offer !== you}
+								<span class="note">Your opponent wants a rematch.</span>
+								<button class="primary" onclick={() => offerRematch()} disabled={busy}>Accept</button>
+								<button class="outline" onclick={() => offerRematch(true)} disabled={busy}>Decline</button>
+							{:else if offer === you}
+								<button class="primary" disabled>Rematch offered…</button>
+							{:else}
+								{#if view.rematch.declined}<span class="note">Rematch declined.</span>{/if}
+								<button class="primary" onclick={() => offerRematch()} disabled={busy}>Rematch</button>
+							{/if}
+						</div>
+					{:else if view.rematch.code}
+						<a class="primary" href={`/game/${view.rematch.code}`} data-sveltekit-reload>Watch rematch</a>
+					{/if}
 					<div class="actions">
-						<button class="primary" onclick={newGame} disabled={busy}>New game</button>
+						<button class={isPlayer ? 'outline' : 'primary'} onclick={newGame} disabled={busy}>New game</button>
 						<a class="outline" href="/">Home</a>
 					</div>
 				{:else if isPlayer && playing}
@@ -424,7 +548,8 @@
 		align-items: center;
 		gap: 12px;
 	}
-	.confirm span {
+	.confirm span,
+	.actions .note {
 		width: 100%;
 		color: var(--text);
 	}
@@ -448,6 +573,12 @@
 	}
 	.primary {
 		flex-grow: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 48px;
+		border-radius: 12px;
+		text-decoration: none;
 		border: 0;
 		background: var(--accent);
 		color: var(--accent-text);
