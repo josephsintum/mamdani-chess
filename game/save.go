@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"mamdani-chess/rules"
 	"mamdani-chess/store"
 )
 
@@ -22,6 +23,25 @@ func (nopStore) CreateGame(context.Context, store.Game) error                   
 func (nopStore) SeatBlack(context.Context, string, string) error                  { return nil }
 func (nopStore) AddTurn(context.Context, string, store.Turn) error                { return nil }
 func (nopStore) EndGame(context.Context, string, store.Result, *store.Turn) error { return nil }
+
+// savedTurn is the latest turn as the store keeps it.
+func (g *Game) savedTurn(now time.Time) store.Turn {
+	n := len(g.g.Turns) - 1
+	t := g.g.Turns[n]
+	return store.Turn{
+		Ply:     n,
+		Move:    t.Move.String(),
+		Dice:    t.Dice,
+		WhiteMS: g.clock.remaining[rules.White].Milliseconds(),
+		BlackMS: g.clock.remaining[rules.Black].Milliseconds(),
+		At:      now,
+	}
+}
+
+// savedResult is a result as the store keeps it.
+func savedResult(now time.Time, r rules.Result) store.Result {
+	return store.Result{EndedAt: now, Reason: string(r.Reason), Winner: winnerName(r)}
+}
 
 // save runs one store call. A failure retires the game: what players see
 // must never get ahead of what is saved (see the loop).

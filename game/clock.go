@@ -110,7 +110,7 @@ func (g *Game) flag(now time.Time) {
 		g.clock.remaining[side] = 0
 	}
 	g.last = nil
-	g.end(now, r)
+	g.end(now, r, nil)
 }
 
 // ClockJSON is the clocks on the wire. The browser counts down locally:

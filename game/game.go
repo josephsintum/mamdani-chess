@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"mamdani-chess/rules"
+	"mamdani-chess/store"
 )
 
 // Errors returned by Move.
@@ -131,7 +132,10 @@ func (g *Game) loop() {
 			arm()
 		case <-idle.C:
 			if g.g.Result.Over || len(g.subs) == 0 {
-				slog.Info("evicting idle game", "code", g.code)
+				if !g.g.Result.Over { // still waiting for Black: nobody came
+					g.end(time.Now(), rules.Result{Over: true, Reason: Expired}, nil)
+				}
+				slog.Info("game evicted", "code", g.code, "result", g.g.Result.Reason, "moves", len(g.g.Turns))
 				g.stop()
 				return
 			}
@@ -149,10 +153,16 @@ func (g *Game) expire() {
 	}
 }
 
-// end finishes the game with r and stops the clock.
-func (g *Game) end(now time.Time, r rules.Result) {
+// end finishes the game with r and stops the clock, saving the result
+// (with final, the move that ended it, if any) before anyone sees it.
+func (g *Game) end(now time.Time, r rules.Result, final *store.Turn) {
 	g.g.Result = r
 	g.clock.deadline = time.Time{}
+	saved := savedResult(now, r)
+	g.save("result", func(ctx context.Context) error { return g.store.EndGame(ctx, g.code, saved, final) })
+	if g.failed != nil {
+		return
+	}
 	if r.Reason == Aborted {
 		slog.Info("game aborted", "code", g.code, "missed", colorName(g.g.Pos.Turn))
 	} else {
@@ -281,8 +291,13 @@ func (g *Game) move(guest string, m rules.Move, seq int) error {
 		g.charge(color, now)
 		g.clock.remaining[color] += Increment
 	}
-	if g.g.Result.Over {
-		g.end(now, g.g.Result)
+	turn := g.savedTurn(now)
+	if g.g.Result.Over { // the move ended the game: save both at once
+		g.end(now, g.g.Result, &turn)
+		return nil
+	}
+	g.save("turn", func(ctx context.Context) error { return g.store.AddTurn(ctx, g.code, turn) })
+	if g.failed != nil {
 		return nil
 	}
 	g.startCounting(now.Add(ResolveDelay))
@@ -352,7 +367,7 @@ func (g *Game) resign(guest string) error {
 		g.charge(color, now) // the clock shows what they had left
 	}
 	g.last = nil
-	g.end(now, rules.Result{Over: true, Winner: color.Other(), Reason: Resignation})
+	g.end(now, rules.Result{Over: true, Winner: color.Other(), Reason: Resignation}, nil)
 	return nil
 }
 

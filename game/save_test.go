@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"mamdani-chess/store"
@@ -127,4 +129,73 @@ func TestLogsDontShowGuestIDs(t *testing.T) {
 	if !strings.Contains(out, "white="+guestTag(white)) || !strings.Contains(out, "black="+guestTag(black)) {
 		t.Fatalf("want the guests' tags in the log:\n%s", out)
 	}
+}
+
+func TestMovesAndResultsAreSaved(t *testing.T) {
+	st := openStore(t)
+	// The first roll opens a pothole (2, then b4), so the saved dice matter.
+	g, _, _ := seated(t, NewHub(&script{rolls: []int{2, 2, 4}}, st))
+	openings(t, g)
+	if err := g.Resign("bob"); err != nil {
+		t.Fatal(err)
+	}
+	saved := load(t, st)
+	if len(saved) != 1 || len(saved[0].Turns) != 2 {
+		t.Fatalf("saved %+v", saved)
+	}
+	first := saved[0].Turns[0]
+	if first.Ply != 0 || first.Move != "e2e4" || len(first.Dice) != 3 || first.WhiteMS != InitialTime.Milliseconds() {
+		t.Errorf("first turn %+v", first)
+	}
+	if r := saved[0].Result; r == nil || r.Reason != string(Resignation) || r.Winner != "white" {
+		t.Errorf("result %+v, want white wins by resignation", r)
+	}
+}
+
+func TestAFailedTurnSaveRetiresTheGame(t *testing.T) {
+	st := &failing{}
+	h := NewHub(odd{}, st)
+	g, a, b := seated(t, h)
+	recv(t, a)
+	recv(t, b)
+	st.fail = true
+	if err := g.Move("alice", mv(t, "e2e4"), 0); !errors.Is(err, ErrInternal) {
+		t.Fatalf("move: %v, want ErrInternal", err)
+	}
+	for v := range b.C { // the stream closes without showing the unsaved move
+		if v.Seq != 0 {
+			t.Fatalf("bob saw seq %d, a move that was never saved", v.Seq)
+		}
+	}
+	if _, ok := h.Get(g.Code()); ok {
+		t.Error("the game is still listed")
+	}
+}
+
+// ended records the results a hub saves.
+type ended struct {
+	nopStore
+	mu      sync.Mutex
+	results []store.Result
+}
+
+func (e *ended) EndGame(_ context.Context, _ string, r store.Result, _ *store.Turn) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.results = append(e.results, r)
+	return nil
+}
+
+func TestAGameNobodyJoinedExpiresWhenEvicted(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		st := &ended{}
+		create(t, NewHub(odd{}, st), "alice") // nobody ever opens the link
+		time.Sleep(DefaultIdle + time.Minute)
+		synctest.Wait()
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if len(st.results) != 1 || st.results[0].Reason != string(Expired) || st.results[0].Winner != "" {
+			t.Fatalf("saved results %+v, want one expired game", st.results)
+		}
+	})
 }
