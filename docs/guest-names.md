@@ -26,9 +26,10 @@ The words were picked by hand: a first list on 2026-10-02 (commit `a608b64`), th
   - public office, since the game is named after a mayor (mayor, comptroller, public advocate, borough president, night mayor);
   - Gen Z and Gen Alpha slang, as personas (rizzler, unc, goat, npc, main character, aura farmer, yapper, delulu); see below;
   - talk (schlep, kvetch);
-  - chess words from Washington Square Park's hustlers.
+  - chess words from Washington Square Park's hustlers;
+  - characters from GTA III and Vice City (Vercetti, Lance Vance); see below.
 
-  Brand names (Sabrett, Mister Softee) and campaign slogans are left out.
+  Brand names (Sabrett, Mister Softee) and campaign slogans are left out. The GTA words are the one exception, below.
 
 ### Slang (added 2026-10-05)
 
@@ -90,30 +91,51 @@ The doubtful words were ranked worst first and the bottom was cut. The words tha
   - `staten` became `staten-island`, since nobody says "Staten" alone.
 - **Blocked.** The Chinatown blocks (rats, pigeons, raccoons, `npc`) now also cover Sunset Park and Elmhurst. `pizza-rat-sunset-park` is four words, so it can't be drawn anyway.
 
+### GTA throwback (2026-10-05)
+
+A nod to GTA III (2001) and Vice City (2002). GTA III's Liberty City is a parody of New York, so its places sit with the real ones: `pothole-saint-marks`, `rizzler-staunton`.
+
+- **Places:** Liberty City's three islands and their districts:
+  - `liberty-city`;
+  - `staunton` (Staunton Island, the game's Manhattan), `fort-staunton`, `bedford-point`, `belleville-park`, `torrington`;
+  - `shoreside-vale`, `wichita-gardens`;
+  - `hepburn-heights`, `saint-marks` (also a real East Village street), `callahan-point`.
+- **Nouns:** four characters: `vercetti` (Tommy Vercetti, Vice City's hero), `lance-vance`, `kent-paul`, `phil-cassidy`.
+- **Sources:** spellings checked against [gtabase's GTA III map locations](https://gtabase.com/gta-3/map-locations), and its [Lance Vance](https://gtabase.com/gta-vice-city/characters/lance-vance) page.
+- **These are Rockstar's names.** They're kept as a deliberate homage, unlike the brand names left out above.
+- **Blocked:** Vercetti is a drug kingpin and Lance Vance a cocaine dealer, so they get the same blocks as `hustler`, plus `vercetti-bensonhurst` (an Italian-American mob stereotype).
+- **Left out:**
+  - districts that read as real places elsewhere (`portland`, `trenton`, `rockford`);
+  - `faggio` (a scooter whose name contains a slur);
+  - `eight-ball` (drug and race baggage);
+  - `busted` and `wasted` (arrest and drinking digs about a place);
+  - `rampage` and `ammu-nation` (guns).
+- **Offered but not picked:** cars (`banshee`, `infernus`), radio stations (`flashback-fm`), `mr-whoopee` and `borgnine`.
+
 ## The rules
 
 These are enforced by `names_test.go`:
 
 - **Shape.** Words are lowercase slugs: letters and single hyphens (`hells-kitchen`, not `hell's kitchen`). Abbreviations people actually say are fine (`les`, `uws`, `fidi`, `lic`).
 - **At most 3 words** (`names.MaxWords`). A name is `noun-place`, so a two-word noun takes a one-word place and a two-word place takes a one-word noun: `chopped-cheese-manhattan`, never `chopped-cheese-jackson-heights`.
-- **At most 24 characters** (`names.MaxLen`). Since the 3-word rule, this rules out only 151 pairs, such as `straphanger-jackson-heights`. The longest names are 24 characters, e.g. `fire-escape-williamsburg`.
-  - Where 24 characters don't fit, the page cuts the name with an ellipsis. On a phone's live-game card that applies to names over about 20 characters (about 1,200 of them).
+- **At most 24 characters** (`names.MaxLen`). Since the 3-word rule, this rules out only 193 pairs, such as `straphanger-jackson-heights`. The longest names are 24 characters, e.g. `fire-escape-williamsburg`.
+  - Where 24 characters don't fit, the page cuts the name with an ellipsis. On a phone's live-game card that applies to names over about 20 characters (about 1,600 of them).
   - Until 2026-10-05 the cap was 20 characters. That came from the original spec's free-text rename limit, which no longer exists.
 - Pairs that break a rule are skipped and both words redrawn, so every allowed name is equally likely.
 - **No duplicates** within a list.
-- **Enough names.** At least 2,000 must fit. Today it's 9,128:
-  - 105 nouns (71 one-word, 34 two-word) and 98 places (69 one-word, 29 two-word) make 10,290 pairs;
-  - the 3-word rule drops 986 of them, the length cap 151, and the blocked list 25.
+- **Enough names.** At least 2,000 must fit. Today it's 10,245:
+  - 109 nouns (72 one-word, 37 two-word) and 109 places (71 one-word, 38 two-word) make 11,881 pairs;
+  - the 3-word rule drops 1,406 of them, the length cap 193, and the blocked list 37.
 
-  Before the second pass it was 10,448.
+  Before the second pass it was 10,448, and 9,128 after it (before the GTA words).
 
   The first list gave 2,987.
 - **Blocked pairs.** `blocked` holds pairs that read badly together, and they're redrawn.
-  - Mostly these are stereotypes about who lives somewhere: `hustler-` with Harlem, Bed-Stuy, Mott Haven, Hunts Point, the Bronx, Canarsie or Jamaica; rats, pigeons and `npc` with Chinatown, Flushing, Sunset Park or Elmhurst (the city's large Chinese neighborhoods); `landlord-harlem`.
+  - Mostly these are stereotypes about who lives somewhere: `hustler-` with Harlem, Bed-Stuy, Mott Haven, Hunts Point, the Bronx, Canarsie or Jamaica; rats, pigeons and `npc` with Chinatown, Flushing, Sunset Park or Elmhurst (the city's large Chinese neighborhoods); `landlord-harlem`; `vercetti` and `lance-vance` with the `hustler` places, and `vercetti-bensonhurst`.
   - Every entry must be a real noun-place pair (`TestBlockedPairsExist`), so a typo can't quietly block nothing.
   - When you add a word, read its pairs with the sensitive places and block any that read as a dig at the people who live there.
 
-Names are display-only and don't need to be unique, but new names prefer ones nobody has: the server draws up to 5 candidates and keeps the first unused one, and falls back to the last draw if all are taken. That keeps names unique in practice until roughly 9,000 guests. Without that check, with about 9,100 possible names, two guests out of about 110 are likely to share one.
+Names are display-only and don't need to be unique, but new names prefer ones nobody has: the server draws up to 5 candidates and keeps the first unused one, and falls back to the last draw if all are taken. That keeps names unique in practice until roughly 10,000 guests. Without that check, with about 10,200 possible names, two guests out of about 120 are likely to share one.
 
 ## Names are stored, not derived
 

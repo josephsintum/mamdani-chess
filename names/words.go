@@ -34,12 +34,14 @@ var nouns = []string{
 	// chess, Washington Square style
 	"rook", "knight", "bishop", "pawn", "blitz", "gambit", "castle",
 	"en-passant", "zugzwang",
+	// gta iii and vice city characters
+	"vercetti", "lance-vance", "kent-paul", "phil-cassidy",
 }
 
 // New York places: NYC boroughs and neighborhoods first, then popular
 // counties and towns from Wikipedia's lists of New York counties and towns,
 // then a few famous villages, hamlets, areas and cities that are on neither
-// list.
+// list, then Liberty City, the New York of GTA III.
 // How they were chosen: docs/guest-names.md.
 var places = []string{
 	// boroughs and counties
@@ -79,6 +81,10 @@ var places = []string{
 	"cooperstown", "lake-placid", "the-hamptons", "fire-island",
 	// cities
 	"buffalo", "rochester", "syracuse",
+	// liberty city, gta iii's new york
+	"liberty-city", "staunton", "shoreside-vale", "hepburn-heights",
+	"saint-marks", "bedford-point", "belleville-park", "fort-staunton",
+	"wichita-gardens", "callahan-point", "torrington",
 }
 
 // Pairs that read badly together, mostly as a stereotype about who lives
@@ -95,4 +101,9 @@ var blocked = map[string]bool{
 	"rat-sunset-park": true, "pigeon-sunset-park": true, "raccoon-sunset-park": true,
 	"npc-sunset-park": true, "rat-elmhurst": true, "pizza-rat-elmhurst": true,
 	"pigeon-elmhurst": true, "raccoon-elmhurst": true, "npc-elmhurst": true,
+	"vercetti-bensonhurst": true, "vercetti-harlem": true, "vercetti-bed-stuy": true,
+	"vercetti-mott-haven": true, "vercetti-hunts-point": true, "vercetti-bronx": true,
+	"vercetti-canarsie": true, "vercetti-jamaica": true,
+	"lance-vance-harlem": true, "lance-vance-bronx": true, "lance-vance-canarsie": true,
+	"lance-vance-jamaica": true,
 }
