@@ -160,6 +160,29 @@ func TestRestoreShowsAFlagFallAsItWas(t *testing.T) {
 	}
 }
 
+// A game that won't replay is marked ended, so later startups don't try it
+// again and log the same error forever.
+func TestAGameThatWontReplayIsMarkedEnded(t *testing.T) {
+	st := openStore(t)
+	ctx := t.Context()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(st.CreateGame(ctx, store.Game{Code: "BAD002", White: "a", Black: "b", CreatedAt: time.Now()}))
+	must(st.AddTurn(ctx, "BAD002", store.Turn{Ply: 0, Move: "e2e5", At: time.Now()})) // illegal
+	NewHub(odd{}, st).Restore(load(t, st))
+	saved := load(t, st)
+	if len(saved) != 1 || saved[0].Result == nil || saved[0].Result.Reason != string(Unrestorable) {
+		t.Fatalf("saved %+v, want BAD002 ended as unrestorable", saved)
+	}
+	if n := NewHub(odd{}, st).Restore(saved); n != 0 { // the next startup leaves it alone
+		t.Fatalf("restored %d games, want 0", n)
+	}
+}
+
 func TestRestoreSkipsAGameThatWontReplay(t *testing.T) {
 	saved := []store.SavedGame{
 		{Game: store.Game{Code: "BAD001", White: "a", Black: "b"},

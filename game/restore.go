@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -16,8 +17,19 @@ func (h *Hub) Restore(saved []store.SavedGame) int {
 	now := time.Now()
 	n := 0
 	for _, sg := range saved {
+		if sg.Result != nil && sg.Result.Reason == string(Unrestorable) {
+			continue // already found not to replay
+		}
 		if err := h.restore(sg, now); err != nil {
 			slog.Error("game not restored", "code", sg.Code, "err", err)
+			if sg.Result == nil { // end it, so later startups don't retry it
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				r := store.Result{EndedAt: now, Reason: string(Unrestorable)}
+				if err := h.store.EndGame(ctx, sg.Code, r, nil); err != nil {
+					slog.Error("could not end unrestorable game", "code", sg.Code, "err", err)
+				}
+				cancel()
+			}
 			continue
 		}
 		n++
