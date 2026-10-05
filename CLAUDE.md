@@ -25,25 +25,27 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Where things stand (2026-10-05)
 
-- **Merged to `main`:** milestones 01–04 (skeleton, rules engine, playable friend game, game screen with dice tray, resign and result card), plus the `/dev/board` sandbox. The roadmap shows milestone 04 as done; a playtest with friends is still pending.
-- **Also on `main`, from another session:** the Rust server experiment in `server_rs/`, and two side plans (Go server improvements, Go rules speed). Local `main` is ahead of `origin/main` with that work, not pushed.
-- **Waiting for review:** [Plan 04b](docs/superpowers/plans/2026-10-05-04b-omcb-feel.md) on branch `omcb-feel`. It makes the board feel like One Million Chessboards: gliding pieces, instant moves, cross-fade captures, lift on hover, full-square highlights, pothole effects, tumbling dice, cburnett pieces, reduced motion. Every code block in it was built and checked in a scratch copy, and a dry run from `main` matches. The user chose: keep the road-works look, click plus drag, full-square fills. Next: get the user's OK, then run it inline.
-- **After 04b:** milestone 05 (clocks, saved games, rematch). See the roadmap.
+- **Done:** milestones 01–04 (skeleton, rules engine, playable friend game, game screen with dice tray, resign and result card), the `/dev/board` sandbox, and [Plan 04b](docs/superpowers/plans/2026-10-05-04b-omcb-feel.md): the board feels like One Million Chessboards (gliding pieces, instant moves, cross-fade captures, pothole effects, tumbling dice, cburnett pieces, reduced motion). A pre-05 pass added instant mode, the playtest script, and keeps an instant move through same-turn updates (`settlesGuess`), which milestone 05's clocks rely on.
+- **Also in the repo, from another session:** the Rust server experiment in `server_rs/`, and two side plans (Go server improvements, Go rules speed).
+- **Checked:** whole games through the UI with the playtest script, 24 in Chromium and 18 in WebKit (Safari's engine), all clean; WebKit at phone size also glides and takes touch taps.
+- **Pending:** a playtest with friends, on their phones.
 
 ## Next step
 
-Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`: a playable game first, the Railway launch last. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Milestone 05 (clocks, saved games, rematch). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`: a playable game first, the Railway launch last. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
 - **Run it:** `go run ./cmd/server` (:8080) and `pnpm --dir web dev` (:5173, forwards `/api`). `/dev/board` is a dev-only sandbox: one browser plays both sides, dice are scripted, and nothing goes to the server.
 - **Two players in one browser:** `localhost` and `[::1]` (or `127.0.0.1` against the Go server) keep separate cookies, so each origin is a different guest.
 - **Tests:** `go test -race -short ./...` (the rules engine's full random-game suite takes about 2 min under `-race`), `pnpm --dir web check`, `pnpm --dir web test` (Vitest), `pnpm --dir web build`.
+- **Playtest:** with both servers running, `pnpm --dir web playtest` plays whole games through the real UI (two guests per game, random legal moves, some by mouse drag) and exits 1 on any page error, stuck board or lost move. Flags: `--browser webkit`, `--games 12`, `--drag 0.5`, `--headed`. Run it after any change to the board, game page or server protocol.
+- **Instant mode:** dev builds only. `/game/CODE?instant`, or the sandbox's Instant checkbox, turns off every animation and plays the dice in 0 ms (`setInstant` in `motion.ts`), so a whole game takes seconds.
 - **SvelteKit 3 and Svelte 5 traps hit so far:**
   - use `$app/env`, not `$app/environment`;
   - `#lib/...` imports need the file extension (`#lib/game.ts`), and there is no `$lib`;
   - transition functions take `(node, params)`;
   - `$state.snapshot` only works in `.svelte`/`.svelte.ts` files;
   - run `npx @sveltejs/mcp svelte-autofixer` on every component and avoid `$effect`.
-- **Board pointer rule:** capture the pointer only once a drag has moved more than 6px. Capturing on pointerdown sends the click to the board, and taps stop working.
+- **Board pointer rule:** capture the pointer only once a drag has moved more than 6px from the press (not from the last event, or slow drags never start). Capturing on pointerdown sends the click to the board, and taps stop working.
 - **How plans have been written:** build the code in a scratch copy, check it in tests and a browser, write the plan from those files, dry-run the plan task by task from `main`, then execute it inline on a branch with one final whole-branch review.
