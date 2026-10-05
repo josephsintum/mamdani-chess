@@ -232,7 +232,7 @@ func (g *Game) Join(guest string) (*Sub, error) {
 	sub := &Sub{C: ch, ch: ch, guest: guest}
 	err := g.do(func() {
 		if g.seats[rules.Black] == "" && guest != g.seats[rules.White] && !g.g.Result.Over {
-			g.save("black", func(ctx context.Context) error { return g.store.SeatBlack(ctx, g.code, guest) })
+			g.save("black", func(ctx context.Context) error { return g.store.SeatBlack(ctx, g.code, guest, "") })
 			if g.failed != nil {
 				return
 			}

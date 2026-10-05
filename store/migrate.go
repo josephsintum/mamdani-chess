@@ -35,6 +35,16 @@ var migrations = []string{
 		at       INTEGER NOT NULL,
 		PRIMARY KEY (game, ply)
 	 );`,
+	// 4: guest names (milestone 06a). A guest gets a row when they first
+	// play; each seat keeps the name its player had when they sat down.
+	`CREATE TABLE guests (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL,
+		created_at INTEGER NOT NULL
+	 );
+	 CREATE INDEX guests_name ON guests(name);
+	 ALTER TABLE games ADD COLUMN white_name TEXT;
+	 ALTER TABLE games ADD COLUMN black_name TEXT;`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

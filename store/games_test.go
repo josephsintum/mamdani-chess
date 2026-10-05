@@ -13,8 +13,8 @@ var t0 = time.UnixMilli(1_791_000_000_000)
 func TestGameRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	s, path := openTemp(t)
-	must(t, s.CreateGame(ctx, Game{Code: "ABC123", White: "alice", CreatedAt: t0}))
-	must(t, s.SeatBlack(ctx, "ABC123", "bob"))
+	must(t, s.CreateGame(ctx, Game{Code: "ABC123", White: "alice", WhiteName: "pigeon-astoria", CreatedAt: t0}))
+	must(t, s.SeatBlack(ctx, "ABC123", "bob", "bagel-soho"))
 	turns := []Turn{
 		{Ply: 0, Move: "e2e4", Dice: []int{4, 3, 5}, WhiteMS: 605000, BlackMS: 600000, At: t0.Add(5 * time.Second)},
 		{Ply: 1, Move: "e7e8q", Dice: nil, WhiteMS: 605000, BlackMS: 597000, At: t0.Add(10 * time.Second)},
@@ -29,7 +29,7 @@ func TestGameRoundTrip(t *testing.T) {
 	defer s.Close()
 	got, err := s.LoadForRestore(ctx, t0)
 	must(t, err)
-	want := []SavedGame{{Game: Game{Code: "ABC123", White: "alice", Black: "bob", CreatedAt: t0}, Turns: turns}}
+	want := []SavedGame{{Game: Game{Code: "ABC123", White: "alice", Black: "bob", WhiteName: "pigeon-astoria", BlackName: "bagel-soho", CreatedAt: t0}, Turns: turns}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("loaded\n%+v\nwant\n%+v", got, want)
 	}
