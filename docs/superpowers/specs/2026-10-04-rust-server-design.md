@@ -208,7 +208,7 @@ There is one task per game, and it owns the game state with no locks. This is th
   - Opening the stream is what joins the game.
 - **Static files:**
   - `ServeDir::new(web_dir)` with `.precompressed_br().precompressed_gzip()` and a fallback of `ServeFile::new(index.html)` for SPA routes. This gives Range, ETag, Last-Modified and conditional requests for free.
-  - `/_app/*` is a separate `ServeDir` with no fallback, so a missing hashed asset is a 404, not the SPA page served with a year-long cache header (which the Go server would do).
+  - `/_app/*` is a separate `ServeDir` with no fallback, so a missing hashed asset is a 404. (The Go server answers 200 with the SPA page, served `no-cache`, which a browser then fails to run as a script.)
   - Cache headers come from a small middleware: a successful `_app/immutable/*` response gets `public, max-age=31536000, immutable`, and everything else gets `no-cache`.
   - `WEB_DIR` defaults to `../web/build`, relative to the binary's working directory.
   - **Trade-off:** files are served from disk rather than embedded, so the binary is no longer self-contained. That's acceptable because the Rust server isn't deployed. If it ever is, add `rust-embed` behind a feature flag.
