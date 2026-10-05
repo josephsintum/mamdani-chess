@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { followsRematch, pieceName, trySendMove, type View } from './game.ts';
+import { followsRematch, pieceName, showsOffline, trySendMove, type View } from './game.ts';
 
 function view(you: View['you'], code?: string): View {
 	return { you, rematch: code ? { code } : {} } as View;
@@ -17,6 +17,20 @@ describe('followsRematch', () => {
 
 	it('never moves a spectator', () => {
 		expect(followsRematch(view('spectator'), view('spectator', 'NEW123'))).toBe(false);
+	});
+});
+
+describe('showsOffline', () => {
+	const at = (status: View['status'], white: boolean) => ({ status, online: { white, black: true } }) as View;
+
+	it('marks a player who left a game in progress', () => {
+		expect(showsOffline(at('playing', false), 'white')).toBe(true);
+		expect(showsOffline(at('playing', true), 'white')).toBe(false);
+	});
+
+	it('says nothing before the game starts or once it is over', () => {
+		expect(showsOffline(at('waiting', false), 'white')).toBe(false);
+		expect(showsOffline(at('over', false), 'white')).toBe(false); // gone to the rematch, say
 	});
 });
 

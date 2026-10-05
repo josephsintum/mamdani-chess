@@ -95,6 +95,15 @@ export function followsRematch(prev: View | null, next: View): boolean {
 	return player && !!next.rematch.code && prev !== null && !prev.rematch.code;
 }
 
+/**
+ * Whether a player's bar says they're disconnected: only while the game is
+ * on. Before it starts there's no one to wait for, and after it ends the
+ * players have usually moved on (to the rematch, say).
+ */
+export function showsOffline(view: View, color: Color): boolean {
+	return view.status === 'playing' && !view.online[color];
+}
+
 /** Offers or accepts a rematch, or declines one. Returns null or the error. */
 export async function rematch(code: string, decline = false): Promise<string | null> {
 	return post(`/api/games/${code}/rematch`, { decline });

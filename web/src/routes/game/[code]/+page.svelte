@@ -19,6 +19,7 @@
 		createGame,
 		followsRematch,
 		gameExists,
+		showsOffline,
 		reasons,
 		rematch,
 		resign,
@@ -328,7 +329,7 @@
 				toMove={playing && view.turn === top && !animating}
 				clockMs={clockFor(top)}
 				ticking={view.clock.running === top && !pausedForDice}
-				offline={view.status !== 'waiting' && !view.online[top]}
+				offline={showsOffline(view, top)}
 			/>
 			<div class="ph-board">
 				<Board
@@ -353,7 +354,7 @@
 				toMove={playing && view.turn === bottom && !animating}
 				clockMs={clockFor(bottom)}
 				ticking={view.clock.running === bottom && !pausedForDice}
-				offline={view.status !== 'waiting' && !view.online[bottom]}
+				offline={showsOffline(view, bottom)}
 			/>
 		</div>
 
@@ -469,7 +470,7 @@
 					clockMs={clockFor(top)}
 					ticking={view.clock.running === top && !pausedForDice}
 					pausedForDice={playing && view.turn === top && pausedForDice}
-					offline={view.status !== 'waiting' && !view.online[top]}
+					offline={showsOffline(view, top)}
 				/>
 				<div class="board-wrap">
 					<Board
@@ -501,7 +502,7 @@
 					clockMs={clockFor(bottom)}
 					ticking={view.clock.running === bottom && !pausedForDice}
 					pausedForDice={playing && view.turn === bottom && pausedForDice}
-					offline={view.status !== 'waiting' && !view.online[bottom]}
+					offline={showsOffline(view, bottom)}
 				/>
 			</div>
 
