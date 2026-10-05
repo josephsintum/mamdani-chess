@@ -246,7 +246,13 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 		let text = `→ ${t}`;
 		const occupant = t === v.mamdani ? 'M' : v.board[squareIndex(t)];
 		let opens = true;
-		if (v.mamdani && t !== v.mamdani && adjacent(t, v.mamdani)) {
+		if (v.potholes.some((h) => h.sq === t)) {
+			// Already a pothole: the server re-rolls both d8s. A scripted target
+			// would land here again, so the sandbox stops at the re-roll.
+			ev.push({ kind: 'reroll', sq: t, reason: 'pothole' });
+			opens = false;
+			text += ' re-roll (already a pothole)';
+		} else if (v.mamdani && t !== v.mamdani && adjacent(t, v.mamdani)) {
 			ev.push({ kind: 'repaired', sq: t });
 			v.stats.repaired++;
 			opens = false;

@@ -109,6 +109,15 @@ describe('playTurn', () => {
 		expect(v.stats.repaired).toBe(1);
 	});
 
+	it('never opens a second pothole on a square that already has one (re-roll, as the rules say)', () => {
+		// The sandbox's default script: every even roll targets d4.
+		let v = playTurn(startView(), { from: 'e2', to: 'e4' }, { pothole: 2, target: 'd4' });
+		v = playTurn(v, { from: 'e7', to: 'e5' }, { pothole: 2, target: 'd4' });
+		expect(v.potholes).toEqual([{ sq: 'd4', by: 'white' }]);
+		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole', 'target', 'reroll']);
+		expect(v.last.at(-1)).toEqual({ kind: 'reroll', sq: 'd4', reason: 'pothole' });
+	});
+
 	it('plays re-rolls before the final target', () => {
 		const v = playTurn(startView(), { from: 'e2', to: 'e4' }, { pothole: 2, rerolls: ['e1'], target: 'h6' });
 		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole', 'target', 'reroll', 'target', 'pothole_opened']);
