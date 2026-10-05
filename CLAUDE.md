@@ -13,10 +13,10 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Decisions that are settled (don't reopen without asking)
 
-- Rules are the original Pot-Hole Chess plus only the Mamdani. Roll a d8 after every move; even opens a new pothole; it closes after the roller's next move. Kings never fall (re-roll). All dice are d8.
+- Rules are the original Pot-Hole Chess plus the Mamdani, with longer potholes (milestone 06c). Roll a d8 after every move; even opens a new pothole; it closes after 3 of the roller's moves; at most 5 are open (the oldest closes). A roll can checkmate, but kings never fall (re-roll). All dice are d8.
 - Stack: Go server (SSE out, JSON POST in, SQLite), SvelteKit static frontend with a custom board (no chessground). One Railway service.
 - Guests only, all games public, one clock (10+5), quick match only, emoji reactions instead of chat.
-- Visual design: "road works", dark only. Potholes are a dark hole with an orange ring.
+- Visual design: "road works", dark only. Potholes are a dark hole with an orange ring; small traffic cones on its front edge count the rounds left. The Mamdani's repair is celebrated (cone, sparks, 👍).
 
 ## Working rules
 
