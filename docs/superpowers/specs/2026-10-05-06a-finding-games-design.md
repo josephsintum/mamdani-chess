@@ -43,7 +43,7 @@ ALTER TABLE games ADD COLUMN black_name TEXT;
 - `store.EnsureGuest(ctx, id, draw) (name, error)` returns the guest's name. If there's no row yet, it inserts a fresh name (`INSERT … ON CONFLICT DO NOTHING`, then read back). Every path that needs a name goes through it.
 - `store.RerollGuest(ctx, id, draw) (name, error)` gives the guest a fresh name and returns it.
 - **A fresh name prefers names nobody has.** `draw` is `names.Random`. The store draws up to 5 candidates and keeps the first one that no other guest has and that differs from the guest's current name. If all 5 are taken, it uses the last one.
-  - So names are unique in practice until roughly 10,000 guests, and repeats become possible gradually after that instead of failing.
+  - So names are unique in practice until roughly 9,000 guests, and repeats become possible gradually after that instead of failing.
   - It also means the second player in a game never gets the name of the player already seated.
   - Two guests named at the same moment can still collide, which is harmless: names are display-only and there's no unique index.
 - Games saved before migration 4 have no names. Their player bars fall back to "White" and "Black".

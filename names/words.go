@@ -13,23 +13,22 @@ var nouns = []string{
 	// street
 	"stoop", "hydrant", "yellow-cab", "metrocard", "pothole", "manhole",
 	"scaffold", "fire-escape", "water-tower", "brownstone", "traffic-cone",
-	"bodega", "deli", "ferry", "tugboat", "citi-bike", "subway", "local", "express",
+	"bodega", "deli", "ferry", "tugboat", "citi-bike", "subway", "local",
 	"sidewalk-shed", "steam-pipe", "newsstand", "stoop-sale",
 	"walk-up", "rooftop", "bike-lane",
 	// transit
-	"turnstile", "straphanger", "token", "dollar-van", "car-service",
+	"turnstile", "straphanger", "dollar-van", "car-service",
 	"bus-lane", "showtime", "rush-hour",
 	// people
 	"cabbie", "doorman", "super", "busker", "hustler", "bike-messenger",
-	"landlord", "tourist", "commuter", "rat-czar",
+	"landlord", "tourist", "commuter", "rat-czar", "dog-walker",
 	// public office
 	"mayor", "deputy-mayor", "comptroller", "public-advocate",
 	"borough-president", "council-member", "governor", "night-mayor",
-	"dog-catcher", "traffic-agent",
+	"traffic-agent",
 	// gen z and gen alpha slang
 	"rizzler", "unc", "goat", "sigma", "npc", "main-character", "aura-farmer",
-	"yapper", "bestie", "pookie", "delulu", "skibidi", "six-seven", "clanker",
-	"based", "karen",
+	"yapper", "bestie", "pookie", "delulu",
 	// talk
 	"schlep", "mensch", "kvetch",
 	// chess, Washington Square style
@@ -44,11 +43,11 @@ var nouns = []string{
 // How they were chosen: docs/guest-names.md.
 var places = []string{
 	// boroughs and counties
-	"bronx", "brooklyn", "queens", "staten", "manhattan", "richmond",
+	"bronx", "brooklyn", "queens", "staten-island", "manhattan", "richmond",
 	// manhattan
 	"harlem", "inwood", "soho", "noho", "tribeca", "chelsea", "nolita", "fidi",
 	"midtown", "ues", "uws", "kips-bay", "murray-hill", "hells-kitchen",
-	"two-bridges", "chinatown", "east-village", "the-village",
+	"chinatown", "east-village", "the-village",
 	// brooklyn
 	"flatbush", "bushwick", "dumbo", "gowanus", "red-hook", "bed-stuy",
 	"park-slope", "bay-ridge", "canarsie", "greenpoint", "williamsburg",
@@ -66,15 +65,14 @@ var places = []string{
 	"westchester", "nassau", "suffolk", "albany",
 	"rockland", "saratoga", "niagara",
 	// towns: long island
-	"hempstead", "oyster-bay", "huntington", "islip", "babylon", "brookhaven",
-	"southampton", "east-hampton", "shelter-island", "riverhead",
-	"smithtown",
+	"hempstead", "oyster-bay", "huntington", "babylon",
+	"southampton", "east-hampton", "shelter-island",
 	// towns: westchester
 	"rye", "scarsdale", "greenburgh", "bedford", "ossining",
 	"yorktown",
 	// towns: hudson valley, catskills, finger lakes
 	"poughkeepsie", "hyde-park", "rhinebeck", "fishkill", "woodstock",
-	"new-paltz", "kingston", "catskill",
+	"new-paltz", "kingston",
 	"ithaca",
 	// famous, but not counties or towns
 	"montauk", "yonkers", "tarrytown", "sleepy-hollow", "beacon",
@@ -92,9 +90,9 @@ var blocked = map[string]bool{
 	"hustler-jamaica": true,
 	"rat-chinatown":   true, "pizza-rat-chinatown": true, "pigeon-chinatown": true,
 	"raccoon-chinatown": true, "rat-flushing": true, "pizza-rat-flushing": true,
-	"landlord-harlem": true, "dog-catcher-chinatown": true, "dog-catcher-flushing": true,
-	"npc-chinatown": true, "npc-flushing": true,
-	"clanker-harlem": true, "clanker-bed-stuy": true, "clanker-mott-haven": true,
-	"clanker-hunts-point": true, "clanker-bronx": true, "clanker-canarsie": true,
-	"clanker-jamaica": true,
+	"landlord-harlem": true,
+	"npc-chinatown":   true, "npc-flushing": true,
+	"rat-sunset-park": true, "pigeon-sunset-park": true, "raccoon-sunset-park": true,
+	"npc-sunset-park": true, "rat-elmhurst": true, "pizza-rat-elmhurst": true,
+	"pigeon-elmhurst": true, "raccoon-elmhurst": true, "npc-elmhurst": true,
 }
