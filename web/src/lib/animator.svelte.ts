@@ -4,7 +4,11 @@
 import { firstDiceStep } from './board.ts';
 import type { View } from './game.ts';
 
-/** Time between dice steps; a whole roll takes about two seconds. */
+/**
+ * Time between dice steps; a whole roll takes about two seconds. The server
+ * pauses the next clock for the roll using the same value (StepTime in
+ * game/clock.go): change both together.
+ */
 export const STEP_MS = 550;
 
 export class Animator {
