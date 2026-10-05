@@ -38,6 +38,16 @@ func recv(t *testing.T, sub *Sub) *View {
 	}
 }
 
+// join opens a stream for guest and fails the test if the game has stopped.
+func join(t *testing.T, g *Game, guest string) *Sub {
+	t.Helper()
+	sub, err := g.Join(guest)
+	if err != nil {
+		t.Fatalf("join %s: %v", guest, err)
+	}
+	return sub
+}
+
 func mv(t *testing.T, uci string) rules.Move {
 	t.Helper()
 	m, err := rules.ParseMove(uci)
@@ -49,22 +59,22 @@ func mv(t *testing.T, uci string) rules.Move {
 
 func TestSeats(t *testing.T) {
 	g := NewHub(odd{}).Create("alice")
-	a := g.Join("alice")
+	a := join(t, g, "alice")
 	if v := recv(t, a); v.You != "white" || v.Status != Waiting || len(v.Legal) != 0 {
 		t.Fatalf("creator: you=%s status=%s legal=%d", v.You, v.Status, len(v.Legal))
 	}
-	b := g.Join("bob")
+	b := join(t, g, "bob")
 	if v := recv(t, b); v.You != "black" || v.Status != Playing || len(v.Legal) != 0 {
 		t.Fatalf("second guest: you=%s status=%s legal=%d", v.You, v.Status, len(v.Legal))
 	}
 	if v := recv(t, a); v.Status != Playing || len(v.Legal) != 33 {
 		t.Fatalf("white after black joins: status=%s legal=%d, want playing and 33", v.Status, len(v.Legal))
 	}
-	c := g.Join("carol")
+	c := join(t, g, "carol")
 	if v := recv(t, c); v.You != "spectator" || len(v.Legal) != 0 {
 		t.Fatalf("third guest: you=%s legal=%d", v.You, len(v.Legal))
 	}
-	a2 := g.Join("alice") // a second tab, or a reconnect
+	a2 := join(t, g, "alice") // a second tab, or a reconnect
 	if v := recv(t, a2); v.You != "white" {
 		t.Fatalf("reconnect: you=%s, want white", v.You)
 	}
@@ -72,7 +82,7 @@ func TestSeats(t *testing.T) {
 
 func TestMoveBroadcastsToEveryone(t *testing.T) {
 	g := NewHub(odd{}).Create("alice")
-	a, b, c := g.Join("alice"), g.Join("bob"), g.Join("carol")
+	a, b, c := join(t, g, "alice"), join(t, g, "bob"), join(t, g, "carol")
 	recv(t, a)
 	recv(t, b)
 	recv(t, c)
@@ -100,7 +110,7 @@ func TestMoveErrors(t *testing.T) {
 	if err := g.Move("alice", mv(t, "e2e4"), 0); !errors.Is(err, ErrWaiting) {
 		t.Errorf("before black joins: %v", err)
 	}
-	g.Join("bob")
+	join(t, g, "bob")
 	cases := []struct {
 		guest, uci string
 		seq        int
@@ -121,8 +131,8 @@ func TestMoveErrors(t *testing.T) {
 func TestPotholeShowsInView(t *testing.T) {
 	// Even roll, then file 4 rank 4: a pothole opens on d4.
 	g := NewHub(&script{rolls: []int{2, 4, 4}}).Create("alice")
-	a := g.Join("alice")
-	g.Join("bob")
+	a := join(t, g, "alice")
+	join(t, g, "bob")
 	recv(t, a)
 	if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
 		t.Fatal(err)
@@ -146,8 +156,8 @@ func TestPotholeShowsInView(t *testing.T) {
 
 func TestCheckmateEndsTheGame(t *testing.T) {
 	g := NewHub(odd{}).Create("alice")
-	a := g.Join("alice")
-	g.Join("bob")
+	a := join(t, g, "alice")
+	join(t, g, "bob")
 	for i, m := range []string{"f2f3", "e7e5", "g2g4", "d8h4"} {
 		guest := []string{"alice", "bob"}[i%2]
 		if err := g.Move(guest, mv(t, m), i); err != nil {
@@ -171,10 +181,10 @@ func TestCheckmateEndsTheGame(t *testing.T) {
 
 func TestLeaveStopsUpdates(t *testing.T) {
 	g := NewHub(odd{}).Create("alice")
-	a := g.Join("alice")
+	a := join(t, g, "alice")
 	recv(t, a)
 	g.Leave(a)
-	g.Join("bob") // would broadcast to alice if she were still subscribed
+	join(t, g, "bob") // would broadcast to alice if she were still subscribed
 	select {
 	case v := <-a.C:
 		t.Fatalf("got a view after Leave: seq %d", v.Seq)
@@ -193,17 +203,38 @@ func (p *panicky) D8() int {
 	return 1
 }
 
-func TestPanicInGameIsContained(t *testing.T) {
-	g := NewHub(&panicky{}).Create("alice")
-	a := g.Join("alice")
-	g.Join("bob")
-	recv(t, a)
+func TestPanicRetiresTheGame(t *testing.T) {
+	h := NewHub(&panicky{})
+	g := h.Create("alice")
+	a := join(t, g, "alice")
+	join(t, g, "bob")
 	if err := g.Move("alice", mv(t, "e2e4"), 0); !errors.Is(err, ErrInternal) {
 		t.Fatalf("got %v, want ErrInternal", err)
 	}
-	// The game goroutine survives and the position is unchanged.
-	if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
-		t.Fatalf("the game should keep working after a panic: %v", err)
+	if _, ok := h.Get(g.Code()); ok {
+		t.Error("the hub still lists a game a panic retired")
+	}
+	if err := g.Move("alice", mv(t, "e2e4"), 0); !errors.Is(err, ErrGone) {
+		t.Errorf("move after the panic: got %v, want ErrGone", err)
+	}
+	if _, err := g.Join("carol"); !errors.Is(err, ErrGone) {
+		t.Errorf("join after the panic: got %v, want ErrGone", err)
+	}
+	waitClosed(t, a)
+}
+
+// waitClosed drains sub and fails the test unless its channel closes.
+func waitClosed(t *testing.T, sub *Sub) {
+	t.Helper()
+	for {
+		select {
+		case _, ok := <-sub.C:
+			if !ok {
+				return
+			}
+		case <-time.After(time.Second):
+			t.Fatal("stream still open 1s after the game stopped")
+		}
 	}
 }
 
@@ -212,7 +243,7 @@ func TestResign(t *testing.T) {
 	if err := g.Resign("alice"); !errors.Is(err, ErrWaiting) {
 		t.Errorf("resign before black joins: %v", err)
 	}
-	b := g.Join("bob")
+	b := join(t, g, "bob")
 	recv(t, b)
 	if err := g.Resign("carol"); !errors.Is(err, ErrNotPlayer) {
 		t.Errorf("spectator resigns: %v", err)
@@ -238,8 +269,8 @@ func TestStatsAndLostPieces(t *testing.T) {
 		2, 4, 2, 5, // e5: d2 is hit; a5-b4-c3-d2 is clear, so White rolls to save: 5 saves it
 		2, 2, 4, // Nf3: b4 is next to the Mamdani, so the new pothole is repaired at once
 	}}).Create("alice")
-	a := g.Join("alice")
-	g.Join("bob")
+	a := join(t, g, "alice")
+	join(t, g, "bob")
 	recv(t, a)
 	for i, m := range []string{"e2e4", "e7e5", "g1f3"} {
 		if err := g.Move([]string{"alice", "bob"}[i%2], mv(t, m), i); err != nil {
@@ -263,7 +294,7 @@ func TestStatsAndLostPieces(t *testing.T) {
 
 func TestResignAfterMateIsRefused(t *testing.T) {
 	g := NewHub(odd{}).Create("alice")
-	g.Join("bob")
+	join(t, g, "bob")
 	for i, m := range []string{"f2f3", "e7e5", "g2g4", "d8h4"} {
 		if err := g.Move([]string{"alice", "bob"}[i%2], mv(t, m), i); err != nil {
 			t.Fatalf("%s: %v", m, err)

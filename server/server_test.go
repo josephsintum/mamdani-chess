@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"mamdani-chess/game"
+	"mamdani-chess/rules"
 	"mamdani-chess/store"
 )
 
@@ -23,6 +24,11 @@ type odd struct{}
 func (odd) D8() int { return 1 }
 
 func newTestServer(t *testing.T) (*Server, *httptest.Server) {
+	t.Helper()
+	return newTestServerWith(t, odd{})
+}
+
+func newTestServerWith(t *testing.T, dice rules.Dice) (*Server, *httptest.Server) {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -34,7 +40,7 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 		"_app/immutable/app.js": {Data: []byte("console.log(1)")},
 		"favicon.svg":           {Data: []byte("<svg/>")},
 	}
-	s := New(st, game.NewHub(odd{}), assets)
+	s := New(st, game.NewHub(dice), assets)
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 	return s, ts
@@ -302,5 +308,38 @@ func TestResignOverHTTP(t *testing.T) {
 	}
 	if status, _ := alice.post("/api/games/NOPE99/resign", ""); status != http.StatusNotFound {
 		t.Errorf("unknown game: %d, want 404", status)
+	}
+}
+
+// boom panics on every roll: a stand-in for a bug inside a game.
+type boom struct{}
+
+func (boom) D8() int { panic("dice exploded") }
+
+func TestCrashedGameClosesStreamsAndIsGone(t *testing.T) {
+	_, ts := newTestServerWith(t, boom{})
+	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
+	code := alice.create()
+	a := alice.stream(code)
+	a.state()
+	bob.stream(code).state()
+	a.state() // playing now
+	move := "/api/games/" + code + "/move"
+	if status, body := alice.post(move, `{"from":"e2","to":"e4","seq":0}`); status != http.StatusInternalServerError {
+		t.Fatalf("the crashing move: %d %s, want 500", status, body)
+	}
+	ended := make(chan struct{})
+	go func() {
+		for a.sc.Scan() {
+		}
+		close(ended)
+	}()
+	select {
+	case <-ended:
+	case <-time.After(time.Second):
+		t.Fatal("stream still open 1s after the game crashed")
+	}
+	if status, body := alice.post(move, `{"from":"e2","to":"e4","seq":0}`); status != http.StatusNotFound {
+		t.Errorf("after the crash: %d %s, want 404", status, body)
 	}
 }

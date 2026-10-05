@@ -25,13 +25,17 @@ func (s *Server) gameStream(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 		return
 	}
+	sub, err := g.Join(guest)
+	if err != nil { // the game stopped since Get
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
+		return
+	}
+	defer g.Leave(sub)
 	fl, ok := startSSE(w)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	sub := g.Join(guest)
-	defer g.Leave(sub)
 	ticker := time.NewTicker(s.heartbeat)
 	defer ticker.Stop()
 	for {
@@ -40,7 +44,10 @@ func (s *Server) gameStream(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-s.done:
 			return
-		case v := <-sub.C:
+		case v, open := <-sub.C:
+			if !open { // the game stopped
+				return
+			}
 			if writeEvent(w, fl, "state", v) != nil {
 				return
 			}
@@ -98,6 +105,8 @@ func writeGameResult(w http.ResponseWriter, err error) {
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, game.ErrNotPlayer):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+	case errors.Is(err, game.ErrGone):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 	case errors.Is(err, rules.ErrBadDie), errors.Is(err, game.ErrInternal):
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	default:

@@ -84,7 +84,11 @@ func play(seed uint64, plies int) (*record, error) {
 	subs := map[string]*game.Sub{}
 	cur := map[string]*game.View{}
 	for _, guest := range []string{"white", "black", "spectator"} {
-		subs[guest] = g.Join(guest)
+		sub, err := g.Join(guest)
+		if err != nil {
+			return nil, err
+		}
+		subs[guest] = sub
 	}
 	snapshot := func() (views, error) {
 		for guest, sub := range subs {

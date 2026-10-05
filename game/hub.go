@@ -6,8 +6,7 @@ import (
 	"mamdani-chess/rules"
 )
 
-// Hub maps game codes to live games. Games stay in memory until the server
-// restarts; saving and resuming them comes in a later milestone.
+// Hub maps game codes to live games. A game leaves the hub when it stops.
 type Hub struct {
 	dice  rules.Dice
 	mu    sync.Mutex
@@ -27,7 +26,11 @@ func (h *Hub) Create(creator string) *Game {
 	for h.games[code] != nil {
 		code = NewCode()
 	}
-	g := newGame(code, creator, h.dice)
+	g := newGame(code, creator, h.dice, func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		delete(h.games, code)
+	})
 	h.games[code] = g
 	return g
 }
