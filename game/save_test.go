@@ -84,6 +84,47 @@ func TestCreateRetriesATakenCode(t *testing.T) {
 	}
 }
 
+// slowCreate holds every CreateGame until release is closed.
+type slowCreate struct {
+	nopStore
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s *slowCreate) CreateGame(context.Context, store.Game) error {
+	s.entered <- struct{}{}
+	<-s.release
+	return nil
+}
+
+// Saving a new game mustn't hold up the hub: every request looks its game
+// up in it while a slow database write is going on.
+func TestCreateDoesNotBlockLookupsWhileSaving(t *testing.T) {
+	st := &slowCreate{entered: make(chan struct{}), release: make(chan struct{})}
+	h := NewHub(odd{}, st)
+	created := make(chan *Game)
+	go func() {
+		g, _ := h.Create("alice")
+		created <- g
+	}()
+	<-st.entered // the write has started
+	looked := make(chan struct{})
+	go func() {
+		h.Get("NOPE00")
+		close(looked)
+	}()
+	select {
+	case <-looked:
+	case <-time.After(time.Second):
+		t.Error("Get waited for the database write")
+	}
+	close(st.release)
+	if g := <-created; g == nil {
+		t.Fatal("create failed")
+	}
+	<-looked
+}
+
 func TestCreateFailsWhenTheSaveFails(t *testing.T) {
 	h := NewHub(odd{}, &failing{fail: true})
 	if _, err := h.Create("alice"); !errors.Is(err, errDiskFull) {

@@ -29,6 +29,9 @@ type Hub struct {
 	Idle  time.Duration
 	mu    sync.Mutex
 	games map[string]*Game
+	// reserved holds codes being saved by create, so two creates can't
+	// pick the same one while neither holds mu.
+	reserved map[string]bool
 }
 
 // NewHub returns a hub whose games roll with dice, are saved to st (nil
@@ -37,7 +40,7 @@ func NewHub(dice rules.Dice, st Store) *Hub {
 	if st == nil {
 		st = nopStore{}
 	}
-	return &Hub{dice: dice, store: st, newCode: NewCode, Idle: DefaultIdle, games: map[string]*Game{}}
+	return &Hub{dice: dice, store: st, newCode: NewCode, Idle: DefaultIdle, games: map[string]*Game{}, reserved: map[string]bool{}}
 }
 
 // Create starts a game with creator in White's seat.
@@ -51,16 +54,16 @@ func (h *Hub) Create(creator string) (*Game, error) {
 func (h *Hub) create(sg store.Game) (*Game, error) {
 	now := time.Now()
 	sg.CreatedAt = now
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	// The database write happens without holding mu, so lookups (every
+	// request) don't wait for it; the code is reserved meanwhile.
 	for tries := 0; ; tries++ {
-		sg.Code = h.newCode()
-		if h.games[sg.Code] != nil {
-			continue
-		}
+		sg.Code = h.reserve()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		err := h.store.CreateGame(ctx, sg)
 		cancel()
+		if err != nil {
+			h.unreserve(sg.Code)
+		}
 		if errors.Is(err, store.ErrCodeTaken) && tries < 10 {
 			continue // an old saved game has this code
 		}
@@ -69,13 +72,36 @@ func (h *Hub) create(sg store.Game) (*Game, error) {
 		}
 		break
 	}
+	h.mu.Lock()
+	delete(h.reserved, sg.Code)
 	g := h.add(sg.Code, [2]string{sg.White, sg.Black})
+	h.mu.Unlock()
 	if sg.Black != "" {
 		g.startCounting(now)
 	}
 	slog.Info("game created", "code", sg.Code, "white", guestTag(sg.White), "rematch_of", sg.RematchOf)
 	go g.loop()
 	return g, nil
+}
+
+// reserve draws a code no live game has and no other create is saving.
+func (h *Hub) reserve() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for {
+		code := h.newCode()
+		if h.games[code] == nil && !h.reserved[code] {
+			h.reserved[code] = true
+			return code
+		}
+	}
+}
+
+// unreserve frees a code whose save failed.
+func (h *Hub) unreserve(code string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.reserved, code)
 }
 
 // add puts a new, not yet running game in the hub. The caller holds h.mu.
