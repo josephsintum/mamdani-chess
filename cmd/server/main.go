@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -25,6 +26,8 @@ func main() {
 }
 
 func run() error {
+	// Set before server.New, which keeps slog.Default() for request logs.
+	slog.SetDefault(newLogger(os.Getenv("LOG_FORMAT"), os.Stderr))
 	port := envOr("PORT", "8080")
 	dbPath := envOr("DB_PATH", "data/mamdani.db")
 
@@ -67,6 +70,16 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// newLogger writes JSON when format is "json" (the production image sets
+// LOG_FORMAT=json, so the host's log search can filter on fields) and
+// readable text otherwise.
+func newLogger(format string, w io.Writer) *slog.Logger {
+	if format == "json" {
+		return slog.New(slog.NewJSONHandler(w, nil))
+	}
+	return slog.New(slog.NewTextHandler(w, nil))
 }
 
 func envOr(key, def string) string {

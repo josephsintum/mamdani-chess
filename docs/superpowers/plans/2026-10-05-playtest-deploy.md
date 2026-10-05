@@ -30,7 +30,7 @@
 2. **A push to `main` during a playtest.** Every deploy restarts the server, and games live in memory, so every game in progress ends. Wait for CI doesn't prevent this. Documented as a working rule in CLAUDE.md (Task 5); there is no code fix until milestone 05 saves games.
 3. **A push with failing CI.** Wait for CI must skip that deploy and keep the running one. Pinned by Task 1 (CI green) and the Wait for CI toggle checked in Task 3.
 4. **HTTP/1.1 reaching the browser.** With 6+ game tabs, requests queue forever (roadmap "Launch check: HTTP/2"). Pinned by the `curl --http2` check in Task 4.
-5. **The volume isn't writable or the database path is wrong.** The server would fail to start, so the healthcheck fails and the deploy never goes live. Pinned by the deploy reaching `SUCCESS` and the `listening … db=/data/mamdani.db` log line (Task 3).
+5. **The volume isn't writable or the database path is wrong.** The server would fail to start, so the healthcheck fails and the deploy never goes live. Pinned by the deploy reaching `SUCCESS` and the JSON `listening` log line with `"db":"/data/mamdani.db"` (Task 3).
 
 ## File Structure
 
@@ -223,7 +223,7 @@ railway deployment list --service web --limit 1 --json
 railway logs --service web --lines 50
 ```
 
-Expected: the newest deployment reaches `SUCCESS` (poll every 30 s; a first build takes a few minutes), and the logs include `listening` with `addr=:8080 db=/data/mamdani.db`. If it is `FAILED` or `CRASHED`, read `railway logs --service web --build --lines 200` before changing anything.
+Expected: the newest deployment reaches `SUCCESS` (poll every 30 s; a first build takes a few minutes), and the logs include the JSON line `{"level":"INFO","msg":"listening","addr":":8080","db":"/data/mamdani.db"}` (the image sets `LOG_FORMAT=json`). If it is `FAILED` or `CRASHED`, read `railway logs --service web --build --lines 200` before changing anything.
 
 ---
 

@@ -22,6 +22,6 @@ RUN CGO_ENABLED=0 go build -tags embedweb -trimpath -ldflags="-s -w" -o /out/ser
 #    user could not write the SQLite file on /data.
 FROM gcr.io/distroless/static-debian12
 COPY --from=server /out/server /server
-ENV PORT=8080 DB_PATH=/data/mamdani.db
+ENV PORT=8080 DB_PATH=/data/mamdani.db LOG_FORMAT=json
 EXPOSE 8080
 ENTRYPOINT ["/server"]
