@@ -1,20 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { reducedMotion } from '#lib/motion.ts';
+	import { reducedMotion, setInstant } from '#lib/motion.ts';
+	import { dev } from '$app/env';
 	import { page } from '$app/state';
 	import Board from '#lib/Board.svelte';
 	import DiceTray from '#lib/DiceTray.svelte';
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
-	import { Animator } from '#lib/animator.svelte.ts';
+	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
 	import { stageAt } from '#lib/board.ts';
 	import { applyMove } from '#lib/pieces.ts';
 	import { createGame, reasons, resign, sendMove, type Color, type MoveJSON, type View } from '#lib/game.ts';
 
 	const code = page.params.code ?? '';
 
-	const anim = new Animator();
+	// Dev only: /game/CODE?instant turns every animation off, for fast play-testing.
+	const instant = dev && page.url.searchParams.has('instant');
+	setInstant(instant);
+	const anim = new Animator(instant ? 0 : STEP_MS);
 	let view = $derived(anim.view);
 	let shown = $derived(anim.shown);
 	// Your move, shown before the server confirms it (One Million Chessboards

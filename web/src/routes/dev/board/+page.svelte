@@ -6,6 +6,7 @@
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
 	import { stageAt } from '#lib/board.ts';
 	import type { Color, MoveJSON, View } from '#lib/game.ts';
+	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
 
 	// Test bench for the board UI: one browser plays both sides, nothing goes
@@ -31,6 +32,7 @@
 	let target = $state('d4');
 	let anySide = $state(false);
 	let slow = $state(false);
+	let instant = $state(false); // no animation at all, for fast play-testing
 	let you = $state<Color | 'spectator'>('white');
 
 	let view = $derived(anim.view as View);
@@ -79,7 +81,7 @@
 	function move(m: MoveJSON) {
 		const next = playTurn(view, m, script(view));
 		next.you = you;
-		anim.stepMs = slow ? STEP_MS * 3 : STEP_MS;
+		anim.stepMs = instant ? 0 : slow ? STEP_MS * 3 : STEP_MS;
 		anim.receive(next);
 	}
 
@@ -137,6 +139,17 @@
 				</label>
 				<label class="choice"><input type="checkbox" bind:checked={anySide} /> Move either side any time</label>
 				<label class="choice"><input type="checkbox" bind:checked={slow} /> Slow dice (3×)</label>
+				<label class="choice">
+					<input
+						type="checkbox"
+						checked={instant}
+						onchange={(e) => {
+							instant = e.currentTarget.checked;
+							setInstant(instant);
+						}}
+					/>
+					Instant (no animation)
+				</label>
 			</section>
 
 			<section class="panel" aria-labelledby="pos-heading">
