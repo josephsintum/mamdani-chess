@@ -2,12 +2,16 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Header from '#lib/Header.svelte';
-	import { createGame } from '#lib/game.ts';
+	import { createGame, matchCard, type View } from '#lib/game.ts';
+	import { reducedMotion } from '#lib/motion.ts';
 	import { formatElapsed, me, type Me } from '#lib/lobby.ts';
 
 	// Quick match: the guest is in the queue while this page's stream is
 	// open. Cancel, Back or closing the tab all leave it.
 	const OFFER_FRIEND_MS = 60_000;
+	// How long "Opponent found" shows before going to the game. White's
+	// 60 s for a first move is already running, so it stays short.
+	const FOUND_MS = 2000;
 
 	let user = $state<Me | null>(null);
 	let started = Date.now();
@@ -16,6 +20,26 @@
 	let error = $state('');
 	let busy = $state(false);
 	let elapsed = $derived(now - started);
+	let found = $state<{ code: string; card: ReturnType<typeof matchCard> } | null>(null);
+	let foundTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function play(code: string) {
+		clearTimeout(foundTimer);
+		goto(`/game/${code}`, { replace: true, state: { matched: true } });
+	}
+
+	// Who's who, from the game itself (GET shows it without taking a seat);
+	// then into the game after FOUND_MS, or at once if that fails.
+	async function matched(code: string) {
+		try {
+			const res = await fetch(`/api/games/${code}`);
+			if (!res.ok) throw new Error(res.statusText);
+			found = { code, card: matchCard((await res.json()) as View) };
+		} catch {
+			return play(code);
+		}
+		foundTimer = setTimeout(() => play(code), FOUND_MS);
+	}
 
 	onMount(() => {
 		started = Date.now();
@@ -37,7 +61,7 @@
 				done = true;
 				stream.close(); // before the server ends the stream, so it isn't reopened
 				const { code } = JSON.parse((e as MessageEvent<string>).data);
-				goto(`/game/${code}`, { replace: true });
+				matched(code);
 			});
 			// A network error reconnects by itself. An error answer (a proxy's
 			// 502 while the server restarts) closes the stream for good: open a
@@ -54,6 +78,7 @@
 			clearTimeout(retry);
 			es?.close();
 			clearInterval(tick);
+			clearTimeout(foundTimer);
 		};
 	});
 
@@ -76,31 +101,50 @@
 <Header bind:me={user} />
 
 <main>
-	<div class="ring" aria-hidden="true">
-		<span class="outer"></span>
-		<span class="middle"></span>
-		<span class="inner"></span>
-		<span class="time">{formatElapsed(elapsed)}</span>
-	</div>
-	<div class="text">
-		<h1>Looking for an opponent</h1>
-		<p>You'll be paired with the next player who taps Play online. Colors are picked at random.</p>
-		<p class="sr-only" aria-live="polite">{connected ? 'In the queue.' : 'Connecting…'}</p>
-	</div>
-	<ul class="chips">
-		<li>10+5</li>
-		<li>Standard rules</li>
-		<li>Random colors</li>
-	</ul>
-	<a class="cancel" href="/">Cancel</a>
-	<p class="hint">{connected ? 'Keep this tab open. Closing it takes you out of the queue.' : 'Connecting…'}</p>
-	{#if elapsed >= OFFER_FRIEND_MS}
-		<p class="friend">
-			Nobody yet.
-			<button onclick={playFriend} disabled={busy}>{busy ? 'Starting…' : 'Play a friend instead'}</button>
-		</p>
+	{#if found}
+		<div class="ring done" aria-hidden="true">
+			<span class="outer"></span>
+			<span class="middle"></span>
+			<span class="inner"></span>
+		</div>
+		<div class="text" role="status">
+			<h1>Opponent found</h1>
+			<div class="found">
+				<p class="side"><span class="swatch {found.card.you.color}" aria-hidden="true"></span><span class="who">{found.card.you.name}</span> <span class="you">(you)</span><span class="color">{found.card.you.color === 'white' ? 'White' : 'Black'}</span></p>
+				<p class="vs">vs</p>
+				<p class="side"><span class="swatch {found.card.them.color}" aria-hidden="true"></span><span class="who">{found.card.them.name}</span><span class="color">{found.card.them.color === 'white' ? 'White' : 'Black'}</span></p>
+			</div>
+		</div>
+		<p class="joining">Joining game…</p>
+		<div class="bar" aria-hidden="true"><span style:animation-duration="{FOUND_MS}ms" class:still={reducedMotion()}></span></div>
+		<button class="cancel go" onclick={() => play(found!.code)}>Go now</button>
+	{:else}
+		<div class="ring" aria-hidden="true">
+			<span class="outer"></span>
+			<span class="middle"></span>
+			<span class="inner"></span>
+			<span class="time">{formatElapsed(elapsed)}</span>
+		</div>
+		<div class="text">
+			<h1>Looking for an opponent</h1>
+			<p>You'll be paired with the next player who taps Play online. Colors are picked at random.</p>
+			<p class="sr-only" aria-live="polite">{connected ? 'In the queue.' : 'Connecting…'}</p>
+		</div>
+		<ul class="chips">
+			<li>10+5</li>
+			<li>Standard rules</li>
+			<li>Random colors</li>
+		</ul>
+		<a class="cancel" href="/">Cancel</a>
+		<p class="hint">{connected ? 'Keep this tab open. Closing it takes you out of the queue.' : 'Connecting…'}</p>
+		{#if elapsed >= OFFER_FRIEND_MS}
+			<p class="friend">
+				Nobody yet.
+				<button onclick={playFriend} disabled={busy}>{busy ? 'Starting…' : 'Play a friend instead'}</button>
+			</p>
+		{/if}
+		{#if error}<p class="error" role="alert">{error}</p>{/if}
 	{/if}
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
 </main>
 
 <style>
@@ -214,6 +258,105 @@
 	.error {
 		margin: 0;
 		color: var(--hazard-text);
+	}
+	.ring.done .outer,
+	.ring.done .middle {
+		border-style: solid;
+	}
+	.ring.done .inner {
+		background: var(--accent);
+	}
+	.found {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		width: min(420px, 100%);
+		margin-top: 8px;
+	}
+	.side {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin: 0;
+		padding: 12px 16px;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		background: var(--surface);
+		color: var(--text);
+		font-weight: 600;
+		text-align: left;
+	}
+	.who {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+	.you {
+		flex-shrink: 0;
+		color: var(--text-muted);
+		font-weight: 400;
+	}
+	.color {
+		flex-shrink: 0;
+		margin-left: auto;
+		color: var(--text-muted);
+		font-family: var(--font-mono);
+		font-size: 13px;
+	}
+	.swatch {
+		flex-shrink: 0;
+		width: 14px;
+		height: 14px;
+		border-radius: 3px;
+		box-shadow: 0 0 0 1px var(--line);
+	}
+	.swatch.white {
+		background: var(--piece-light);
+	}
+	.swatch.black {
+		background: var(--piece-dark);
+	}
+	.vs {
+		margin: 0;
+		color: var(--text-muted);
+		font-family: var(--font-mono);
+		font-size: 13px;
+	}
+	.joining {
+		margin: 0;
+		color: var(--text-muted);
+	}
+	.bar {
+		width: min(240px, 100%);
+		height: 4px;
+		margin-top: -20px;
+		overflow: hidden;
+		border-radius: 2px;
+		background: var(--surface-2);
+	}
+	.bar span {
+		display: block;
+		height: 100%;
+		background: var(--accent);
+		transform-origin: left;
+		animation: fill linear both;
+	}
+	.bar span.still {
+		animation: none;
+	}
+	@keyframes fill {
+		from {
+			transform: scaleX(0);
+		}
+		to {
+			transform: scaleX(1);
+		}
+	}
+	.go {
+		background: transparent;
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
 	}
 	.sr-only {
 		position: absolute;

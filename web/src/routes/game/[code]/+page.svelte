@@ -15,11 +15,13 @@
 	import { checkSquare, pillFor, stageAt } from '#lib/board.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
+	import { notify } from '#lib/toast.ts';
 	import {
 		createGame,
 		followsRematch,
 		gameExists,
 		isStale,
+		joinNotice,
 		showsOffline,
 		reasons,
 		rematch,
@@ -31,6 +33,8 @@
 	} from '#lib/game.ts';
 
 	const code = page.params.code ?? '';
+	// Arrived from quick match's opponent-found screen, which already said who's who.
+	const fromMatch = page.state.matched === true;
 
 	// Dev only: /game/CODE?instant turns every animation off, for fast play-testing.
 	const instant = dev && page.url.searchParams.has('instant');
@@ -70,6 +74,8 @@
 		}
 		if (next.result) confirmResign = false; // the game ended before you chose
 		const prev = anim.view;
+		const notice = joinNotice(prev, next, fromMatch);
+		if (notice) notify.info(notice, { id: 'join' });
 		anim.receive(next, { hidden: document.hidden });
 		if (unsent) resend();
 		// A rematch accepted while this page is open: players go to it. Replace,

@@ -233,3 +233,34 @@ export function resultText(r: NonNullable<View['result']>): string {
 	const why = reasons[r.reason] ?? r.reason;
 	return r.draw ? `Draw by ${why}` : `${r.winner === 'white' ? 'White' : 'Black'} wins by ${why}`;
 }
+
+const sideName = (c: Color) => (c === 'white' ? 'White' : 'Black');
+
+/**
+ * What to tell a player as a game starts, or "" for nothing: White hears
+ * that their friend sat down; a player arriving at a game not yet moved in
+ * hears their color and opponent (a friend's link, or a rematch, which
+ * swaps colors). After a quick match the opponent-found screen already said
+ * it, so fromMatch silences the arrival notice.
+ */
+export function joinNotice(prev: View | null, next: View, fromMatch: boolean): string {
+	if (next.you === 'spectator' || next.status !== 'playing' || next.seq !== 0) return '';
+	const opponent = next.you === 'white' ? next.players.black : next.players.white;
+	if (prev?.status === 'waiting' && next.you === 'white') {
+		return `${opponent || 'Your friend'} joined · You're White, your move`;
+	}
+	if (prev !== null || fromMatch) return '';
+	return next.you === 'black'
+		? `You joined ${opponent || 'the game'} · You're Black`
+		: `Playing ${opponent || 'your opponent'} · You're White, your move`;
+}
+
+/** The two sides of a matched game for the opponent-found screen, you first. */
+export function matchCard(view: View): { you: { name: string; color: Color }; them: { name: string; color: Color } } {
+	const mine: Color = view.you === 'black' ? 'black' : 'white';
+	const theirs: Color = mine === 'white' ? 'black' : 'white';
+	return {
+		you: { name: view.players[mine] || sideName(mine), color: mine },
+		them: { name: view.players[theirs] || sideName(theirs), color: theirs }
+	};
+}

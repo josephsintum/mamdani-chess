@@ -53,5 +53,6 @@ Milestone 06b (watching together: a live watcher count and emoji reactions), the
   - transition functions take `(node, params)`;
   - `$state.snapshot` only works in `.svelte`/`.svelte.ts` files;
   - run `npx @sveltejs/mcp svelte-autofixer` on every component and avoid `$effect`.
+- **Notices:** show toasts with `notify.*` from `#lib/toast.ts` (svelte-sonner behind it, themed in `Toaster.svelte`, mounted once in the layout). Never import svelte-sonner in a page.
 - **Board pointer rule:** capture the pointer only once a drag has moved more than 6px from the press (not from the last event, or slow drags never start). Capturing on pointerdown sends the click to the board, and taps stop working.
 - **How plans have been written:** build the code in a scratch copy, check it in tests and a browser, write the plan from those files, dry-run the plan task by task from `main`, then execute it inline on a branch with one final whole-branch review.

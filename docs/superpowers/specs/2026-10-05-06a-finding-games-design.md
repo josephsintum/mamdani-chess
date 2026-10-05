@@ -21,6 +21,7 @@ Milestone 06 is split. This spec is **06a**. **06b** (a live watcher count over 
 | When a guest gets a name | Only when playing needs one: creating a friend game, joining quick match, or taking a seat. Visiting, browsing and watching never create one. | Every row in `guests` belongs to someone who played, so the table needs no pruning. |
 | Names in games | Each seat keeps a snapshot of its player's name. | A name change mid-game doesn't rename anyone in that game, a restored game keeps its names, and old games never need rewriting. |
 | Name changes | 3 in any 24 hours, counted from the first change in the window; the name given at first play doesn't count. Each change picks one of 3 offered names, and the offers stay the same until one is chosen. Enforced on the server. | A name only works if it stays put long enough to be recognised. Fixed offers mean closing and reopening the picker isn't a free re-roll, so nobody can fish for one combination. A limit kept only in the browser would be a hint anyone can clear. Clearing cookies still gives a new guest with a new random name; that's accepted for a guest-only site. |
+| Notices (toasts) | svelte-sonner, behind our own `#lib/toast.ts` (`notify.info/success/error/dismiss`) and a themed `Toaster.svelte` in the layout. | Toasts will carry joins, wins and general notices. The hard part is the edge cases: several at once, pausing on hover and while the tab is hidden, actions reachable by keyboard (Alt+T), updating by id, swipe on phones, and a live region that exists before the first toast. svelte-sonner (Svelte 5, maintained, one small dependency) covers them; the wrapper keeps it swappable. |
 | Quick match | First come, first served; random colors; no rating. The queue is an SSE stream: open means queued, closed means gone. A mutex guards the queue. | A small pool makes waits the real problem, so any skill filter would only lengthen them. A closed tab can't leave a ghost in the queue. |
 | Empty queue | Wait with no limit and a Cancel button. Home shows how many are looking; after 60 s the searching screen also offers "Play a friend instead". | Someone arriving later can see there's a person to match. |
 | Live games | Games being played (both seated, not over), most watched first, then newest, at most 12. Polled every 10 s. | Friend games still waiting for their friend aren't for strangers. |
@@ -130,10 +131,19 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 ### Quick match `/play`
 
 - Opens `EventSource('/api/match')` (and opens a new one 2 s after an error answer, such as a proxy's 502 during a deploy), with the elapsed-time ring, the chips (10+5, Standard rules, Random colors), Cancel, and "Keep this tab open".
-- On `matched`: close the EventSource, then `goto('/game/CODE')`.
+- On `matched`: close the EventSource, then show **Opponent found** for 2 s: the ring fills, both players with their colors (you first, from `GET /api/games/CODE`, which doesn't take a seat), "Joining game…" with a progress bar, and **Go now**. Then `goto('/game/CODE', { replace: true, state: { matched: true } })`. If that GET fails, it goes at once. The 2 s comes out of White's 60 s for a first move, so it stays short.
 - Cancel closes the EventSource and goes home.
 - The elapsed time counts up from when the page opened (`formatElapsed`), across reconnects. `formatClock` counts down and shows tenths, so it doesn't fit.
 - After 60 s, "Nobody yet. Play a friend instead" appears below Cancel; it creates a friend game (leaving the queue).
+
+## Notices
+
+- **When a friend sits down**, White gets a toast: "bagel-soho joined · You're White, your move".
+- **Arriving at a game nobody has moved in yet** (a friend's link, or a rematch, which swaps colors), a player gets a toast with their color and opponent: "You joined pizza-rat-astoria · You're Black".
+- After a quick match there's no toast: the opponent-found screen already said it (`page.state.matched`).
+- Spectators, and players reconnecting to a game with moves, get none.
+- `joinNotice` and `matchCard` in `#lib/game.ts` decide the text, unit-tested. Toasts last 4 s, pause on hover and while the tab is hidden, and go on a tap or a swipe.
+- **To check:** svelte-sonner marks its container and each toast `aria-live="polite"`. Nested live regions can make some screen readers read a toast twice. Check with VoiceOver before relying on it for important notices.
 
 ## Testing
 
