@@ -845,14 +845,18 @@
 		font-size: 14px;
 	}
 	.layout {
+		/* The board shrinks with the window's height, so both player bars
+		   (and your clock) fit without scrolling: about 240 px go to the page
+		   padding, header, status line, bars and gaps. */
+		--board: clamp(320px, calc(100dvh - 240px), 600px);
 		display: grid;
-		grid-template-columns: 260px minmax(0, 600px) minmax(260px, 340px);
+		grid-template-columns: 260px minmax(0, var(--board)) minmax(260px, 340px);
 		gap: 24px;
 		align-items: start;
 	}
 	@media (max-width: 1100px) {
 		.layout {
-			grid-template-columns: minmax(0, 600px);
+			grid-template-columns: minmax(0, var(--board));
 		}
 		.log-col {
 			order: 3;
