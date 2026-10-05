@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"mamdani-chess/game"
+	"mamdani-chess/match"
 	"mamdani-chess/store"
 )
 
@@ -18,6 +19,7 @@ import (
 type Server struct {
 	store     *store.Store
 	games     *game.Hub
+	match     *match.Queue
 	assets    fs.FS
 	heartbeat time.Duration
 	log       *slog.Logger
@@ -41,7 +43,19 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 		mux:       http.NewServeMux(),
 		done:      make(chan struct{}),
 	}
+	s.match = match.New(func(white, black string) (string, error) {
+		g, err := hub.CreatePair(white, black)
+		if err != nil {
+			return "", err
+		}
+		return g.Code(), nil
+	})
 	s.mux.HandleFunc("GET /healthz", s.healthz)
+	s.mux.HandleFunc("GET /api/me", s.me)
+	s.mux.HandleFunc("GET /api/me/names", s.nameOffers)
+	s.mux.HandleFunc("POST /api/me/name", s.chooseName)
+	s.mux.HandleFunc("GET /api/match", s.matchStream)
+	s.mux.HandleFunc("GET /api/games", s.liveGames)
 	s.mux.HandleFunc("POST /api/games", s.createGame)
 	s.mux.HandleFunc("GET /api/games/{code}", s.gameView)
 	s.mux.HandleFunc("GET /api/games/{code}/stream", s.gameStream)

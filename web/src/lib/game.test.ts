@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { followsRematch, isStale, pieceName, showsOffline, trySendMove, type View } from './game.ts';
+import { followsRematch, isStale, joinNotice, matchCard, pieceName, showsOffline, trySendMove, type View } from './game.ts';
 
 function view(you: View['you'], code?: string): View {
 	return { you, rematch: code ? { code } : {} } as View;
@@ -96,5 +96,46 @@ describe('pieceName', () => {
 		expect(pieceName('bN')).toBe('black knight');
 		expect(pieceName('wQ')).toBe('white queen');
 		expect(pieceName('M')).toBe('the Mamdani');
+	});
+});
+
+describe('joinNotice', () => {
+	const at = (you: View['you'], status: View['status'], seq = 0) =>
+		({ you, status, seq, players: { white: 'pizza-rat-astoria', black: status === 'waiting' ? '' : 'bagel-soho' } }) as View;
+
+	it('tells White when their friend sits down', () => {
+		expect(joinNotice(at('white', 'waiting'), at('white', 'playing'), false)).toBe("bagel-soho joined · You're White, your move");
+	});
+
+	it('tells Black whose game they joined on arrival', () => {
+		expect(joinNotice(null, at('black', 'playing'), false)).toBe("You joined pizza-rat-astoria · You're Black");
+	});
+
+	it("tells White their color when they arrive at a started game (a rematch swaps colors)", () => {
+		expect(joinNotice(null, at('white', 'playing'), false)).toBe("Playing bagel-soho · You're White, your move");
+	});
+
+	it('says nothing after a quick match: the opponent-found screen did', () => {
+		expect(joinNotice(null, at('black', 'playing'), true)).toBe('');
+		expect(joinNotice(null, at('white', 'playing'), true)).toBe('');
+	});
+
+	it('says nothing to spectators, while waiting, or once moves are made', () => {
+		expect(joinNotice(null, at('spectator', 'playing'), false)).toBe('');
+		expect(joinNotice(null, at('white', 'waiting'), false)).toBe('');
+		expect(joinNotice(null, at('black', 'playing', 3), false)).toBe('');
+		expect(joinNotice(at('black', 'playing'), at('black', 'playing'), false)).toBe('');
+	});
+
+	it('falls back when a name is missing', () => {
+		const nameless = { you: 'white', status: 'playing', seq: 0, players: { white: '', black: '' } } as View;
+		expect(joinNotice({ ...nameless, status: 'waiting' } as View, nameless, false)).toBe("Your friend joined · You're White, your move");
+	});
+});
+
+describe('matchCard', () => {
+	it("puts you first, with each side's color", () => {
+		const view = { you: 'black', players: { white: 'pizza-rat-astoria', black: 'bagel-soho' } } as View;
+		expect(matchCard(view)).toEqual({ you: { name: 'bagel-soho', color: 'black' }, them: { name: 'pizza-rat-astoria', color: 'white' } });
 	});
 });

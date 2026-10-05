@@ -64,6 +64,8 @@ func (g *Game) offerRematch(guest string, decline bool) error {
 		next, err := g.hub.create(store.Game{
 			White:     g.seats[rules.Black],
 			Black:     g.seats[rules.White],
+			WhiteName: g.names[rules.Black],
+			BlackName: g.names[rules.White],
 			RematchOf: g.code,
 		})
 		if err != nil {

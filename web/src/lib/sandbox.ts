@@ -44,6 +44,7 @@ function emptyView(): View {
 		seq: 0,
 		clock: { whiteMs: 600_000, blackMs: 600_000, now: 0 },
 		online: { white: true, black: true },
+		players: { white: '', black: '' },
 		rematch: {}
 	};
 }

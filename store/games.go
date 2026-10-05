@@ -16,11 +16,15 @@ import (
 // ErrCodeTaken is returned by CreateGame when a saved game already has the code.
 var ErrCodeTaken = errors.New("game code already taken")
 
-// Game is a saved game's seats. Black is "" until someone joins.
+// Game is a saved game's seats. Black is "" until someone joins. The names
+// are the players' names when they sat down ("" for games saved before
+// names existed).
 type Game struct {
 	Code      string
 	White     string
 	Black     string
+	WhiteName string
+	BlackName string
 	CreatedAt time.Time
 	RematchOf string // "" unless the game is a rematch
 }
@@ -54,8 +58,8 @@ type SavedGame struct {
 // CreateGame saves a new game.
 func (s *Store) CreateGame(ctx context.Context, g Game) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO games (code, white, black, created_at, rematch_of) VALUES (?, ?, ?, ?, ?)`,
-		g.Code, g.White, nullable(g.Black), g.CreatedAt.UnixMilli(), nullable(g.RematchOf))
+		`INSERT INTO games (code, white, black, white_name, black_name, created_at, rematch_of) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		g.Code, g.White, nullable(g.Black), nullable(g.WhiteName), nullable(g.BlackName), g.CreatedAt.UnixMilli(), nullable(g.RematchOf))
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY {
 		return ErrCodeTaken
@@ -63,9 +67,9 @@ func (s *Store) CreateGame(ctx context.Context, g Game) error {
 	return err
 }
 
-// SeatBlack records the guest who took Black's seat.
-func (s *Store) SeatBlack(ctx context.Context, code, guest string) error {
-	return execOne(ctx, s.db, `UPDATE games SET black = ? WHERE code = ?`, guest, code)
+// SeatBlack records the guest who took Black's seat, and their name.
+func (s *Store) SeatBlack(ctx context.Context, code, guest, name string) error {
+	return execOne(ctx, s.db, `UPDATE games SET black = ?, black_name = ? WHERE code = ?`, guest, nullable(name), code)
 }
 
 // AddTurn saves one move.
@@ -111,7 +115,7 @@ func (s *Store) ExpireWaiting(ctx context.Context, cutoff, now time.Time) (int64
 // after endedAfter, oldest first, each with its turns in order.
 func (s *Store) LoadForRestore(ctx context.Context, endedAfter time.Time) ([]SavedGame, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT code, white, black, created_at, rematch_of, ended_at, result, winner
+		`SELECT code, white, black, white_name, black_name, created_at, rematch_of, ended_at, result, winner
 		 FROM games WHERE ended_at IS NULL OR ended_at > ? ORDER BY created_at`,
 		endedAfter.UnixMilli())
 	if err != nil {
@@ -120,14 +124,15 @@ func (s *Store) LoadForRestore(ctx context.Context, endedAfter time.Time) ([]Sav
 	var games []SavedGame
 	for rows.Next() {
 		var g SavedGame
-		var black, rematchOf, result, winner sql.NullString
+		var black, whiteName, blackName, rematchOf, result, winner sql.NullString
 		var created int64
 		var ended sql.NullInt64
-		if err := rows.Scan(&g.Code, &g.White, &black, &created, &rematchOf, &ended, &result, &winner); err != nil {
+		if err := rows.Scan(&g.Code, &g.White, &black, &whiteName, &blackName, &created, &rematchOf, &ended, &result, &winner); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		g.Black, g.RematchOf, g.CreatedAt = black.String, rematchOf.String, time.UnixMilli(created)
+		g.WhiteName, g.BlackName = whiteName.String, blackName.String
 		if ended.Valid {
 			g.Result = &Result{EndedAt: time.UnixMilli(ended.Int64), Reason: result.String, Winner: winner.String}
 		}

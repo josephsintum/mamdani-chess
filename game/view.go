@@ -39,6 +39,7 @@ type View struct {
 	Seq      int         `json:"seq"` // turns played; a move must quote it
 	Clock    ClockJSON   `json:"clock"`
 	Online   OnlineJSON  `json:"online"`  // which players have the game open
+	Players  PlayersJSON `json:"players"` // names; "" for a seat that is empty or was saved without one
 	Rematch  RematchJSON `json:"rematch"` // only once the game is over
 
 	data []byte // the encoded view, set once before it is shared (see JSON)
@@ -91,6 +92,12 @@ type StatsJSON struct {
 	Saved       int  `json:"saved"`
 	Repaired    int  `json:"repaired"` // potholes the Mamdani fixed
 	MamdaniFell bool `json:"mamdaniFell"`
+}
+
+// PlayersJSON is each seat's name, as it was when its player sat down.
+type PlayersJSON struct {
+	White string `json:"white"`
+	Black string `json:"black"`
 }
 
 // OnlineJSON says which players have a stream open.

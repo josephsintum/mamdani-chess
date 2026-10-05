@@ -24,6 +24,7 @@ function makeView(pieces: Record<string, string>, extra: Partial<View> = {}): Vi
 		seq: 1,
 		clock: { whiteMs: 600_000, blackMs: 600_000, now: 0 },
 		online: { white: true, black: true },
+		players: { white: '', black: '' },
 		rematch: {},
 		...extra
 	};

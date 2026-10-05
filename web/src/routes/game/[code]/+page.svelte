@@ -5,6 +5,7 @@
 	import { reducedMotion, setInstant } from '#lib/motion.ts';
 	import { dev } from '$app/env';
 	import { page } from '$app/state';
+	import { replaceState } from '$app/navigation';
 	import Board from '#lib/Board.svelte';
 	import DiceSummary from '#lib/DiceSummary.svelte';
 	import DiceTray from '#lib/DiceTray.svelte';
@@ -15,11 +16,13 @@
 	import { checkSquare, pillFor, stageAt } from '#lib/board.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
+	import { notify } from '#lib/toast.ts';
 	import {
 		createGame,
 		followsRematch,
 		gameExists,
 		isStale,
+		joinNotice,
 		showsOffline,
 		reasons,
 		rematch,
@@ -30,7 +33,10 @@
 		type View
 	} from '#lib/game.ts';
 
-	const code = page.params.code ?? '';
+	// Codes are upper case; a link typed in lower case still finds the game.
+	const code = (page.params.code ?? '').toUpperCase();
+	// Arrived from quick match's opponent-found screen, which already said who's who.
+	const fromMatch = page.state.matched === true;
 
 	// Dev only: /game/CODE?instant turns every animation off, for fast play-testing.
 	const instant = dev && page.url.searchParams.has('instant');
@@ -70,6 +76,8 @@
 		}
 		if (next.result) confirmResign = false; // the game ended before you chose
 		const prev = anim.view;
+		const notice = joinNotice(prev, next, fromMatch);
+		if (notice) notify.info(notice, { id: 'join' });
 		anim.receive(next, { hidden: document.hidden });
 		if (unsent) resend();
 		// A rematch accepted while this page is open: players go to it. Replace,
@@ -79,6 +87,7 @@
 	}
 
 	onMount(() => {
+		if (page.params.code !== code) replaceState(`/game/${code}${location.search}`, page.state);
 		// Every stream this page has open. A new one replaces the others only
 		// once it is up, so the server never sees the player leave in between
 		// (which would withdraw a rematch offer, say).
@@ -86,6 +95,7 @@
 		let generation = 0; // the latest connect(); older retries do nothing
 		let retry: ReturnType<typeof setTimeout> | undefined;
 		let disposed = false; // the page has gone: open nothing more
+		let checked = false; // the first failure is checked at once: a mistyped code shouldn't wait
 		const connect = () => {
 			if (disposed) return;
 			clearTimeout(retry);
@@ -121,7 +131,8 @@
 					if (exists) connect();
 					else if (view) lost = true;
 					else notFound = true;
-				}, 2000);
+				}, view || checked ? 2000 : 0);
+				checked = true;
 			};
 			es.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
 		};
@@ -366,6 +377,7 @@
 			<PlayerBar
 				compact
 				color={top}
+				name={view.players[top]}
 				you={you === top}
 				lost={stage.lost[top]}
 				pill={phonePill(topPill, top)}
@@ -391,6 +403,7 @@
 			<PlayerBar
 				compact
 				color={bottom}
+				name={view.players[bottom]}
 				you={you === bottom}
 				lost={stage.lost[bottom]}
 				pill={phonePill(bottomPill, bottom)}
@@ -482,9 +495,16 @@
 	{/if}
 
 	{#if notFound}
-		<p>Game not found. <a href="/">Start a new one</a>.</p>
+		<section class="missing" role="alert">
+			<h1>Game not found</h1>
+			<p>
+				No game has the code <span class="code">{code}</span>. Check the code, or the game may have ended more than a
+				day ago.
+			</p>
+			<a class="home-link" href="/">Back to the home page</a>
+		</section>
 	{:else if !view || !stage}
-		<p>Connecting…</p>
+		<p class="connecting">Connecting…</p>
 	{:else}
 		<p class="status" aria-live="polite">
 			{status}
@@ -510,6 +530,7 @@
 			<div class="board-col">
 				<PlayerBar
 					color={top}
+					name={view.players[top]}
 					you={you === top}
 					lost={stage.lost[top]}
 					pill={topPill.text}
@@ -542,6 +563,7 @@
 				</div>
 				<PlayerBar
 					color={bottom}
+					name={view.players[bottom]}
 					you={you === bottom}
 					lost={stage.lost[bottom]}
 					pill={bottomPill.text}
@@ -886,6 +908,43 @@
 	}
 	.muted {
 		color: var(--text-muted);
+	}
+	.connecting {
+		color: var(--text-muted);
+	}
+	.missing {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 14px;
+		max-width: 520px;
+		margin-top: 48px;
+		padding: 24px;
+		border: 1px solid var(--line);
+		border-radius: 14px;
+		background: var(--surface);
+	}
+	.missing h1 {
+		margin: 0;
+		color: var(--text);
+		font-family: var(--font-display);
+		font-weight: 800;
+		font-size: 36px;
+		text-transform: uppercase;
+	}
+	.missing p {
+		line-height: 1.5;
+	}
+	.home-link {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding: 0 18px;
+		border-radius: 10px;
+		background: var(--accent);
+		color: var(--accent-text);
+		font-weight: 600;
+		text-decoration: none;
 	}
 	.share {
 		display: grid;

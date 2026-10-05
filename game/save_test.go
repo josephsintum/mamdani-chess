@@ -56,8 +56,11 @@ func (f *failing) err() error {
 	}
 	return nil
 }
-func (f *failing) CreateGame(context.Context, store.Game) error    { return f.err() }
-func (f *failing) SeatBlack(context.Context, string, string) error { return f.err() }
+func (f *failing) CreateGame(context.Context, store.Game) error            { return f.err() }
+func (f *failing) SeatBlack(context.Context, string, string, string) error { return f.err() }
+func (f *failing) EnsureGuest(context.Context, string, func() string) (string, error) {
+	return "", f.err()
+}
 func (f *failing) AddTurn(context.Context, string, store.Turn) error {
 	return f.err()
 }
