@@ -52,14 +52,11 @@ const (
 	Aborted rules.Reason = "aborted"
 	// Expired means nobody ever took Black's seat. Nobody wins.
 	Expired rules.Reason = "expired"
-	// Unrestorable marks a saved game that no longer replays (a bad row,
-	// or a rules change), so startups stop retrying it. Nobody wins.
-	Unrestorable rules.Reason = "unrestorable"
 )
 
 // noWinner reports whether a finished game with reason r has no winner
 // and isn't a draw either.
-func noWinner(r rules.Reason) bool { return r == Aborted || r == Expired || r == Unrestorable }
+func noWinner(r rules.Reason) bool { return r == Aborted || r == Expired }
 
 // winnerName is "white" or "black", or "" for a draw, a game nobody won,
 // or a game still on.
