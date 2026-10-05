@@ -61,7 +61,7 @@ func (s *Server) gameStream(w http.ResponseWriter, r *http.Request) {
 
 type moveRequest struct {
 	game.MoveJSON
-	Seq int `json:"seq"`
+	Seq *int `json:"seq"` // required: a move must say which position it was made from
 }
 
 // gameMove plays the caller's move. The new state arrives on the stream.
@@ -74,7 +74,7 @@ func (s *Server) gameMove(w http.ResponseWriter, r *http.Request) {
 	}
 	var req moveRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Seq == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request body"})
 		return
 	}
@@ -83,7 +83,7 @@ func (s *Server) gameMove(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad move"})
 		return
 	}
-	writeGameResult(w, g, guest, g.Move(guest, m, req.Seq))
+	writeGameResult(w, g, guest, g.Move(guest, m, *req.Seq))
 }
 
 // gameResign ends the game; the caller's opponent wins.

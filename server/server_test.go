@@ -183,6 +183,7 @@ func TestMoveErrors(t *testing.T) {
 		{alice, move, `{"from":"e2","to":"e4","seq":5}`, http.StatusConflict}, // stale
 		{alice, move, `{"from":"e2","to":"e5","seq":0}`, http.StatusConflict}, // illegal
 		{alice, move, `{"from":"e9","to":"e4","seq":0}`, http.StatusBadRequest},
+		{alice, move, `{"from":"e2","to":"e4"}`, http.StatusBadRequest}, // no seq
 		{alice, move, `not json`, http.StatusBadRequest},
 		{alice, move, `{"from":"` + strings.Repeat("x", 5000) + `"}`, http.StatusBadRequest},
 		{alice, "/api/games/NOPE99/move", `{"from":"e2","to":"e4","seq":0}`, http.StatusNotFound},
