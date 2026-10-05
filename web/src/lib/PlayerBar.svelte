@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Color } from './game.ts';
-	import { pieceName } from './pieces.ts';
+	import { pieceName } from './game.ts';
 
 	let { color, you, lost, toMove }: { color: Color; you: boolean; lost: string[]; toMove: boolean } = $props();
 </script>
