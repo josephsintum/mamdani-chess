@@ -39,7 +39,8 @@
 	let selected = $state<string | null>(null);
 	let promoting = $state<{ from: string; to: string } | null>(null);
 	let hovered = $state<string | null>(null);
-	let drag = $state<{ from: string; x: number; y: number; moved: boolean; pointer: number } | null>(null);
+	// x0, y0: where the press started; x, y: where the pointer is now.
+	let drag = $state<{ from: string; x0: number; y0: number; x: number; y: number; moved: boolean; pointer: number } | null>(null);
 	let boardEl: HTMLDivElement | undefined = $state();
 
 	// Without moves to make (not your turn, dice still rolling) nothing is selectable.
@@ -141,7 +142,7 @@
 
 	function pointerDown(e: PointerEvent, sq: string) {
 		if (pending || !movable.has(sq) || e.button !== 0) return;
-		drag = { from: sq, x: e.clientX, y: e.clientY, moved: false, pointer: e.pointerId };
+		drag = { from: sq, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, pointer: e.pointerId };
 	}
 
 	// The pointer is only captured once it has really moved. Capturing on
@@ -154,7 +155,9 @@
 			drag = null; // the button came up somewhere we didn't see
 			return;
 		}
-		const moved = drag.moved || Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 6;
+		// Measured from the press, not the last event: a slow drag moves
+		// less than 6px between events and would otherwise never start.
+		const moved = drag.moved || Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 6;
 		if (moved && !drag.moved) {
 			boardEl?.setPointerCapture(e.pointerId);
 			selected = drag.from;
