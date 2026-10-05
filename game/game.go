@@ -329,7 +329,7 @@ func (g *Game) move(guest string, m rules.Move, seq int) error {
 	if g.failed != nil {
 		return nil
 	}
-	g.startCounting(now.Add(ResolveDelay))
+	g.startCounting(now.Add(pauseFor(g.last)))
 	g.broadcast()
 	return nil
 }

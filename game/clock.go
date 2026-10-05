@@ -10,9 +10,16 @@ import (
 const (
 	InitialTime = 10 * time.Minute
 	Increment   = 5 * time.Second
-	// ResolveDelay is the pause after every move while the dice play out:
-	// the next player's clock (or first-move deadline) starts after it.
+	// ResolveDelay is the shortest pause after a move while the dice play
+	// out: the next player's clock (or first-move deadline) starts after it.
+	// A longer roll gets a longer pause (see pauseFor).
 	ResolveDelay = 2 * time.Second
+	// StepTime is how long the browser shows each dice step. It must match
+	// STEP_MS in web/src/lib/animator.svelte.ts.
+	StepTime = 550 * time.Millisecond
+	// PauseMargin covers the state's trip to the browser on top of the
+	// animation itself.
+	PauseMargin = 500 * time.Millisecond
 	// FirstMoveTime is how long each side has for its first move before the
 	// game is aborted.
 	FirstMoveTime = 60 * time.Second
@@ -20,6 +27,20 @@ const (
 	// again, so both players can reconnect after a restart.
 	RestoreGrace = 10 * time.Second
 )
+
+// pauseFor is how long the next clock waits after a turn with events ev:
+// as long as the browser takes to play the dice, one StepTime per event
+// from the pothole roll on, plus PauseMargin, and never less than
+// ResolveDelay. So a long roll (a re-roll, a saving roll, a fall) costs the
+// next player no clock time.
+func pauseFor(ev []rules.Event) time.Duration {
+	for i, e := range ev {
+		if e.Kind == rules.RolledPothole {
+			return max(ResolveDelay, time.Duration(len(ev)-i)*StepTime+PauseMargin)
+		}
+	}
+	return ResolveDelay
+}
 
 // Result reasons the game package adds to the rules package's.
 const (

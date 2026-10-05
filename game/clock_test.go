@@ -230,3 +230,44 @@ func TestResignStopsTheClock(t *testing.T) {
 		finish(t, g)
 	})
 }
+
+func TestThePauseCoversTheDiceAnimation(t *testing.T) {
+	ev := func(kinds ...rules.EventKind) []rules.Event {
+		out := make([]rules.Event, len(kinds))
+		for i, k := range kinds {
+			out[i] = rules.Event{Kind: k}
+		}
+		return out
+	}
+	cases := []struct {
+		name string
+		ev   []rules.Event
+		want time.Duration
+	}{
+		{"checkmate, no roll", ev(rules.Moved), ResolveDelay},
+		{"odd roll", ev(rules.Moved, rules.RolledPothole), ResolveDelay},
+		{"pothole opens", ev(rules.Moved, rules.RolledPothole, rules.Target, rules.PotholeOpened), 3*StepTime + PauseMargin},
+		{"re-roll, saving roll, fall", ev(rules.Moved, rules.Captured, rules.RolledPothole, rules.Reroll, rules.Target,
+			rules.SavingRoll, rules.Fell, rules.PotholeOpened), 6*StepTime + PauseMargin},
+	}
+	for _, c := range cases {
+		if got := pauseFor(c.ev); got != c.want {
+			t.Errorf("%s: pause %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// A roll that opens a pothole animates for three steps, so Black's
+// first-move deadline starts when the animation ends, not after 2 s.
+func TestALongRollDelaysTheNextClock(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		g, _, _ := seated(t, NewHub(&script{rolls: []int{2, 2, 4}}, nil)) // even, then b4: a pothole opens
+		play(t, g, "alice", "e2e4", 0)
+		v := recvView(t, g, "bob")
+		want := time.Now().Add(3*StepTime + PauseMargin + FirstMoveTime).UnixMilli()
+		if v.Clock.FirstMoveDeadline != want {
+			t.Fatalf("first-move deadline %d, want %d (after the 3-step roll)", v.Clock.FirstMoveDeadline, want)
+		}
+		finish(t, g)
+	})
+}

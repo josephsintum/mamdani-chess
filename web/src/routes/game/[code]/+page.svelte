@@ -19,6 +19,8 @@
 		createGame,
 		followsRematch,
 		gameExists,
+		isStale,
+		showsOffline,
 		reasons,
 		rematch,
 		resign,
@@ -58,6 +60,7 @@
 	let copyHint = $state('');
 
 	function receive(next: View) {
+		if (isStale(anim.view, next)) return; // a slow reply, overtaken by the stream
 		error = '';
 		offset = next.clock.now - Date.now();
 		serverNow = next.clock.now;
@@ -76,27 +79,61 @@
 	}
 
 	onMount(() => {
-		let source: EventSource | null = null;
+		// Every stream this page has open. A new one replaces the others only
+		// once it is up, so the server never sees the player leave in between
+		// (which would withdraw a rematch offer, say).
+		const streams = new Set<EventSource>();
+		let generation = 0; // the latest connect(); older retries do nothing
 		let retry: ReturnType<typeof setTimeout> | undefined;
+		let disposed = false; // the page has gone: open nothing more
 		const connect = () => {
-			source = new EventSource(`/api/games/${code}/stream`);
-			source.onopen = () => (connected = true);
-			source.onerror = () => {
+			if (disposed) return;
+			clearTimeout(retry);
+			const gen = ++generation;
+			const es = new EventSource(`/api/games/${code}/stream`);
+			streams.add(es);
+			es.onopen = () => {
+				if (gen !== generation) {
+					es.close(); // a newer stream is on its way
+					streams.delete(es);
+					return;
+				}
+				connected = true;
+				for (const old of streams) {
+					if (old !== es) {
+						old.close();
+						streams.delete(old);
+					}
+				}
+			};
+			es.onerror = () => {
+				if (gen !== generation) return;
 				connected = false;
 				// Network errors reconnect by themselves. An error status (a
 				// proxy's 502 while the server restarts, or a 404) closes the
 				// stream for good: ask whether the game still exists, and if it
 				// might, open a new stream.
-				if (source?.readyState !== EventSource.CLOSED) return;
+				if (es.readyState !== EventSource.CLOSED) return;
+				streams.delete(es);
 				retry = setTimeout(async () => {
-					if (await gameExists(code)) connect();
+					const exists = await gameExists(code);
+					if (gen !== generation || disposed) return; // something newer took over
+					if (exists) connect();
 					else if (view) lost = true;
 					else notFound = true;
 				}, 2000);
 			};
-			source.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
+			es.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
 		};
 		connect();
+		// The browser knows at once when the device loses its network; the
+		// stream can take much longer to notice. Show it, and when the network
+		// is back, start a fresh stream (the old one may be dead without
+		// knowing it): its first state resends a move made meanwhile.
+		const goneOffline = () => (connected = false);
+		const backOnline = () => connect();
+		window.addEventListener('offline', goneOffline);
+		window.addEventListener('online', backOnline);
 		const tick = setInterval(() => (serverNow = Date.now() + offset), 100);
 		// Coming back to a tab mid-animation jumps to the end of the roll.
 		const finishOnReturn = () => {
@@ -104,7 +141,10 @@
 		};
 		document.addEventListener('visibilitychange', finishOnReturn);
 		return () => {
-			source?.close();
+			disposed = true;
+			for (const es of streams) es.close();
+			window.removeEventListener('offline', goneOffline);
+			window.removeEventListener('online', backOnline);
 			clearTimeout(retry);
 			clearTimeout(resendTimer);
 			clearInterval(tick);
@@ -147,8 +187,9 @@
 			unsent = true;
 			retryLater();
 		} else if (sent !== 'sent') {
-			error = sent.refused;
 			optimistic = null; // refused: glide back
+			if (sent.state) receive(sent.state); // resync at once (this clears error)
+			error = sent.refused;
 		}
 	}
 
@@ -169,7 +210,11 @@
 		if (sent === 'unsent') {
 			unsent = true;
 			retryLater();
-		} else if (sent !== 'sent' && optimistic === guess) optimistic = null;
+		} else if (sent !== 'sent') {
+			// Usually the server already has the move; its state settles it.
+			if (optimistic === guess) optimistic = null;
+			if (sent.state) receive(sent.state);
+		}
 	}
 
 	async function offerRematch(decline = false) {
@@ -275,10 +320,10 @@
 		if (r.reason === 'checkmate') detail = `${winner} mated with ${lastSan}.`;
 		if (r.reason === 'timeout') detail = `${loser} ran out of time.`;
 		if (r.reason === 'timeout_vs_insufficient')
-			detail = `${toMove} ran out of time, but ${toMove === 'White' ? 'Black' : 'White'} couldn’t have mated.`;
+			detail = `${toMove} ran out of time; ${toMove === 'White' ? 'Black' : 'White'} couldn’t mate.`;
 		if (r.reason === 'aborted') {
 			title = 'Aborted';
-			detail = `${toMove} didn’t make a first move in time. Nobody wins.`;
+			detail = `${toMove} didn’t make a first move. Nobody wins.`;
 		}
 		if (r.reason === 'expired') {
 			title = 'Expired';
@@ -328,7 +373,7 @@
 				toMove={playing && view.turn === top && !animating}
 				clockMs={clockFor(top)}
 				ticking={view.clock.running === top && !pausedForDice}
-				offline={view.status !== 'waiting' && !view.online[top]}
+				offline={showsOffline(view, top)}
 			/>
 			<div class="ph-board">
 				<Board
@@ -353,10 +398,13 @@
 				toMove={playing && view.turn === bottom && !animating}
 				clockMs={clockFor(bottom)}
 				ticking={view.clock.running === bottom && !pausedForDice}
-				offline={view.status !== 'waiting' && !view.online[bottom]}
+				offline={showsOffline(view, bottom)}
 			/>
 		</div>
 
+		<!-- The card and the bottom bar keep one height whatever shows, so the
+		     board never moves when a card changes. -->
+		<div class="ph-bottom">
 		{#if view.status === 'waiting' && you === 'white'}
 			<section class="ph-card" aria-label="Invite a friend">
 				<label for="link" class="ph-title">Send this link to your friend</label>
@@ -416,6 +464,7 @@
 				{/if}
 			</nav>
 		{/if}
+		</div>
 	</div>
 	<MovesSheet bind:this={sheet} {view} {shown} rolling={animating} />
 {:else}
@@ -469,7 +518,7 @@
 					clockMs={clockFor(top)}
 					ticking={view.clock.running === top && !pausedForDice}
 					pausedForDice={playing && view.turn === top && pausedForDice}
-					offline={view.status !== 'waiting' && !view.online[top]}
+					offline={showsOffline(view, top)}
 				/>
 				<div class="board-wrap">
 					<Board
@@ -501,7 +550,7 @@
 					clockMs={clockFor(bottom)}
 					ticking={view.clock.running === bottom && !pausedForDice}
 					pausedForDice={playing && view.turn === bottom && pausedForDice}
-					offline={view.status !== 'waiting' && !view.online[bottom]}
+					offline={showsOffline(view, bottom)}
 				/>
 			</div>
 
@@ -635,7 +684,9 @@
 	.ph-play {
 		display: flex;
 		flex-direction: column;
-		justify-content: center;
+		/* Spare height on tall phones gathers at the top, under the header,
+		   so the board sits just above the card and buttons, in thumb reach. */
+		justify-content: flex-end;
 		flex: 1 1 auto;
 		min-height: 0;
 		container-type: size;
@@ -716,17 +767,34 @@
 	.ph-detail {
 		font-size: 14px;
 	}
+	/* The result card keeps one line, so it fits the bottom block's height
+	   and the board doesn't move at game over. */
+	.ph-card.accent-line .ph-detail,
+	.ph-card.accent-line .ph-kicker {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
 	.ph-error {
 		margin-bottom: 0;
 		font-size: 14px;
 		color: var(--hazard-text);
+	}
+	.ph-bottom {
+		display: flex;
+		flex-direction: column;
+		flex-shrink: 0;
+		gap: 8px;
+		/* The height of the playing state (dice card and bottom bar), which
+		   every other state fits in. */
+		min-height: calc(143px + max(12px, env(safe-area-inset-bottom)));
 	}
 	.ph-nav {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 8px;
 		flex-shrink: 0;
-		margin-top: 8px;
+		margin-top: auto;
 		padding: 8px 8px max(12px, env(safe-area-inset-bottom));
 		border-top: 1px solid var(--surface-2);
 	}
@@ -844,14 +912,18 @@
 		font-size: 14px;
 	}
 	.layout {
+		/* The board shrinks with the window's height, so both player bars
+		   (and your clock) fit without scrolling: about 240 px go to the page
+		   padding, header, status line, bars and gaps. */
+		--board: clamp(320px, calc(100dvh - 240px), 600px);
 		display: grid;
-		grid-template-columns: 260px minmax(0, 600px) minmax(260px, 340px);
+		grid-template-columns: 260px minmax(0, var(--board)) minmax(260px, 340px);
 		gap: 24px;
 		align-items: start;
 	}
 	@media (max-width: 1100px) {
 		.layout {
-			grid-template-columns: minmax(0, 600px);
+			grid-template-columns: minmax(0, var(--board));
 		}
 		.log-col {
 			order: 3;

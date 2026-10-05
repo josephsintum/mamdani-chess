@@ -43,6 +43,8 @@ func run() error {
 		return err
 	}
 	handler := server.New(st, hub, web.Assets())
+	// Railway sets this to the deployed commit; locally it's empty ("dev").
+	handler.Version = os.Getenv("RAILWAY_GIT_COMMIT_SHA")
 	srv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           handler,

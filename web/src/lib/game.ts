@@ -64,25 +64,35 @@ export async function createGame(): Promise<string> {
 }
 
 /**
- * Sends a move. Returns null on success, or the server's error message.
- * Throws if the server can't be reached; the move can then be sent again
- * with the same seq, which the server refuses if it already has it.
+ * What became of a move: the server took it, refused it (why, and the
+ * game's current state when it sends one, as a 409 does), or never got it.
+ * A move that never got there can be sent again with the same seq: the
+ * server refuses a copy of a move it already has.
  */
-export async function sendMove(code: string, move: MoveJSON, seq: number): Promise<string | null> {
-	return post(`/api/games/${code}/move`, { ...move, seq });
-}
-
-/** What became of a move: the server took it, refused it (and why), or never got it. */
-export type SendOutcome = 'sent' | 'unsent' | { refused: string };
+export type SendOutcome = 'sent' | 'unsent' | { refused: string; state?: View };
 
 /** Sends a move and says what became of it, without throwing. */
 export async function trySendMove(code: string, move: MoveJSON, seq: number): Promise<SendOutcome> {
+	let res: Response;
 	try {
-		const error = await sendMove(code, move, seq);
-		return error === null ? 'sent' : { refused: error };
+		res = await fetch(`/api/games/${code}/move`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ ...move, seq })
+		});
 	} catch {
 		return 'unsent';
 	}
+	if (res.ok) return 'sent';
+	// A gateway error means the server is restarting (a deploy): it never
+	// saw the move, so send it again. A 500 is the game's own error: not that.
+	if (res.status >= 502 && res.status <= 504) return 'unsent';
+	const body: { error?: string; state?: View } = await res.json().catch(() => ({}));
+	const refused: { refused: string; state?: View } = {
+		refused: body.error || res.statusText || 'The server refused the move.'
+	};
+	if (body.state) refused.state = body.state;
+	return refused;
 }
 
 /**
@@ -93,6 +103,24 @@ export async function trySendMove(code: string, move: MoveJSON, seq: number): Pr
 export function followsRematch(prev: View | null, next: View): boolean {
 	const player = next.you === 'white' || next.you === 'black';
 	return player && !!next.rematch.code && prev !== null && !prev.rematch.code;
+}
+
+/**
+ * Whether a view is older than the one on screen: the server built it
+ * earlier (clock.now), as a 409's state can be when a newer stream update
+ * overtakes the HTTP reply. Showing it would roll the board back.
+ */
+export function isStale(current: View | null, next: View): boolean {
+	return current !== null && next.clock.now < current.clock.now;
+}
+
+/**
+ * Whether a player's bar says they're disconnected: only while the game is
+ * on. Before it starts there's no one to wait for, and after it ends the
+ * players have usually moved on (to the rematch, say).
+ */
+export function showsOffline(view: View, color: Color): boolean {
+	return view.status === 'playing' && !view.online[color];
 }
 
 /** Offers or accepts a rematch, or declines one. Returns null or the error. */
@@ -190,7 +218,7 @@ export const reasons: Record<string, string> = {
 	checkmate: 'checkmate',
 	resignation: 'resignation',
 	timeout: 'timeout',
-	timeout_vs_insufficient: 'timeout vs insufficient material',
+	timeout_vs_insufficient: 'timeout, no mate possible',
 	aborted: 'no first move',
 	expired: 'nobody joining',
 	stalemate: 'stalemate',

@@ -37,7 +37,7 @@ Each game is in one of four clock phases:
 | Over | stopped | none |
 
 - **Start:** both clocks start at 10:00. When Black joins, White's first-move deadline starts. When White's first move lands, Black's deadline starts 2 s later, after the dice pause. When Black's first move lands, White's clock starts 2 s later, and the game is in the Playing phase.
-- **The dice pause:** after every move, the next player's clock starts 2 s (`ResolveDelay`) after the move lands, so the dice animation doesn't cost them time. The browser shows "Paused for dice" meanwhile.
+- **The dice pause:** after every move, the next player's clock waits while the dice play out, so the animation doesn't cost them time: the browser shows one step every 550 ms from the pothole roll on (`STEP_MS`), and the server waits that long plus 0.5 s, and never less than 2 s (`pauseFor`, `ResolveDelay`, `StepTime`). A plain roll waits 2 s; a re-roll, saving roll and fall waits about 3.8 s (changed after the production playtest, 2026-10-05: a fixed 2 s cost up to a second on long rolls). The browser shows "Paused for dice" meanwhile.
 - **Increment:** +5 s is added to the mover after each move made while their clock was running, so not after the two first moves: play starts at 10:00 each.
 - **Flag fall:** when the side to move's clock reaches zero, that side loses on `timeout`. It's a draw (`timeout_vs_insufficient`) if the other side can't mate (`rules.Position.CannotMate`, already written for this). The server's timer ends the game even if nobody is watching.
 - **Time used** is measured on the server from when the clock started (after the pause) to when the move request arrives. No lag compensation: at 10+5, a few hundred milliseconds don't matter.
@@ -174,7 +174,23 @@ The phone layout ([its spec](2026-10-05-phone-layout-design.md)) landed on `main
 - **First-move countdown:** phones have no visible status line, so it rides on the pill of the side to move ("Your move · 45s").
 - **Offline move:** "Sending your move…" takes the card slot, just above the dice card in priority.
 - **Disconnected:** a short "Offline" label after the name.
+- **Board position:** the card and bottom bar keep the playing state's height whatever card shows (resign confirmation, result), so the board never moves; on tall phones the spare height gathers under the header, where milestone 06's spectators and reactions can go (changed after the production playtest, 2026-10-05).
 - **Rematch:** at game over a player's bottom bar has three buttons: the rematch action (Rematch, Offered…, Go to rematch, or Accept and Decline), New game, and Moves. An offer or a decline replaces the result card's detail line, so the card keeps its height. Spectators get Watch rematch once it starts.
+
+## After the production playtest (2026-10-05)
+
+Agents played the deployed build (desktop, phone size, and the edge cases). No bugs and no server errors; these follow-ups landed together:
+
+- **Rematch after an abort** stays offered ("let's try again"), as on Lichess. Decided with Joseph.
+- **Desktop:** the board shrinks with the window's height (320–600 px), so both bars and your clock fit at 1280×720.
+- **"Disconnected"** shows only while a game is in progress, not after it ends.
+- **Offline:** the page shows "Reconnecting — your move will be sent" as soon as the device goes offline, and opens a fresh stream when it's back.
+- **A refused move** resyncs from the `state` its 409 carries.
+- **The first-move countdown** never shows more than 60 s (it read 62 s during the dice pause).
+- **Restore:** a game that ended on time comes back with the loser at 0:00 and no dice replayed; an accepted rematch is linked again from `rematch_of`. A saved game that won't replay is skipped and logged at ERROR on each startup, and deliberately not marked ended: a bad deploy that breaks replay would otherwise end every game in progress for good, even after a rollback. A resigner's time on their last turn isn't saved, so a restored resignation shows the clock from the turn before.
+- **Creating a game** no longer holds the hub's lock during the database write (codes are reserved instead).
+- **`/healthz`** reports the deployed commit (`RAILWAY_GIT_COMMIT_SHA`, `dev` locally), so a deploy can be checked without creating a game.
+- **Logs:** move requests log at DEBUG; game events and other requests stay at INFO.
 
 ## Log lines
 
