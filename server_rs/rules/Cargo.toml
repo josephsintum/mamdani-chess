@@ -17,3 +17,7 @@ thiserror = "2.0.21"
 criterion = "0.8.2"
 rand = "0.10.3"
 rand_pcg = "0.10.2"
+
+[[bench]]
+name = "engine"
+harness = false

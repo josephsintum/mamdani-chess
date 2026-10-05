@@ -1,7 +1,7 @@
 # Rust server (`server_rs/`): design
 
 Date: 2026-10-04
-Status: Draft for review
+Status: Implemented on `rust-rewrite` (first pass). Where the build differed from the draft, this document was updated to match the code.
 Branch: `rust-rewrite`
 Ports: the Go server as of `52ed857` (milestone 04). The product design spec is [2026-10-01-mamdani-chess-design.md](2026-10-01-mamdani-chess-design.md).
 
@@ -51,14 +51,13 @@ These are **not** promised: byte-level JSON formatting (escaping, trailing newli
 server_rs/
   Cargo.toml        workspace: members rules, server; [workspace.lints]; [workspace.dependencies]
   rules/            lib crate: pure rules engine, no I/O, no async
-    src/  bitboard.rs board.rs position.rs attack.rs movegen.rs turn.rs event.rs game.rs san.rs dice.rs lib.rs
-    benches/        criterion: perft, random games
-    tests/          perft.rs random.rs parity.rs
-  server/           bin crate
-    src/  main.rs  game/{mod,actor,hub,view}.rs  http/{mod,error,games,guest}.rs
-    tests/          http.rs parity.rs
-  parity/main.go    Go fixture dumper (package main under the root go.mod)
-  testdata/         parity fixtures (a small committed sample; big files are gitignored)
+    src/  square.rs bitboard.rs position.rs movegen.rs turn.rs event.rs game.rs san.rs dice.rs lib.rs
+    benches/        engine.rs (criterion: perft, random games)
+    tests/          common/ movegen.rs turn.rs game.rs perft.rs random.rs
+  server/           lib + bin crate (the lib lets integration tests build the router)
+    src/  main.rs lib.rs  game/{mod,actor,hub,view}.rs  http/{mod,error,games,guest}.rs
+    tests/          common/ game.rs http.rs parity.rs
+  parity/main.go    Go game recorder (package main under the root go.mod)
 ```
 
 ## Rules crate
@@ -73,55 +72,63 @@ The representation is Rust's own.
 
 **Board: bitboards plus a mailbox.**
 - `Bitboard(u64)` with `Copy` and bit operators.
-- `Position` holds `by_color: [Bitboard; 2]`, `by_kind: [Bitboard; 6]` and `mailbox: [Option<Piece>; 64]` for O(1) "what is on this square".
-- It also holds `mamdani: Option<Square>`, `potholes: [Option<Square>; 2]` (indexed by the roller's colour), `turn`, `castling: CastleRights` (a bitflags newtype), `ep: Option<Square>`, `halfmove: u16` and `fullmove: u16`.
-- `Position` is `Copy`, about 140 bytes. Copy-make is cheap and never allocates.
+- `Position` holds `by_color: [Bitboard; 2]`, `by_kind: [Bitboard; 6]` and `board: [Option<Piece>; 64]` (a mailbox) for O(1) "what is on this square".
+- It also holds `mamdani: Option<Square>`, `potholes: [Option<Square>; 2]` (indexed by the roller's colour), `turn`, `castling: Castling` (a hand-written bit-set newtype), `ep: Option<Square>`, `halfmove: u16` and `fullmove: u16`.
+- `Position` is `Copy`, about 150 bytes (`Option<Piece>` is one byte). Copy-make is cheap and never allocates.
 - `blocked()` = all pieces | Mamdani | potholes, as one mask. This is the variant's key simplification: sliders stop at `blocked`, and landing squares exclude the potholes and the Mamdani.
 
 **Attacks.**
-- Precomputed `const` tables for knight, king and pawn attacks.
-- Sliders use classical ray attacks: a `const` ray table per direction, plus a first-blocker bitscan (`trailing_zeros`/`leading_zeros`).
+- Knight, king and pawn attack tables are built by `const fn` at compile time.
+- Sliders use classical ray attacks: a ray table per direction (also built at compile time), plus a first-blocker bitscan (`trailing_zeros`/`leading_zeros`).
 - No magic bitboards. They are a large table-generation step for a gain we haven't measured a need for. Decide after the benches.
-- The Mamdani's moves are queen rays over `blocked`, with no captures. The "clear queen line to the Mamdani" check for saving rolls is the same ray lookup.
+- The Mamdani's moves are queen rays over `blocked`, with no captures. The "clear queen line to the Mamdani" check for saving rolls uses a between-squares mask taken from the same ray table.
 
 **Move generation.**
-- Pseudo-legal moves go into `ArrayVec<Move, 256>`, so nothing touches the heap.
+- Moves go into `MoveList = ArrayVec<Move, 320>`, so nothing touches the heap. 320 covers chess's 218-move maximum, the Mamdani's 27, and pseudo-legal moves the filter drops.
+- `Position::after_move(m)` is public: the position after the move, close and repair steps, with no pothole roll. Perft and look-ahead use it.
 - Legality uses copy-make and then `in_check`. This is **not** a Go carry-over: closing and repairing potholes after a move change the blockers, which makes pin-mask shortcuts unsound for this variant.
 - `Move { from: Square, to: Square, promo: Option<Promo> }`. `Promo` is an enum of the four promotion kinds, so a pawn-to-king promotion cannot be represented.
 
 **Typed API.**
-- `Square` is a newtype over `u8` (0..64) with `TryFrom<&str>` and `Display`. No `-1` sentinel; `Option<Square>` instead.
-- `Color` and `Kind` are enums, and `Piece { color, kind }` is packed.
-- `Event` is an enum with one variant per kind, each carrying only its own fields:
-  - `Moved { piece, from, to, promo }`
+- `Square` is a newtype over `u8` (0..64) with `FromStr`, `Display`, `Square::A1`…`Square::H8` constants, and `name()` returning a `&'static str`. There is no `-1` sentinel; `Option<Square>` is used instead.
+- `Color` and `Kind` are enums. `Piece` packs a colour and kind into a `NonZeroU8`.
+- `Occupant` is `Piece(Piece) | Mamdani`: whatever can stand on a square and fall.
+- `Event` is an enum with one variant per kind, each carrying only its own fields (checked against `rules/event.go`):
+  - `Moved { mv, occupant, color }`
   - `Captured { sq, piece }`
   - `PotholeClosed { sq }`
   - `Repaired { sq }`
-  - `RolledPothole { roll }`
+  - `RolledPothole { roll, color }`
   - `Target { sq }`
   - `Reroll { sq, reason: RerollReason }`
-  - `SavingRoll { color, roll, saved }`
-  - `Fell { sq, piece }`
-  - `PotholeOpened { sq, by }`
+  - `SavingRoll { sq, occupant, roll, saved, color }`
+  - `Fell { sq, occupant }`
+  - `PotholeOpened { sq, color }`
   - `NoPothole`
-
-  (Field lists are confirmed against `rules/event.go` when the plan is written.)
-- `Outcome { winner: Option<Color>, reason: Reason }` uses a `Reason` enum, not strings.
+- `Outcome { winner: Option<Color>, reason: Reason }` uses a `Reason` enum, not strings. `Reason` includes `Resignation`, and `Game::resign(color)` sets it, so the server doesn't need its own result type.
 
 **Dice.**
 - `pub trait Dice { fn d8(&mut self) -> D8; }`, where `D8` is a newtype guaranteed to be in 1..=8 (`D8::new(u8) -> Option<D8>`).
-- An out-of-range die cannot reach the engine, so Go's `ErrBadDie` disappears. `ScriptedDice::new(&[u8])` validates at construction.
-- `RecordingDice<D>` wraps any `D` and records every roll.
-- `Game::play(&mut self, mv, dice: &mut impl Dice)` uses static dispatch.
+- An out-of-range die cannot reach the engine, so Go's `ErrBadDie` disappears. `ScriptedDice::from_values(&[u8])` validates at construction.
+- Past the end of its script, `ScriptedDice` rolls 1 and sets `ran_out()`, rather than panicking as Go's does. `Game::replay` turns that into `ReplayError::MissingDice`.
+- A crate-private `Recording<D>` wraps any dice and keeps every roll for `Turn::dice`.
+- `Game::play<D: Dice + ?Sized>(&mut self, mv, dice: &mut D)` is static dispatch for concrete dice, and also accepts `dyn Dice`, which the server uses.
 
 **Game.**
 - `Game { pos, turns: Vec<Turn>, outcome: Option<Outcome>, seen: HashMap<Key, u8> }`.
 - `play` commits only on success.
 - `Game::replay(start, &[Turn]) -> Result<Game, ReplayError>`.
 
-**Errors.** `thiserror` enums: `MoveError::{GameOver, Illegal}`, `ReplayError::{Move{ply, source}, UnusedDice{ply}}`, and `FenError`.
+**Errors.** `thiserror` types: `IllegalMove` (from `Position::apply`), `PlayError::{GameOver, Illegal}`, `ReplayError::{Play, MissingDice, UnusedDice}`, `FenError`, and `BadDie` (building a `D8` from a number outside 1..=8).
 
-**Performance policy.** Criterion benches cover perft from the start position to depth 5, Kiwipete to depth 4, and 1,000 seeded random games. The parity tool runs a matching Go `testing.B` so the numbers are comparable. These numbers go into the PR description.
+**Performance policy.** `cargo bench -p rules` (criterion) times perft from the start position to depth 4 and one seeded random game. To compare with Go without touching Go code (Go's perft helper is unexported), compare the suites both languages already have: the 10,000-random-games test and the perft test. First measurements on the author's machine, all cores:
+
+| | Go | Rust |
+| --- | --- | --- |
+| 10,000 random games, invariants checked every ply | 20.6 s | 0.90 s |
+| Perft suite (same depths) | 0.04 s | ~0.01 s |
+| Perft start position, depth 4 (criterion) | — | 3.4 ms |
+| One random game (criterion) | — | 0.48 ms |
 
 ## Server crate
 
@@ -137,7 +144,8 @@ There is one task per game, and it owns the game state with no locks. This is th
 
 **Hub and handles.**
 - `Hub` is `Arc<HubInner>` with `games: Mutex<HashMap<Code, GameHandle>>`. It is a std mutex and is never held across an `.await`.
-- `Hub::create` retries on code collisions. `Hub::get` and `Hub::remove` look up and drop entries.
+- `Hub::new(dice_factory, idle)`. Each game gets its own dice from the factory: in production a `StdRng` seeded from the OS; in tests, scripted dice.
+- `Hub::create` retries on code collisions. `Hub::get` looks games up.
 - `GameHandle` holds an `mpsc::Sender<Cmd>` (bounded, 32) and is cheap to clone.
 - Handler-facing methods, such as `handle.make_move(guest, mv, seq).await -> Result<(), GameError>`, hide the `oneshot` plumbing.
 
@@ -145,17 +153,16 @@ There is one task per game, and it owns the game state with no locks. This is th
 - `enum Cmd { Join{guest, reply}, Move{guest, mv, seq, reply}, Resign{guest, reply} }`.
 - There is no `Leave` command. The actor sees how many subscribers each role has through the watch channels (`Sender::receiver_count`).
 
-**The loop.** It runs `loop { select! { cmd = rx.recv() => …, _ = sleep_until(evict_at) => break } }`. On exit, the actor removes itself from the hub.
+**The loop.** It runs `loop { select! { cmd = rx.recv() => …, () = sleep_until(deadline) => … } }`. On exit, an `OnExit` guard removes the game from the hub; being a drop guard, it also runs if the task panics.
 
 **No panic catching.**
 - The rules API is total: errors are `Result`s, and dice are valid by construction. A panic is a bug.
-- If the actor dies anyway, its `mpsc` closes. Handlers turn the send error into `GameError::Gone` (500), and the hub drops the dead entry.
+- If the actor dies anyway, its `mpsc` closes. Handlers turn the send error into `GameError::Gone` (500), and `Hub::get` treats a closed handle as absent, so later requests get 404.
 - This replaces Go's `recover()`.
 
 **Eviction.** This is new; the product spec asks for it and Go doesn't have it.
-- `evict_at` is 24 h after the game ends.
-- For a game that never got a second player, it is 24 h after the last subscriber leaves.
-- Tests use `tokio::time::pause()`/`advance()`. No hand-rolled clock trait is needed, and milestone 05's clocks get the same benefit.
+- The deadline is 24 h after the last command. When it passes, the game is dropped if it is over or nobody is watching (no watch receivers); otherwise the deadline moves on another 24 h. That covers finished games, games nobody joined, and abandoned games, while a game with players connected is never dropped.
+- Tests use `#[tokio::test(start_paused = true)]`. No hand-rolled clock trait is needed, and milestone 05's clocks get the same benefit.
 
 **Seats.**
 - The creator is White, and the first other guest to join is Black.
@@ -174,7 +181,7 @@ There is one task per game, and it owns the game state with no locks. This is th
 
 - The JSON only varies by role: `you`, and `legal` for the player to move.
 - The actor keeps one `watch::Sender<Arc<View>>` per role: white, black and spectator.
-- A broadcast builds at most three `View`s and skips roles with no receivers. The SSE handler serialises the view per connection with `Event::json_data`.
+- A broadcast builds exactly three `View`s, one per role, whether or not anyone is watching that role. That keeps every receiver's current value fresh for the next join. The SSE handler serialises the view per connection with `Event::json_data`.
 - Every spectator shares one `Arc<View>`.
 - `watch` gives latest-value semantics: the game never blocks, and a slow reader skips to the newest state.
 
@@ -188,7 +195,7 @@ There is one task per game, and it owns the game state with no locks. This is th
 - **Routing:** an axum `Router` with nested `/api`.
 - **Errors:**
   - `ApiError` is an enum that implements `IntoResponse`, producing `{"error": msg}` plus `state` for conflicts.
-  - Handlers return `Result<_, ApiError>`, and `impl From<GameError> for ApiError` sets the status codes.
+  - Handlers return `(CookieJar, Result<_, ApiError>)`, so a new guest cookie is set even on an error response, and `impl From<GameError> for ApiError` sets the status codes.
   - The JSON body extractor is axum's `Json` behind `#[derive(FromRequest)] #[from_request(via(Json), rejection(ApiError))]`, so malformed bodies get the same error shape.
   - Bodies are capped at 4 KiB with `DefaultBodyLimit`.
 - **Guest:**
@@ -196,19 +203,20 @@ There is one task per game, and it owns the game state with no locks. This is th
   - Handlers return `(CookieJar, …)`, so the cookie is set only when it was missing.
   - `GuestId` is a validated newtype of 16 bytes, shown as hex.
 - **SSE:**
-  - `axum::response::sse::Sse` over a stream: the initial view, then `WatchStream` of the role's receiver, then `.take_until(shutdown.cancelled())`.
-  - Keep-alive uses `KeepAlive::new().interval(15s)`. The interval lives in the app config so tests can shorten it.
+  - `axum::response::sse::Sse` over `WatchStream` of the role's receiver (it yields the current view first), then `.take_until(shutdown.cancelled_owned())`. The response also sets `X-Accel-Buffering: no`.
+  - Keep-alive uses `KeepAlive::new().interval(15s).text("ping")`. The interval lives in the app config so tests can shorten it.
   - Opening the stream is what joins the game.
 - **Static files:**
   - `ServeDir::new(web_dir)` with `.precompressed_br().precompressed_gzip()` and a fallback of `ServeFile::new(index.html)` for SPA routes. This gives Range, ETag, Last-Modified and conditional requests for free.
-  - Cache headers come from a small middleware: `_app/immutable/*` gets `public, max-age=31536000, immutable`, and everything else gets `no-cache`.
+  - `/_app/*` is a separate `ServeDir` with no fallback, so a missing hashed asset is a 404, not the SPA page served with a year-long cache header (which the Go server would do).
+  - Cache headers come from a small middleware: a successful `_app/immutable/*` response gets `public, max-age=31536000, immutable`, and everything else gets `no-cache`.
   - `WEB_DIR` defaults to `../web/build`, relative to the binary's working directory.
   - **Trade-off:** files are served from disk rather than embedded, so the binary is no longer self-contained. That's acceptable because the Rust server isn't deployed. If it ever is, add `rust-embed` behind a feature flag.
 - **Shutdown:**
   - `axum::serve(...).with_graceful_shutdown(signal)` handles SIGINT and SIGTERM.
   - The shared `CancellationToken` is cancelled first so that SSE streams end, and other requests in flight get 10 s.
 - **Configuration:**
-  - `Config::from_env()` reads `PORT` (default 8080) and `WEB_DIR`.
+  - `main.rs` reads `PORT` (default 8080) and `WEB_DIR` (default `../web/build`, which suits `cargo run` from `server_rs/`), and warns at startup if there is no `index.html`.
   - `tracing_subscriber` reads `RUST_LOG`.
 
 ## Errors and lints
@@ -231,33 +239,35 @@ There is one task per game, and it owns the game state with no locks. This is th
    - Invariants are checked after every ply, and replay must give the same position.
 5. **Parity (differential).**
    - `server_rs/parity/main.go` uses only the exported Go API: `game.NewHub` with recorded seeded dice, `Hub.Create`, `Join` for white, black and a spectator, `Move`, and `Sub.C`.
-   - It plays N random games from `View.Legal` and writes JSONL: `{turns:[{move, seq, dice, views:{white, black, spectator}}]}`.
-   - `rules/tests/parity.rs` replays each game and checks the moves, SAN and outcome.
-   - `server/tests/parity.rs` drives an actor with `ScriptedDice` and compares each role's view as **parsed JSON** (`serde_json::Value`), ignoring `code`.
-   - A committed sample of about 50 games runs by default; `PARITY_FILE=…` runs a larger file.
+   - It plays N random games from `View.Legal`. About 2.5% of turns are a move by the wrong player, and about 0.5% are a resignation, so refusals are compared too. It writes JSONL: `{seed, start, turns:[{guest, action, move, seq, dice, error, views:{white, black, spectator}}]}`. Each view's log is cut to its last entry; the log only grows, so this still checks every entry and keeps the file to about 400 KB per game.
+   - `server/tests/parity.rs` drives a Rust actor with the recorded dice and compares each role's view after every turn as **parsed JSON**, ignoring `code` and sorting `legal`. It also checks that refusals carry the same message. A failure names the seed, the turn and the first differing JSON path.
+   - With no `PARITY_FILE`, the test runs `go run ./server_rs/parity -n 30` itself, and skips if Go isn't installed. There are no committed fixtures.
+   - The rules engine is checked through this test. A separate rules-only parity test would add nothing.
+   - Result: 500 recorded games (about 100,000 turns, three views each) match. A deliberate one-character change to the dice log fails with `white.log[0].dice: go "d8 1" rust "d8:1"`.
 6. **Actor tests.** Seats, reconnects and the check order. The broken-actor path (dropped `mpsc` → `Gone`) and eviction are tested with `tokio::time::pause()`.
 7. **HTTP integration.**
-   - A real `TcpListener` on port 0, a `reqwest` client with a cookie jar per player, and `eventsource-stream` to parse SSE.
+   - A real `TcpListener` on port 0, a `reqwest` client with a cookie jar per player, and a small SSE frame reader. It is hand-written so that keep-alive comments can be seen.
    - It covers:
      - the friend game, including the 33 legal moves at the start;
      - error codes, and 409 carrying `state`;
      - cookie attributes;
      - keep-alive with a short interval;
-     - static fallback and cache headers, from a temp dir;
+     - static fallback and cache headers, from a temp dir, including a 404 for a missing hashed asset and a 405 for a POST to a page;
      - shutdown ending streams;
      - resignation.
 
 ## CI
 
 - A new `rust` job in `.github/workflows/ci.yml` uses `dtolnay/rust-toolchain@stable` (clippy, rustfmt) and `Swatinem/rust-cache`, with working directory `server_rs`.
-- It runs the fmt/clippy/test command, then `go run ./server_rs/parity -n 500 > …` with `PARITY_FILE` set for `cargo test`.
+- The job sets up Go too, because the parity test runs the Go recorder.
+- It runs the fmt/clippy/test command, then `go run ./server_rs/parity -n 300 -seed 1000`, and runs the parity test in release with `PARITY_FILE` pointing at the result.
 - The existing jobs are untouched.
 
 ## Repo hygiene
 
 - New files are confined to `server_rs/**`, this spec and its plan.
-- `.gitignore` gains `server_rs/target/` and the large parity files.
-- The only edit to an existing file is the CI job.
+- `server_rs/.gitignore` ignores `/target/`.
+- The edits to existing files are the CI job and one `.dockerignore` line (`server_rs/target`), which stops a local Docker build from sending gigabytes of Rust build output as context.
 - Stage specific paths only. No Claude attribution in commits (CLAUDE.md).
 
 ## Later phase: persistence

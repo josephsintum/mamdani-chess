@@ -4,3 +4,4 @@ web/.svelte-kit
 web/build
 data
 docs
+server_rs/target
