@@ -63,6 +63,9 @@ func checkInvariants(t *testing.T, seed, ply int, before Position, m Move, g *Ga
 	if p.hasLegalMove() != (len(p.LegalMoves()) > 0) {
 		fail("hasLegalMove disagrees with LegalMoves")
 	}
+	if err := checkBitboards(p); err != nil {
+		fail("%v", err)
+	}
 	if p.King(White) == NoSquare || p.King(Black) == NoSquare {
 		fail("a king fell")
 	}

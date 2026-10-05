@@ -42,17 +42,16 @@ func (p *Position) movePiece(m Move, ev *[]Event) {
 	if pc.Kind() == Pawn && m.To == p.EP && p.Board[m.To] == NoPiece {
 		capSq = m.To.Offset(0, -pawnDir(c))
 	}
-	captured := p.Board[capSq]
+	captured := p.take(capSq)
 	if captured != NoPiece {
-		p.Board[capSq] = NoPiece
 		emit(ev, Event{Kind: Captured, Square: capSq, Piece: captured})
 	}
 
-	p.Board[m.From] = NoPiece
+	p.take(m.From)
 	if m.Promo != NoKind {
-		p.Board[m.To] = NewPiece(c, m.Promo)
+		p.put(m.To, NewPiece(c, m.Promo))
 	} else {
-		p.Board[m.To] = pc
+		p.put(m.To, pc)
 	}
 
 	if pc.Kind() == King && abs(m.To.File()-m.From.File()) == 2 {
@@ -60,7 +59,7 @@ func (p *Position) movePiece(m Move, ev *[]Event) {
 		if m.To.File() < m.From.File() {
 			rookFrom, rookTo = m.From.Offset(-4, 0), m.From.Offset(-1, 0)
 		}
-		p.Board[rookTo], p.Board[rookFrom] = p.Board[rookFrom], NoPiece
+		p.put(rookTo, p.take(rookFrom))
 	}
 
 	p.Castling &^= rightsLost(m.From) | rightsLost(m.To)

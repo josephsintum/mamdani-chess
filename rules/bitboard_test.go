@@ -78,3 +78,18 @@ func TestBetween(t *testing.T) {
 		}
 	}
 }
+
+// checkBitboards fails if p's bitboards disagree with its Board.
+func checkBitboards(p *Position) error {
+	var want Position
+	for s, pc := range p.Board {
+		if pc != NoPiece {
+			want.byColor[pc.Color()] |= bit(Square(s))
+			want.byKind[pc.Kind()] |= bit(Square(s))
+		}
+	}
+	if want.byColor != p.byColor || want.byKind != p.byKind {
+		return fmt.Errorf("bitboards out of step with the board")
+	}
+	return nil
+}

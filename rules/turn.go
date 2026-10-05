@@ -136,7 +136,7 @@ func (p *Position) remove(s Square) {
 		p.Mamdani = NoSquare
 		return
 	}
-	p.Board[s] = NoPiece
+	p.take(s)
 }
 
 func (p *Position) resolve(s Square, mover Color, dice Dice, ev []Event) []Event {
@@ -165,7 +165,7 @@ func (p *Position) resolve(s Square, mover Color, dice Dice, ev []Event) []Event
 			}
 		}
 		ev = append(ev, Event{Kind: Fell, Square: s, Piece: pc})
-		p.Board[s] = NoPiece
+		p.take(s)
 		p.Halfmove = 0
 		p.Castling &^= rightsLost(s)
 	}

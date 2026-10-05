@@ -18,6 +18,8 @@ const (
 
 // Position is everything needed to generate moves and resolve a turn.
 type Position struct {
+	// Board is what stands on each square. Read it freely, but change
+	// pieces only through put and take, which keep the bitboards in step.
 	Board [64]Piece
 	// Mamdani is the Mamdani's square, or NoSquare once it has fallen
 	// (and in plain-chess positions such as perft).
@@ -31,6 +33,55 @@ type Position struct {
 	EP       Square // en passant target square, or NoSquare
 	Halfmove int    // plies since the last pawn move, capture or fall
 	Fullmove int
+
+	// The same pieces as Board, as sets: by color and by kind (indexed by
+	// Kind, so byKind[NoKind] stays empty).
+	byColor [2]Bitboard
+	byKind  [King + 1]Bitboard
+}
+
+// put places pc on s, replacing whatever was there.
+func (p *Position) put(s Square, pc Piece) {
+	p.take(s)
+	p.Board[s] = pc
+	p.byColor[pc.Color()] |= bit(s)
+	p.byKind[pc.Kind()] |= bit(s)
+}
+
+// take removes and returns the piece on s, or NoPiece.
+func (p *Position) take(s Square) Piece {
+	pc := p.Board[s]
+	if pc == NoPiece {
+		return NoPiece
+	}
+	p.Board[s] = NoPiece
+	p.byColor[pc.Color()] &^= bit(s)
+	p.byKind[pc.Kind()] &^= bit(s)
+	return pc
+}
+
+// pieces returns c's pieces of kind k.
+func (p *Position) pieces(c Color, k Kind) Bitboard { return p.byColor[c] & p.byKind[k] }
+
+// potholes returns the open potholes as a set.
+func (p *Position) potholes() Bitboard {
+	var b Bitboard
+	for _, s := range p.Potholes {
+		if s != NoSquare {
+			b |= bit(s)
+		}
+	}
+	return b
+}
+
+// blocked returns every square that stops a slider: pieces, the Mamdani
+// and potholes.
+func (p *Position) blocked() Bitboard {
+	b := p.byColor[White] | p.byColor[Black] | p.potholes()
+	if p.Mamdani != NoSquare {
+		b |= bit(p.Mamdani)
+	}
+	return b
 }
 
 const startFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -52,19 +103,13 @@ func (p *Position) IsPothole(s Square) bool {
 
 // Blocked reports whether s stops a slider: a piece, the Mamdani or a pothole.
 func (p *Position) Blocked(s Square) bool {
-	return p.Board[s] != NoPiece || s == p.Mamdani || p.IsPothole(s)
+	return p.blocked().Has(s)
 }
 
 // King returns c's king square, or NoSquare if it has none (only in
 // hand-built test positions).
 func (p *Position) King(c Color) Square {
-	k := NewPiece(c, King)
-	for s := Square(0); s < 64; s++ {
-		if p.Board[s] == k {
-			return s
-		}
-	}
-	return NoSquare
+	return p.pieces(c, King).First()
 }
 
 // Key identifies a position for repetition: pieces, Mamdani, open potholes,
@@ -113,7 +158,7 @@ func ParseFEN(fen string) (Position, error) {
 			if !ok || f > 7 {
 				return p, fmt.Errorf("fen %q: bad rank %q", fen, row)
 			}
-			p.Board[r*8+f] = pc
+			p.put(Square(r*8+f), pc)
 			f++
 		}
 		if f != 8 {
