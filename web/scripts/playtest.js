@@ -8,6 +8,11 @@
 //   pnpm --dir web playtest                       # 6 games in Chromium
 //   pnpm --dir web playtest --browser webkit      # Safari's engine
 //   pnpm --dir web playtest --games 12 --drag 0.5 # half the moves by dragging
+//
+// Against a production build (no ?instant: the dice play out in full), allow
+// each turn longer:
+//
+//   pnpm --dir web playtest --base https://<domain> --games 2 --max-plies 30 --turn-ms 15000
 
 import { chromium, webkit } from 'playwright';
 import { parseArgs } from 'node:util';
@@ -19,12 +24,14 @@ const { values: opts } = parseArgs({
 		drag: { type: 'string', default: '0.3' }, // share of moves made by dragging
 		base: { type: 'string', default: 'http://localhost:5173' },
 		'max-plies': { type: 'string', default: '1000' },
+		'turn-ms': { type: 'string', default: '3000' }, // how long a move may take to land
 		headed: { type: 'boolean', default: false }
 	}
 });
 const GAMES = Number(opts.games);
 const DRAG = Number(opts.drag);
 const MAX_PLIES = Number(opts['max-plies']);
+const TURN_MS = Number(opts['turn-ms']);
 const engines = { chromium, webkit };
 if (!engines[opts.browser]) throw new Error(`--browser must be one of ${Object.keys(engines).join(', ')}`);
 
@@ -122,7 +129,7 @@ async function playGame(browser, n) {
 		if (await promo.count()) await pick(await promo.all()).click();
 		// The move landed when the other side gets the turn or the game ends.
 		let landed = false;
-		for (let i = 0; i < 100 && !landed; i++) {
+		for (let i = 0; i < TURN_MS / 30 && !landed; i++) {
 			if ((await movable(other)) > 0 || (await over())) landed = true;
 			else await sleep(30);
 		}
