@@ -407,10 +407,13 @@
 		position: absolute;
 		font-family: var(--font-mono);
 		font-weight: 600;
-		font-size: 11px;
+		font-size: 12px;
 		color: var(--board-dark);
 		pointer-events: none;
-		z-index: 1;
+		/* Above resting pieces (2), so a piece in the corner square doesn't
+		   hide its letter; a dragged piece (3, later in the page) still
+		   passes over. */
+		z-index: 3;
 	}
 	.square.dark .rank-label,
 	.square.dark .file-label {

@@ -379,6 +379,9 @@
 			/>
 		</div>
 
+		<!-- The card and the bottom bar keep one height whatever shows, so the
+		     board never moves when a card changes. -->
+		<div class="ph-bottom">
 		{#if view.status === 'waiting' && you === 'white'}
 			<section class="ph-card" aria-label="Invite a friend">
 				<label for="link" class="ph-title">Send this link to your friend</label>
@@ -438,6 +441,7 @@
 				{/if}
 			</nav>
 		{/if}
+		</div>
 	</div>
 	<MovesSheet bind:this={sheet} {view} {shown} rolling={animating} />
 {:else}
@@ -657,7 +661,9 @@
 	.ph-play {
 		display: flex;
 		flex-direction: column;
-		justify-content: center;
+		/* Spare height on tall phones gathers at the top, under the header,
+		   so the board sits just above the card and buttons, in thumb reach. */
+		justify-content: flex-end;
 		flex: 1 1 auto;
 		min-height: 0;
 		container-type: size;
@@ -743,12 +749,21 @@
 		font-size: 14px;
 		color: var(--hazard-text);
 	}
+	.ph-bottom {
+		display: flex;
+		flex-direction: column;
+		flex-shrink: 0;
+		gap: 8px;
+		/* The height of the playing state (dice card and bottom bar), which
+		   every other state fits in. */
+		min-height: calc(143px + max(12px, env(safe-area-inset-bottom)));
+	}
 	.ph-nav {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 8px;
 		flex-shrink: 0;
-		margin-top: 8px;
+		margin-top: auto;
 		padding: 8px 8px max(12px, env(safe-area-inset-bottom));
 		border-top: 1px solid var(--surface-2);
 	}
