@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -45,6 +46,7 @@ func newTestServerWith(t *testing.T, dice rules.Dice) (*Server, *httptest.Server
 		"favicon.svg.gz":        {Data: svgGzip},
 	}
 	s := New(st, game.NewHub(dice), assets)
+	s.log = slog.New(slog.DiscardHandler) // tests that check logging swap in their own
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 	return s, ts
@@ -413,5 +415,15 @@ func TestPrecompressedFiles(t *testing.T) {
 		if resp.Header.Get("Vary") != "Accept-Encoding" {
 			t.Errorf("Accept-Encoding %q: missing Vary", c.accept)
 		}
+	}
+}
+
+func TestRequestsAreLogged(t *testing.T) {
+	s, ts := newTestServer(t)
+	var buf bytes.Buffer
+	s.log = slog.New(slog.NewTextHandler(&buf, nil))
+	get(t, ts.URL+"/api/nope", "")
+	if line := buf.String(); !strings.Contains(line, "method=GET path=/api/nope status=404") {
+		t.Errorf("log %q", line)
 	}
 }
