@@ -12,8 +12,30 @@ import (
 
 // createGame starts a friend game with the caller as White.
 func (s *Server) createGame(w http.ResponseWriter, r *http.Request) {
-	g := s.games.Create(guestID(w, r))
+	g, err := s.games.Create(guestID(w, r))
+	if err != nil {
+		s.log.Error("create game", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]string{"code": g.Code()})
+}
+
+// gameView returns the caller's view of the game without opening a stream
+// or taking a seat. The page uses it to tell "game not found" from a
+// server that is restarting.
+func (s *Server) gameView(w http.ResponseWriter, r *http.Request) {
+	g, ok := s.games.Get(r.PathValue("code"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
+		return
+	}
+	v, err := g.View(guestID(w, r))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
 }
 
 // gameStream sends the caller's view of the game on connect and after every
@@ -95,6 +117,28 @@ func (s *Server) gameResign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeGameResult(w, g, guest, g.Resign(guest))
+}
+
+type rematchRequest struct {
+	Decline bool `json:"decline"`
+}
+
+// gameRematch offers a rematch, accepts the opponent's offer, or declines
+// it. The outcome (and the new game's code) arrives on the stream.
+func (s *Server) gameRematch(w http.ResponseWriter, r *http.Request) {
+	guest := guestID(w, r)
+	g, ok := s.games.Get(r.PathValue("code"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
+		return
+	}
+	var req rematchRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request body"})
+		return
+	}
+	writeGameResult(w, g, guest, g.Rematch(guest, req.Decline))
 }
 
 // writeGameResult maps the outcome of a move or resignation to a response.

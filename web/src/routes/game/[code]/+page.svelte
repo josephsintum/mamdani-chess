@@ -14,7 +14,19 @@
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
 	import { checkSquare, pillFor, stageAt } from '#lib/board.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
-	import { createGame, reasons, resign, sendMove, type Color, type MoveJSON, type View } from '#lib/game.ts';
+	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
+	import {
+		createGame,
+		followsRematch,
+		gameExists,
+		reasons,
+		rematch,
+		resign,
+		trySendMove,
+		type Color,
+		type MoveJSON,
+		type View
+	} from '#lib/game.ts';
 
 	const code = page.params.code ?? '';
 
@@ -31,7 +43,13 @@
 	// style): the piece glides at once. If the server refuses the move, the
 	// guess is dropped and the piece glides back.
 	let optimistic = $state<{ seq: number; move: MoveJSON } | null>(null);
+	// The guess couldn't reach the server; it is sent again once it can.
+	let unsent = $state(false);
 	let connected = $state(false);
+	// The server's clock minus ours, and the server's time now: the clocks
+	// count down from it.
+	let offset = 0;
+	let serverNow = $state(Date.now());
 	let notFound = $state(false);
 	let lost = $state(false);
 	let error = $state('');
@@ -41,32 +59,55 @@
 
 	function receive(next: View) {
 		error = '';
-		if (settlesGuess(optimistic, next)) optimistic = null;
+		offset = next.clock.now - Date.now();
+		serverNow = next.clock.now;
+		if (settlesGuess(optimistic, next)) {
+			optimistic = null;
+			unsent = false;
+		}
 		if (next.result) confirmResign = false; // the game ended before you chose
+		const prev = anim.view;
 		anim.receive(next, { hidden: document.hidden });
+		if (unsent) resend();
+		// A rematch accepted while this page is open: players go to it. Replace,
+		// so Back returns to where they were before, not to a page that would
+		// forward them again. A full load gives the new game a fresh stream.
+		if (followsRematch(prev, next)) location.replace(`/game/${next.rematch.code}`);
 	}
 
 	onMount(() => {
-		const source = new EventSource(`/api/games/${code}/stream`);
-		source.onopen = () => (connected = true);
-		source.onerror = () => {
-			connected = false;
-			// A 404 or other error status closes the stream for good; network
-			// errors reconnect by themselves. Games live in memory for now, so a
-			// server restart is the usual way a game in progress disappears.
-			if (source.readyState === EventSource.CLOSED) {
-				if (view) lost = true;
-				else notFound = true;
-			}
+		let source: EventSource | null = null;
+		let retry: ReturnType<typeof setTimeout> | undefined;
+		const connect = () => {
+			source = new EventSource(`/api/games/${code}/stream`);
+			source.onopen = () => (connected = true);
+			source.onerror = () => {
+				connected = false;
+				// Network errors reconnect by themselves. An error status (a
+				// proxy's 502 while the server restarts, or a 404) closes the
+				// stream for good: ask whether the game still exists, and if it
+				// might, open a new stream.
+				if (source?.readyState !== EventSource.CLOSED) return;
+				retry = setTimeout(async () => {
+					if (await gameExists(code)) connect();
+					else if (view) lost = true;
+					else notFound = true;
+				}, 2000);
+			};
+			source.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
 		};
-		source.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
+		connect();
+		const tick = setInterval(() => (serverNow = Date.now() + offset), 100);
 		// Coming back to a tab mid-animation jumps to the end of the roll.
 		const finishOnReturn = () => {
 			if (!document.hidden) anim.finish();
 		};
 		document.addEventListener('visibilitychange', finishOnReturn);
 		return () => {
-			source.close();
+			source?.close();
+			clearTimeout(retry);
+			clearTimeout(resendTimer);
+			clearInterval(tick);
 			anim.stop();
 			document.removeEventListener('visibilitychange', finishOnReturn);
 		};
@@ -98,14 +139,43 @@
 		if (!view || busy) return;
 		busy = true;
 		optimistic = { seq: view.seq, move: m };
-		try {
-			error = (await sendMove(code, m, view.seq)) ?? '';
-		} catch {
-			error = 'Could not reach the server. Try again.';
-		} finally {
-			busy = false;
+		const sent = await trySendMove(code, m, view.seq);
+		busy = false;
+		if (sent === 'unsent') {
+			// No connection (a train in a tunnel, say): keep the move on the
+			// board and send it again when the server can be reached.
+			unsent = true;
+			retryLater();
+		} else if (sent !== 'sent') {
+			error = sent.refused;
+			optimistic = null; // refused: glide back
 		}
-		if (error) optimistic = null; // refused or unsent: glide back
+	}
+
+	let resendTimer: ReturnType<typeof setTimeout> | undefined;
+	function retryLater() {
+		clearTimeout(resendTimer);
+		resendTimer = setTimeout(resend, 1500);
+	}
+
+	// Sends an unsent move again. The same seq means the server refuses a
+	// copy of a move it already has; then the stream's state settles it.
+	async function resend() {
+		const guess = optimistic;
+		if (!unsent || !guess || view?.seq !== guess.seq) return;
+		if (!connected) return retryLater();
+		unsent = false;
+		const sent = await trySendMove(code, guess.move, guess.seq);
+		if (sent === 'unsent') {
+			unsent = true;
+			retryLater();
+		} else if (sent !== 'sent' && optimistic === guess) optimistic = null;
+	}
+
+	async function offerRematch(decline = false) {
+		busy = true;
+		error = (await rematch(code, decline).catch(() => 'Could not reach the server. Try again.')) ?? '';
+		busy = false;
 	}
 
 	async function doResign() {
@@ -144,15 +214,51 @@
 		}
 	}
 
+	let clockFor = (c: Color) => (view ? timeLeft(view.clock, c, serverNow) : 0);
+	let pausedForDice = $derived(!!view && paused(view.clock, serverNow));
+	let firstMove = $derived(view ? firstMoveLeft(view.clock, serverNow) : null);
+
 	let status = $derived.by(() => {
 		if (!view) return '';
 		if (view.status === 'waiting')
 			return you === 'white' ? 'Waiting for your friend to open the link…' : 'Waiting for White’s friend to join…';
 		if (view.result) return animating ? 'Last move played…' : 'Game over';
+		if (unsent) return connected ? 'Sending your move…' : 'Reconnecting — your move will be sent';
 		if (animating) return 'Dice are rolling…';
 		const side = view.turn === 'white' ? 'White' : 'Black';
-		const check = view.check ? ' — check!' : '';
-		return (view.turn === you ? 'Your move' : `${side} to move`) + check;
+		const yours = view.turn === you;
+		let text = yours ? 'Your move' : `${side} to move`;
+		// Name who is in check: a bare "check!" was read as the reader's own king.
+		if (view.check) text += yours ? ' — you’re in check' : ` — ${side} is in check`;
+		if (firstMove !== null) text += ` · ${Math.ceil(firstMove / 1000)}s to make the first move`;
+		return text;
+	});
+
+	// Phones have no visible status line, so the first-move countdown rides
+	// on the pill of the side that has to move.
+	function phonePill(p: { text: string }, c: Color): string {
+		if (!p.text || firstMove === null || view?.turn !== c) return p.text;
+		return `${p.text} · ${Math.ceil(firstMove / 1000)}s`;
+	}
+
+	// The phone's game-over bar: what its rematch button does, if anything.
+	let rematchAction = $derived.by((): { kind: 'go' | 'offer' | 'offered' | 'answer'; label: string } | null => {
+		const r = view?.rematch;
+		if (!view || !r || !resultCard || view.result?.reason === 'expired') return null;
+		if (r.code) return { kind: 'go', label: isPlayer ? 'Go to rematch' : 'Watch rematch' };
+		if (!isPlayer) return null;
+		if (r.offer && r.offer !== you) return { kind: 'answer', label: '' };
+		if (r.offer === you) return { kind: 'offered', label: 'Offered…' };
+		return { kind: 'offer', label: 'Rematch' };
+	});
+	// On phones a rematch offer or decline replaces the result's detail line,
+	// so the card keeps its height and the page never scrolls.
+	let rematchNote = $derived.by(() => {
+		const r = view?.rematch;
+		if (!r || r.code || !isPlayer) return '';
+		if (r.offer && r.offer !== you) return 'Your opponent wants a rematch.';
+		if (r.declined) return 'Rematch declined.';
+		return '';
 	});
 
 	let resultCard = $derived.by(() => {
@@ -162,12 +268,25 @@
 		const winner = r.winner === 'white' ? 'White' : 'Black';
 		const loser = r.winner === 'white' ? 'Black' : 'White';
 		const lastSan = view.log.at(-1)?.san ?? '';
+		const toMove = view.turn === 'white' ? 'White' : 'Black';
 		let detail = `By ${why}.`;
+		let title = r.draw ? 'Draw' : `${winner} wins`;
 		if (r.reason === 'resignation') detail = `${loser} resigned.`;
 		if (r.reason === 'checkmate') detail = `${winner} mated with ${lastSan}.`;
+		if (r.reason === 'timeout') detail = `${loser} ran out of time.`;
+		if (r.reason === 'timeout_vs_insufficient')
+			detail = `${toMove} ran out of time, but ${toMove === 'White' ? 'Black' : 'White'} couldn’t have mated.`;
+		if (r.reason === 'aborted') {
+			title = 'Aborted';
+			detail = `${toMove} didn’t make a first move in time. Nobody wins.`;
+		}
+		if (r.reason === 'expired') {
+			title = 'Expired';
+			detail = 'Nobody joined within a day.';
+		}
 		return {
 			kicker: `${why} · Move ${Math.max(1, Math.ceil(view.seq / 2))}`,
-			title: r.draw ? 'Draw' : `${winner} wins`,
+			title,
 			detail
 		};
 	});
@@ -192,14 +311,25 @@
 		</header>
 		{#if lost}
 			<p class="ph-lost" role="alert">
-				Lost the connection. <a href={`/game/${code}`} data-sveltekit-reload>Reload</a> or <a href="/">start a new game</a>.
+				This game is no longer on the server. <a href="/">Start a new one</a>.
 			</p>
 		{/if}
 		<!-- The pills and the dice card show this; screen readers hear it. -->
 		<p class="sr-only" aria-live="polite">{status}</p>
 
 		<div class="ph-play">
-			<PlayerBar compact color={top} you={you === top} lost={stage.lost[top]} pill={topPill.text} pillTone={topPill.tone} />
+			<PlayerBar
+				compact
+				color={top}
+				you={you === top}
+				lost={stage.lost[top]}
+				pill={phonePill(topPill, top)}
+				pillTone={topPill.tone}
+				toMove={playing && view.turn === top && !animating}
+				clockMs={clockFor(top)}
+				ticking={view.clock.running === top && !pausedForDice}
+				offline={view.status !== 'waiting' && !view.online[top]}
+			/>
 			<div class="ph-board">
 				<Board
 					{stage}
@@ -213,7 +343,18 @@
 					onmove={move}
 				/>
 			</div>
-			<PlayerBar compact color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={bottomPill.text} pillTone={bottomPill.tone} />
+			<PlayerBar
+				compact
+				color={bottom}
+				you={you === bottom}
+				lost={stage.lost[bottom]}
+				pill={phonePill(bottomPill, bottom)}
+				pillTone={bottomPill.tone}
+				toMove={playing && view.turn === bottom && !animating}
+				clockMs={clockFor(bottom)}
+				ticking={view.clock.running === bottom && !pausedForDice}
+				offline={view.status !== 'waiting' && !view.online[bottom]}
+			/>
 		</div>
 
 		{#if view.status === 'waiting' && you === 'white'}
@@ -236,20 +377,36 @@
 		{:else if resultCard}
 			<section class="ph-card accent-line" role="status" aria-label="Game over" in:fly={{ y: 24, duration: reducedMotion() ? 0 : 400 }}>
 				<span class="ph-result"><span class="ph-headline">{resultCard.title}</span><span class="ph-kicker">{resultCard.kicker}</span></span>
-				<span class="ph-detail">{resultCard.detail}</span>
+				<span class="ph-detail">{rematchNote || resultCard.detail}</span>
 			</section>
 		{:else if error}
 			<p class="ph-card ph-error" role="alert">{error}</p>
+		{:else if unsent}
+			<p class="ph-card ph-detail" role="status">{status}</p>
 		{:else}
 			<DiceSummary {view} {shown} />
 		{/if}
 
 		{#if view.status !== 'waiting' && !confirmResign}
-			<nav class="ph-nav" aria-label="Game actions" class:single={!resultCard && !(isPlayer && playing)}>
-				{#if resultCard}<button type="button" class="primary" onclick={newGame} disabled={busy}>New game</button>{/if}
+			<nav class="ph-nav" aria-label="Game actions" class:single={!resultCard && !(isPlayer && playing)} class:three={!!rematchAction}>
+				{#if rematchAction}
+					{#if rematchAction.kind === 'answer'}
+						<button type="button" class="primary" onclick={() => offerRematch()} disabled={busy}>Accept</button>
+						<button type="button" class="outline" onclick={() => offerRematch(true)} disabled={busy}>Decline</button>
+					{:else}
+						{#if rematchAction.kind === 'go'}
+							<button type="button" class="primary" onclick={() => location.assign(`/game/${view.rematch.code}`)}>{rematchAction.label}</button>
+						{:else}
+							<button type="button" class="primary" onclick={() => offerRematch()} disabled={busy || rematchAction.kind === 'offered'}
+								>{rematchAction.label}</button
+							>
+						{/if}
+						<button type="button" class="outline" onclick={newGame} disabled={busy}>New game</button>
+					{/if}
+				{:else if resultCard}<button type="button" class="primary" onclick={newGame} disabled={busy}>New game</button>{/if}
 				<button type="button" class="solid" onclick={(e) => sheet?.open(e.currentTarget)}>
 					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
-					Moves and rolls
+					{rematchAction ? 'Moves' : 'Moves and rolls'}
 				</button>
 				{#if !resultCard && isPlayer && playing}
 					<button type="button" class="outline" onclick={() => (confirmResign = true)} disabled={busy}>
@@ -271,8 +428,7 @@
 
 	{#if lost}
 		<p class="error" role="alert">
-			Lost the connection to this game. If the server restarted, the game is gone.
-			<a href={`/game/${code}`} data-sveltekit-reload>Reload</a> or <a href="/">start a new one</a>.
+			This game is no longer on the server. <a href="/">Start a new one</a>.
 		</p>
 	{/if}
 
@@ -303,7 +459,18 @@
 			</div>
 
 			<div class="board-col">
-				<PlayerBar color={top} you={you === top} lost={stage.lost[top]} pill={topPill.text} pillTone={topPill.tone} />
+				<PlayerBar
+					color={top}
+					you={you === top}
+					lost={stage.lost[top]}
+					pill={topPill.text}
+					pillTone={topPill.tone}
+					toMove={playing && view.turn === top && !animating}
+					clockMs={clockFor(top)}
+					ticking={view.clock.running === top && !pausedForDice}
+					pausedForDice={playing && view.turn === top && pausedForDice}
+					offline={view.status !== 'waiting' && !view.online[top]}
+				/>
 				<div class="board-wrap">
 					<Board
 						{stage}
@@ -330,6 +497,11 @@
 					lost={stage.lost[bottom]}
 					pill={bottomPill.text}
 					pillTone={bottomPill.tone}
+					toMove={playing && view.turn === bottom && !animating}
+					clockMs={clockFor(bottom)}
+					ticking={view.clock.running === bottom && !pausedForDice}
+					pausedForDice={playing && view.turn === bottom && pausedForDice}
+					offline={view.status !== 'waiting' && !view.online[bottom]}
 				/>
 			</div>
 
@@ -347,8 +519,27 @@
 						</div>
 						{#if view.stats.mamdaniFell}<div><dt>The Mamdani</dt><dd>fell in</dd></div>{/if}
 					</dl>
+					{#if isPlayer && view.result?.reason !== 'expired'}
+						{@const offer = view.rematch.offer}
+						<div class="actions" aria-live="polite">
+							{#if view.rematch.code}
+								<a class="primary" href={`/game/${view.rematch.code}`} data-sveltekit-reload>Go to the rematch</a>
+							{:else if offer && offer !== you}
+								<span class="note">Your opponent wants a rematch.</span>
+								<button class="primary" onclick={() => offerRematch()} disabled={busy}>Accept</button>
+								<button class="outline" onclick={() => offerRematch(true)} disabled={busy}>Decline</button>
+							{:else if offer === you}
+								<button class="primary" disabled>Rematch offered…</button>
+							{:else}
+								{#if view.rematch.declined}<span class="note">Rematch declined.</span>{/if}
+								<button class="primary" onclick={() => offerRematch()} disabled={busy}>Rematch</button>
+							{/if}
+						</div>
+					{:else if view.rematch.code}
+						<a class="primary" href={`/game/${view.rematch.code}`} data-sveltekit-reload>Watch rematch</a>
+					{/if}
 					<div class="actions">
-						<button class="primary" onclick={newGame} disabled={busy}>New game</button>
+						<button class={isPlayer ? 'outline' : 'primary'} onclick={newGame} disabled={busy}>New game</button>
 						<a class="outline" href="/">Home</a>
 					</div>
 				{:else if isPlayer && playing}
@@ -541,6 +732,9 @@
 	}
 	.ph-nav.single {
 		grid-template-columns: 1fr;
+	}
+	.ph-nav.three {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 	.phone button {
 		display: flex;
@@ -743,7 +937,8 @@
 		align-items: center;
 		gap: 12px;
 	}
-	.confirm span {
+	.confirm span,
+	.actions .note {
 		width: 100%;
 		color: var(--text);
 	}
@@ -767,6 +962,12 @@
 	}
 	.primary {
 		flex-grow: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 48px;
+		border-radius: 12px;
+		text-decoration: none;
 		border: 0;
 		background: var(--accent);
 		color: var(--accent-text);

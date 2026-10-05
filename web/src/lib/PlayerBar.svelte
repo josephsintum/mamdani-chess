@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatClock } from './clock.ts';
 	import { pieceName, type Color } from './game.ts';
 
 	let {
@@ -7,7 +8,12 @@
 		lost,
 		pill = '',
 		pillTone = 'turn',
-		compact = false
+		compact = false,
+		clockMs,
+		toMove = false,
+		ticking = false,
+		pausedForDice = false,
+		offline = false
 	}: {
 		color: Color;
 		you: boolean;
@@ -17,13 +23,27 @@
 		pillTone?: 'turn' | 'check' | 'muted';
 		/** The phone's one-row bar: lost pieces after the name, nothing when none. */
 		compact?: boolean;
+		/** Time left, in ms; no clock is shown without it (the sandbox). */
+		clockMs?: number;
+		/** It's this side's turn: the clock is highlighted. */
+		toMove?: boolean;
+		/** The clock is counting down right now. */
+		ticking?: boolean;
+		/** It's this side's turn, but the clock waits for the dice. */
+		pausedForDice?: boolean;
+		/** The player has no tab open on the game. */
+		offline?: boolean;
 	} = $props();
+
+	let side = $derived(color === 'white' ? 'White' : 'Black');
 </script>
 
 <div class="bar" class:compact>
 	<span class="swatch {color}" aria-hidden="true"></span>
 	<span class="who">
-		<span class="name">{color === 'white' ? 'White' : 'Black'}{#if you}<span class="you">(you)</span>{/if}</span>
+		<span class="name"
+			>{side}{#if you}<span class="you">(you)</span>{/if}{#if offline}<span class="offline">{compact ? 'Offline' : 'Disconnected'}</span>{/if}</span
+		>
 		{#if compact}
 			{#if lost.length > 0}
 				<span class="glyphs" role="img" aria-label="Lost to potholes: {lost.map((p) => pieceName(p)).join(', ')}">
@@ -38,6 +58,16 @@
 		{/if}
 	</span>
 	{#if pill}<span class="pill {pillTone}">{pill}</span>{/if}
+	{#if pausedForDice && !compact}<span class="note">Paused for dice</span>{/if}
+	{#if clockMs !== undefined}
+		<span
+			class="clock"
+			class:active={toMove}
+			class:low={ticking && clockMs < 20_000}
+			role="timer"
+			aria-label="{side} clock: {formatClock(clockMs)}">{formatClock(clockMs)}</span
+		>
+	{/if}
 </div>
 
 <style>
@@ -88,6 +118,12 @@
 		font-weight: 400;
 		color: var(--text-muted);
 	}
+	.offline {
+		margin-left: 8px;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--hazard);
+	}
 	.lost {
 		font-size: 13px;
 		color: var(--text-muted);
@@ -127,5 +163,40 @@
 	.pill.muted {
 		border-color: var(--line);
 		color: var(--text-muted);
+	}
+	.note {
+		flex-shrink: 0;
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+	.clock {
+		flex-shrink: 0;
+		min-width: 92px;
+		padding: 6px 12px;
+		box-sizing: border-box;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		font-family: var(--font-mono);
+		font-weight: 600;
+		font-size: 22px;
+		font-variant-numeric: tabular-nums;
+		text-align: center;
+		color: var(--text-body);
+	}
+	.compact .clock {
+		min-width: 64px;
+		height: 32px;
+		padding: 0 8px;
+		font-size: 16px;
+		line-height: 30px;
+	}
+	.clock.active {
+		border-color: var(--accent);
+		background: var(--accent);
+		color: var(--accent-text);
+	}
+	.clock.active.low {
+		border-color: var(--hazard);
+		background: var(--hazard);
 	}
 </style>

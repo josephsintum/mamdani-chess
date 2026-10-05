@@ -25,7 +25,7 @@ func TestLoadAgainstTheRealServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	s := server.New(st, game.NewHub(odd{}), fstest.MapFS{"index.html": {Data: []byte("app")}})
+	s := server.New(st, game.NewHub(odd{}, st), fstest.MapFS{"index.html": {Data: []byte("app")}})
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 	defer s.Close()

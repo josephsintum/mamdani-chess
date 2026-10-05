@@ -3,6 +3,8 @@ package game
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -29,6 +31,11 @@ func (s *script) D8() int {
 	return r
 }
 
+func TestMain(m *testing.M) {
+	slog.SetDefault(slog.New(slog.DiscardHandler)) // game events log at INFO
+	os.Exit(m.Run())
+}
+
 func recv(t *testing.T, sub *Sub) *View {
 	t.Helper()
 	select {
@@ -38,6 +45,16 @@ func recv(t *testing.T, sub *Sub) *View {
 		t.Fatal("no view within 1s")
 		return nil
 	}
+}
+
+// create starts a game with creator as White.
+func create(t *testing.T, h *Hub, creator string) *Game {
+	t.Helper()
+	g, err := h.Create(creator)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	return g
 }
 
 // join opens a stream for guest and fails the test if the game has stopped.
@@ -60,7 +77,7 @@ func mv(t *testing.T, uci string) rules.Move {
 }
 
 func TestSeats(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	a := join(t, g, "alice")
 	if v := recv(t, a); v.You != "white" || v.Status != Waiting || len(v.Legal) != 0 {
 		t.Fatalf("creator: you=%s status=%s legal=%d", v.You, v.Status, len(v.Legal))
@@ -83,7 +100,7 @@ func TestSeats(t *testing.T) {
 }
 
 func TestMoveBroadcastsToEveryone(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	a, b, c := join(t, g, "alice"), join(t, g, "bob"), join(t, g, "carol")
 	recv(t, a)
 	recv(t, b)
@@ -108,7 +125,7 @@ func TestMoveBroadcastsToEveryone(t *testing.T) {
 }
 
 func TestMoveErrors(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	if err := g.Move("alice", mv(t, "e2e4"), 0); !errors.Is(err, ErrWaiting) {
 		t.Errorf("before black joins: %v", err)
 	}
@@ -132,7 +149,7 @@ func TestMoveErrors(t *testing.T) {
 
 func TestPotholeShowsInView(t *testing.T) {
 	// Even roll, then file 4 rank 4: a pothole opens on d4.
-	g := NewHub(&script{rolls: []int{2, 4, 4}}).Create("alice")
+	g := create(t, NewHub(&script{rolls: []int{2, 4, 4}}, nil), "alice")
 	a := join(t, g, "alice")
 	join(t, g, "bob")
 	recv(t, a)
@@ -157,7 +174,7 @@ func TestPotholeShowsInView(t *testing.T) {
 }
 
 func TestCheckmateEndsTheGame(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	a := join(t, g, "alice")
 	join(t, g, "bob")
 	for i, m := range []string{"f2f3", "e7e5", "g2g4", "d8h4"} {
@@ -182,7 +199,7 @@ func TestCheckmateEndsTheGame(t *testing.T) {
 }
 
 func TestLeaveStopsUpdates(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	a := join(t, g, "alice")
 	recv(t, a)
 	g.Leave(a)
@@ -206,8 +223,8 @@ func (p *panicky) D8() int {
 }
 
 func TestPanicRetiresTheGame(t *testing.T) {
-	h := NewHub(&panicky{})
-	g := h.Create("alice")
+	h := NewHub(&panicky{}, nil)
+	g := create(t, h, "alice")
 	a := join(t, g, "alice")
 	join(t, g, "bob")
 	if err := g.Move("alice", mv(t, "e2e4"), 0); !errors.Is(err, ErrInternal) {
@@ -241,7 +258,7 @@ func waitClosed(t *testing.T, sub *Sub) {
 }
 
 func TestResign(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	if err := g.Resign("alice"); !errors.Is(err, ErrWaiting) {
 		t.Errorf("resign before black joins: %v", err)
 	}
@@ -266,11 +283,11 @@ func TestResign(t *testing.T) {
 }
 
 func TestStatsAndLostPieces(t *testing.T) {
-	g := NewHub(&script{rolls: []int{
+	g := create(t, NewHub(&script{rolls: []int{
 		2, 7, 8, // e4: g8 is hit; the Mamdani on a5 has no line to it, so the knight falls
 		2, 4, 2, 5, // e5: d2 is hit; a5-b4-c3-d2 is clear, so White rolls to save: 5 saves it
 		2, 2, 4, // Nf3: b4 is next to the Mamdani, so the new pothole is repaired at once
-	}}).Create("alice")
+	}}, nil), "alice")
 	a := join(t, g, "alice")
 	join(t, g, "bob")
 	recv(t, a)
@@ -295,7 +312,7 @@ func TestStatsAndLostPieces(t *testing.T) {
 }
 
 func TestResignAfterMateIsRefused(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	join(t, g, "bob")
 	for i, m := range []string{"f2f3", "e7e5", "g2g4", "d8h4"} {
 		if err := g.Move([]string{"alice", "bob"}[i%2], mv(t, m), i); err != nil {
@@ -309,8 +326,8 @@ func TestResignAfterMateIsRefused(t *testing.T) {
 
 func TestFinishedGameIsEvictedAfterAQuietDay(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		h := NewHub(odd{})
-		g := h.Create("alice")
+		h := NewHub(odd{}, nil)
+		g := create(t, h, "alice")
 		b := join(t, g, "bob") // still watching: a finished game goes anyway
 		if err := g.Resign("alice"); err != nil {
 			t.Fatal(err)
@@ -326,8 +343,8 @@ func TestFinishedGameIsEvictedAfterAQuietDay(t *testing.T) {
 
 func TestUnwatchedGameIsEvictedAfterAQuietDay(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		h := NewHub(odd{})
-		g := h.Create("alice") // nobody ever opens the link
+		h := NewHub(odd{}, nil)
+		g := create(t, h, "alice") // nobody ever opens the link
 		time.Sleep(DefaultIdle + time.Minute)
 		synctest.Wait()
 		if _, ok := h.Get(g.Code()); ok {
@@ -339,20 +356,22 @@ func TestUnwatchedGameIsEvictedAfterAQuietDay(t *testing.T) {
 	})
 }
 
-func TestWatchedGameInProgressIsKept(t *testing.T) {
+// A game in progress always ends by itself now (a clock or a first-move
+// deadline is always counting), so the one game that can stay unfinished
+// for days is one still waiting for Black.
+func TestWatchedWaitingGameIsKept(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		h := NewHub(odd{})
-		g := h.Create("alice")
-		a, b := join(t, g, "alice"), join(t, g, "bob")
+		h := NewHub(odd{}, nil)
+		g := create(t, h, "alice")
+		a := join(t, g, "alice")
 		time.Sleep(3 * DefaultIdle)
 		synctest.Wait()
 		if _, ok := h.Get(g.Code()); !ok {
-			t.Fatal("a game with both players watching was evicted")
+			t.Fatal("a waiting game with White watching was evicted")
 		}
-		// Once both leave it is unwatched, and goes after another quiet
+		// Once White leaves it is unwatched, and goes after another quiet
 		// day. (synctest also needs the game's goroutine gone by the end.)
 		g.Leave(a)
-		g.Leave(b)
 		time.Sleep(DefaultIdle + time.Minute)
 		synctest.Wait()
 		if _, ok := h.Get(g.Code()); ok {
@@ -362,7 +381,7 @@ func TestWatchedGameInProgressIsKept(t *testing.T) {
 }
 
 func TestStreamsInOneRoleShareAView(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	a := join(t, g, "alice")
 	join(t, g, "bob")
 	c1, c2 := join(t, g, "carol"), join(t, g, "dave")
@@ -385,7 +404,7 @@ func TestStreamsInOneRoleShareAView(t *testing.T) {
 }
 
 func TestViewIsTheCallersRole(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	join(t, g, "bob")
 	for guest, want := range map[string]string{"alice": "white", "bob": "black", "carol": "spectator"} {
 		v, err := g.View(guest)
@@ -396,7 +415,7 @@ func TestViewIsTheCallersRole(t *testing.T) {
 }
 
 func TestIllegalMoveChangesNothing(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
+	g := create(t, NewHub(odd{}, nil), "alice")
 	a := join(t, g, "alice")
 	join(t, g, "bob")
 	recv(t, a)
@@ -415,22 +434,27 @@ func TestIllegalMoveChangesNothing(t *testing.T) {
 }
 
 func TestStreamsInOneRoleShareOneEncoding(t *testing.T) {
-	g := NewHub(odd{}).Create("alice")
-	join(t, g, "bob")
-	c1, c2 := join(t, g, "carol"), join(t, g, "dave")
-	recv(t, c1)
-	recv(t, c2)
-	if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
-		t.Fatal(err)
-	}
-	e1, e2 := recv(t, c1).JSON(), recv(t, c2).JSON()
-	if len(e1) == 0 || &e1[0] != &e2[0] {
-		t.Error("each spectator's view was encoded separately")
-	}
-	want, err := json.Marshal(recvView(t, g, "carol"))
-	if err != nil || string(e1) != string(want) {
-		t.Errorf("encoded view differs from json.Marshal:\n got %s\nwant %s", e1, want)
-	}
+	// synctest stops the clock, so the view built later for comparison has
+	// the same clock.now as the one sent.
+	synctest.Test(t, func(t *testing.T) {
+		g := create(t, NewHub(odd{}, nil), "alice")
+		join(t, g, "bob")
+		c1, c2 := join(t, g, "carol"), join(t, g, "dave")
+		recv(t, c1)
+		recv(t, c2)
+		if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
+			t.Fatal(err)
+		}
+		e1, e2 := recv(t, c1).JSON(), recv(t, c2).JSON()
+		if len(e1) == 0 || &e1[0] != &e2[0] {
+			t.Error("each spectator's view was encoded separately")
+		}
+		want, err := json.Marshal(recvView(t, g, "carol"))
+		if err != nil || string(e1) != string(want) {
+			t.Errorf("encoded view differs from json.Marshal:\n got %s\nwant %s", e1, want)
+		}
+		finish(t, g) // synctest needs the game's goroutine gone by the end
+	})
 }
 
 // recvView is guest's current view, built fresh (not the shared one).

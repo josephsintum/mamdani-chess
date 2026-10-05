@@ -26,7 +26,7 @@ type Server struct {
 }
 
 // New returns a Server for the games in hub that serves the frontend from
-// assets. st is unused until games are saved (a later milestone).
+// assets. st is the database the hub saves games to.
 func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	s := &Server{
 		store:     st,
@@ -39,9 +39,11 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	}
 	s.mux.HandleFunc("GET /healthz", s.healthz)
 	s.mux.HandleFunc("POST /api/games", s.createGame)
+	s.mux.HandleFunc("GET /api/games/{code}", s.gameView)
 	s.mux.HandleFunc("GET /api/games/{code}/stream", s.gameStream)
 	s.mux.HandleFunc("POST /api/games/{code}/move", s.gameMove)
 	s.mux.HandleFunc("POST /api/games/{code}/resign", s.gameResign)
+	s.mux.HandleFunc("POST /api/games/{code}/rematch", s.gameRematch)
 	s.mux.HandleFunc("/api/", s.apiNotFound)
 	s.mux.HandleFunc("/", s.static)
 	return s

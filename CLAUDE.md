@@ -26,14 +26,14 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Where things stand (2026-10-05)
 
-- **Done:** milestones 01–04 (skeleton, rules engine, playable friend game, game screen with dice tray, resign and result card), the `/dev/board` sandbox, and [Plan 04b](docs/superpowers/plans/2026-10-05-04b-omcb-feel.md): the board feels like One Million Chessboards (gliding pieces, instant moves, cross-fade captures, pothole effects, tumbling dice, cburnett pieces, reduced motion). A pre-05 pass added instant mode, the playtest script, and keeps an instant move through same-turn updates (`settlesGuess`), which milestone 05's clocks rely on.
+- **Done:** milestones 01–05 (skeleton, rules engine, playable friend game, game screen with dice tray, resign and result card; 10+5 clocks, games saved to SQLite and restored after a restart, rematch), the `/dev/board` sandbox, and [Plan 04b](docs/superpowers/plans/2026-10-05-04b-omcb-feel.md): the board feels like One Million Chessboards (gliding pieces, instant moves, cross-fade captures, pothole effects, tumbling dice, cburnett pieces, reduced motion). A pre-05 pass added instant mode, the playtest script, and keeps an instant move through same-turn updates (`settlesGuess`), which milestone 05's clocks rely on.
 - **Also in the repo, from another session:** the Rust server experiment in `server_rs/`, and two side plans (Go server improvements, Go rules speed).
 - **Checked:** whole games through the UI with the playtest script, 24 in Chromium and 18 in WebKit (Safari's engine), all clean; WebKit at phone size also glides and takes touch taps.
 - **Pending:** a playtest with friends, on their phones.
 
 ## Next step
 
-Milestone 05 (clocks, saved games, rematch). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`: a playable game first, the Railway launch last. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Milestone 06 (finding games: guest names, home page, quick match, join by code, live games list, spectators and reactions). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
@@ -42,7 +42,7 @@ Milestone 05 (clocks, saved games, rematch). Follow `docs/superpowers/plans/2026
 - **Tests:** `go test -race -short ./...` (the rules engine's full random-game suite takes about 2 min under `-race`), `pnpm --dir web check`, `pnpm --dir web test` (Vitest), `pnpm --dir web build`.
 - **Playtest:** with both servers running, `pnpm --dir web playtest` plays whole games through the real UI (two guests per game, random legal moves, some by mouse drag) and exits 1 on any page error, stuck board or lost move. Flags: `--browser webkit`, `--games 12`, `--drag 0.5`, `--headed`. Run it after any change to the board, game page or server protocol.
 - **Phones:** under 640 px wide the game page renders its phone layout (canvas row "Phone game: playtest build"). Check phone changes with `pnpm --dir web playtest --phone`, which fails if the page ever scrolls.
-- **Deploys:** every push to `main` deploys to Railway once CI is green, and a deploy ends every game in progress (games live in memory until milestone 05). Don't push to `main` during a playtest. Share the URL with friends only until milestone 07's per-IP limits. The production image logs JSON (`LOG_FORMAT=json`); `go run` logs text.
+- **Deploys:** every push to `main` deploys to Railway once CI is green, and a deploy pauses every game in progress: games are saved, open tabs reconnect on their own, and the side to move's clock restarts 10 s after the server is back, from what it had at the start of that turn. Don't push to `main` during a playtest. Share the URL with friends only until milestone 07's per-IP limits. The production image logs JSON (`LOG_FORMAT=json`); `go run` logs text.
 - **Checking a deploy:** `tools/sse-check.sh <url>` (live updates arrive at once) and `pnpm --dir web playtest --base <url> --turn-ms 15000`.
 - **Instant mode:** dev builds only. `/game/CODE?instant`, or the sandbox's Instant checkbox, turns off every animation and plays the dice in 0 ms (`setInstant` in `motion.ts`), so a whole game takes seconds.
 - **SvelteKit 3 and Svelte 5 traps hit so far:**

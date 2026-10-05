@@ -1,5 +1,7 @@
 // Types and calls for the game API. Mirrors game/view.go on the server.
 
+import type { ClockJSON } from './clock.ts';
+
 export type Color = 'white' | 'black';
 
 export interface MoveJSON {
@@ -37,6 +39,11 @@ export interface View {
 	stats: { savingRolls: number; saved: number; repaired: number; mamdaniFell: boolean };
 	result: { winner?: Color; draw: boolean; reason: string } | null;
 	seq: number;
+	clock: ClockJSON;
+	/** Which players have the game open. */
+	online: { white: boolean; black: boolean };
+	/** Once the game is over: an offer waiting, a declined offer, or the new game's code. */
+	rematch: { offer?: Color; declined?: boolean; code?: string };
 }
 
 export interface LogEntry {
@@ -56,12 +63,57 @@ export async function createGame(): Promise<string> {
 	return (await res.json()).code;
 }
 
-/** Sends a move. Returns null on success, or the server's error message. */
+/**
+ * Sends a move. Returns null on success, or the server's error message.
+ * Throws if the server can't be reached; the move can then be sent again
+ * with the same seq, which the server refuses if it already has it.
+ */
 export async function sendMove(code: string, move: MoveJSON, seq: number): Promise<string | null> {
-	const res = await fetch(`/api/games/${code}/move`, {
+	return post(`/api/games/${code}/move`, { ...move, seq });
+}
+
+/** What became of a move: the server took it, refused it (and why), or never got it. */
+export type SendOutcome = 'sent' | 'unsent' | { refused: string };
+
+/** Sends a move and says what became of it, without throwing. */
+export async function trySendMove(code: string, move: MoveJSON, seq: number): Promise<SendOutcome> {
+	try {
+		const error = await sendMove(code, move, seq);
+		return error === null ? 'sent' : { refused: error };
+	} catch {
+		return 'unsent';
+	}
+}
+
+/**
+ * Whether a player's page should go to the rematch: only when it starts
+ * while the page is open. A finished game opened later (Back, or the old
+ * link) stays put and offers a link instead.
+ */
+export function followsRematch(prev: View | null, next: View): boolean {
+	const player = next.you === 'white' || next.you === 'black';
+	return player && !!next.rematch.code && prev !== null && !prev.rematch.code;
+}
+
+/** Offers or accepts a rematch, or declines one. Returns null or the error. */
+export async function rematch(code: string, decline = false): Promise<string | null> {
+	return post(`/api/games/${code}/rematch`, { decline });
+}
+
+/** Whether the game still exists: false only when the server says it's gone. */
+export async function gameExists(code: string): Promise<boolean> {
+	try {
+		return (await fetch(`/api/games/${code}`)).status !== 404;
+	} catch {
+		return true; // can't tell: the server may be restarting
+	}
+}
+
+async function post(path: string, body: unknown): Promise<string | null> {
+	const res = await fetch(path, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ ...move, seq })
+		body: JSON.stringify(body)
 	});
 	if (res.ok) return null;
 	try {
@@ -137,6 +189,10 @@ export function eventText(e: EventJSON): string {
 export const reasons: Record<string, string> = {
 	checkmate: 'checkmate',
 	resignation: 'resignation',
+	timeout: 'timeout',
+	timeout_vs_insufficient: 'timeout vs insufficient material',
+	aborted: 'no first move',
+	expired: 'nobody joining',
 	stalemate: 'stalemate',
 	fifty_moves: 'the 50-move rule',
 	repetition: 'threefold repetition',

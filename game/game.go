@@ -4,6 +4,7 @@
 package game
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"mamdani-chess/rules"
+	"mamdani-chess/store"
 )
 
 // Errors returned by Move.
@@ -22,6 +24,7 @@ var (
 	ErrGameOver    = rules.ErrGameOver
 	ErrIllegalMove = rules.ErrIllegalMove
 	ErrInternal    = errors.New("internal error in this game")
+	ErrNotOver     = errors.New("the game isn't over")
 	// ErrGone is returned once a game has stopped: it sat idle and was
 	// evicted, or a panic retired it.
 	ErrGone = errors.New("game not found")
@@ -34,20 +37,27 @@ const Resignation rules.Reason = "resignation"
 // Game is one live game.
 type Game struct {
 	code   string
+	hub    *Hub // creates rematches
 	dice   rules.Dice
+	store  Store
 	idle   time.Duration
 	calls  chan call
 	done   chan struct{} // closed when the game stops
 	onExit func()        // tells the hub to forget the game
 
 	// Owned by the loop goroutine.
-	g     *rules.Game
-	seats [2]string // guest ID per color; "" while empty
-	subs  map[*Sub]struct{}
-	last  []rules.Event
-	log   []LogEntry
-	lost  [2][]string // piece codes lost to potholes, by color
-	stats StatsJSON
+	g       *rules.Game
+	seats   [2]string // guest ID per color; "" while empty
+	subs    map[*Sub]struct{}
+	last    []rules.Event
+	log     []LogEntry
+	lost    [2][]string // piece codes lost to potholes, by color
+	stats   StatsJSON
+	clock   clock
+	rematch rematch
+	// failed is set when a save fails. The loop then retires the game
+	// before anyone sees the change that wasn't saved.
+	failed error
 }
 
 // Sub is one open stream. C always holds the newest View: a reader that
@@ -64,50 +74,112 @@ type call struct {
 	reply chan error
 }
 
-// newGame starts a game with White's seat taken by creator. After idle with
-// no calls, the game stops if it is over or nobody is watching; onExit runs
+// newGame returns a game with the given seats, not yet running: the caller
+// starts it with go g.loop() once its state is set. After idle with no
+// calls, the game stops if it is over or nobody is watching; onExit runs
 // when it stops.
-func newGame(code, creator string, dice rules.Dice, idle time.Duration, onExit func()) *Game {
-	g := &Game{
+func newGame(h *Hub, code string, seats [2]string, onExit func()) *Game {
+	return &Game{
 		code:   code,
-		dice:   dice,
-		idle:   idle,
+		hub:    h,
+		dice:   h.dice,
+		store:  h.store,
+		idle:   h.Idle,
 		calls:  make(chan call),
 		done:   make(chan struct{}),
 		onExit: onExit,
 		g:      rules.NewGame(),
-		seats:  [2]string{creator, ""},
+		seats:  seats,
 		subs:   map[*Sub]struct{}{},
+		clock:  newClock(),
 	}
-	go g.loop()
-	return g
 }
 
 func (g *Game) loop() {
 	idle := time.NewTimer(g.idle)
 	defer idle.Stop()
+	// deadline fires when the side to move runs out of time. Every change
+	// re-arms it, and a stale firing is ignored (see expire).
+	deadline := time.NewTimer(0)
+	deadline.Stop()
+	defer deadline.Stop()
+	arm := func() {
+		if g.clock.deadline.IsZero() {
+			deadline.Stop()
+			return
+		}
+		deadline.Reset(time.Until(g.clock.deadline))
+	}
+	arm()
 	for {
 		select {
 		case c := <-g.calls:
-			if err := g.run(c.f); err != nil {
+			if err := g.check(g.run(c.f)); err != nil {
 				// A panic may have left the game half-updated (the position
-				// moved but the log didn't, say), so the game can't go on.
-				// Stop before replying, so the caller never sees it listed.
+				// moved but the log didn't, say), and a failed save means
+				// the database is behind, so the game can't go on. Stop
+				// before replying, so the caller never sees it listed.
 				g.stop()
 				c.reply <- err
 				return
 			}
 			c.reply <- nil
 			idle.Reset(g.idle)
+			arm()
+		case <-deadline.C:
+			if g.check(g.run(g.expire)) != nil {
+				g.stop()
+				return
+			}
+			arm()
 		case <-idle.C:
 			if g.g.Result.Over || len(g.subs) == 0 {
-				slog.Info("evicting idle game", "code", g.code)
+				if !g.g.Result.Over { // still waiting for Black: nobody came
+					g.end(time.Now(), rules.Result{Over: true, Reason: Expired}, nil)
+				}
+				slog.Info("game evicted", "code", g.code, "result", g.g.Result.Reason, "moves", len(g.g.Turns))
 				g.stop()
 				return
 			}
 			idle.Reset(g.idle)
 		}
 	}
+}
+
+// expire ends the game if the side to move's deadline has passed. The
+// timer can fire late or for a deadline a move has since replaced, so it
+// checks the clock again.
+func (g *Game) expire() {
+	if now := time.Now(); !g.g.Result.Over && g.expired(now) {
+		g.flag(now)
+	}
+}
+
+// end finishes the game with r and stops the clock, saving the result
+// (with final, the move that ended it, if any) before anyone sees it.
+func (g *Game) end(now time.Time, r rules.Result, final *store.Turn) {
+	g.g.Result = r
+	g.clock.deadline = time.Time{}
+	saved := savedResult(now, r)
+	g.save("result", func(ctx context.Context) error { return g.store.EndGame(ctx, g.code, saved, final) })
+	if g.failed != nil {
+		return
+	}
+	if r.Reason == Aborted {
+		slog.Info("game aborted", "code", g.code, "missed", colorName(g.g.Pos.Turn))
+	} else {
+		slog.Info("game ended", "code", g.code, "result", r.Reason, "winner", winnerName(r), "moves", len(g.g.Turns))
+	}
+	g.broadcast()
+}
+
+// check returns err, or the save failure that f left behind.
+func (g *Game) check(err error) error {
+	if err == nil && g.failed != nil {
+		slog.Error("game retired: save failed", "code", g.code, "err", g.failed)
+		err = g.failed
+	}
+	return err
 }
 
 // run calls f, turning a panic into ErrInternal so one bad game can't take
@@ -159,13 +231,25 @@ func (g *Game) Join(guest string) (*Sub, error) {
 	ch := make(chan *View, 1)
 	sub := &Sub{C: ch, ch: ch, guest: guest}
 	err := g.do(func() {
-		if g.seats[rules.Black] == "" && guest != g.seats[rules.White] {
+		if g.seats[rules.Black] == "" && guest != g.seats[rules.White] && !g.g.Result.Over {
+			g.save("black", func(ctx context.Context) error { return g.store.SeatBlack(ctx, g.code, guest) })
+			if g.failed != nil {
+				return
+			}
 			g.seats[rules.Black] = guest
+			g.startCounting(time.Now()) // White's first-move deadline
+			slog.Info("black joined", "code", g.code, "black", guestTag(guest))
 			g.subs[sub] = struct{}{}
 			g.broadcast() // White's view changes from waiting to playing
 			return
 		}
+		c, seated := g.seatOf(guest)
+		returning := seated && !g.connected(c)
 		g.subs[sub] = struct{}{}
+		if returning {
+			g.broadcast() // the opponent sees them connected again
+			return
+		}
 		send(sub, sealed(g.viewFor(g.roleOf(guest))))
 	})
 	if err != nil {
@@ -174,9 +258,30 @@ func (g *Game) Join(guest string) (*Sub, error) {
 	return sub, nil
 }
 
-// Leave closes a stream. Seats are kept, so the player can come back.
+// Leave closes a stream. Seats are kept, so the player can come back. A
+// player's rematch offer lasts until their last stream closes.
 func (g *Game) Leave(sub *Sub) {
-	g.do(func() { delete(g.subs, sub) })
+	g.do(func() {
+		delete(g.subs, sub)
+		c, seated := g.seatOf(sub.guest)
+		if !seated || g.connected(c) {
+			return
+		}
+		if g.rematch.offered && g.rematch.from == c {
+			g.rematch.offered = false
+		}
+		g.broadcast() // the opponent sees them disconnected
+	})
+}
+
+// connected reports whether c's player has a stream open.
+func (g *Game) connected(c rules.Color) bool {
+	for sub := range g.subs {
+		if sub.guest == g.seats[c] {
+			return true
+		}
+	}
+	return false
 }
 
 // Move plays guest's move. seq must equal the number of turns played so far,
@@ -190,6 +295,10 @@ func (g *Game) Move(guest string, m rules.Move, seq int) error {
 }
 
 func (g *Game) move(guest string, m rules.Move, seq int) error {
+	now := time.Now()
+	if !g.g.Result.Over && g.expired(now) {
+		g.flag(now) // the flag fell before this move arrived
+	}
 	color, seated := g.seatOf(guest)
 	switch {
 	case !seated:
@@ -203,16 +312,38 @@ func (g *Game) move(guest string, m rules.Move, seq int) error {
 	case seq != len(g.g.Turns):
 		return ErrStale
 	}
-	before := g.g.Pos              // SAN reads the position the move was made in
-	ev, err := g.g.Play(m, g.dice) // an illegal move is refused here, unchanged
+	running := g.running()
+	if err := g.apply(m, g.dice); err != nil { // an illegal move is refused here, unchanged
+		return err
+	}
+	if running {
+		g.charge(color, now)
+		g.clock.remaining[color] += Increment
+	}
+	turn := g.savedTurn(now)
+	if g.g.Result.Over { // the move ended the game: save both at once
+		g.end(now, g.g.Result, &turn)
+		return nil
+	}
+	g.save("turn", func(ctx context.Context) error { return g.store.AddTurn(ctx, g.code, turn) })
+	if g.failed != nil {
+		return nil
+	}
+	g.startCounting(now.Add(ResolveDelay))
+	g.broadcast()
+	return nil
+}
+
+// apply plays m and adds it to the log, lost pieces and stats.
+func (g *Game) apply(m rules.Move, dice rules.Dice) error {
+	color, before := g.g.Pos.Turn, g.g.Pos // SAN reads the position the move was made in
+	ev, err := g.g.Play(m, dice)
 	if err != nil {
 		return err
 	}
-	san := before.SAN(m)
 	g.last = ev
-	g.log = append(g.log, LogEntry{SAN: san, Color: colorName(color), Dice: describe(ev)})
+	g.log = append(g.log, LogEntry{SAN: before.SAN(m), Color: colorName(color), Dice: describe(ev)})
 	g.tally(ev)
-	g.broadcast()
 	return nil
 }
 
@@ -248,6 +379,10 @@ func (g *Game) Resign(guest string) error {
 }
 
 func (g *Game) resign(guest string) error {
+	now := time.Now()
+	if !g.g.Result.Over && g.expired(now) {
+		g.flag(now)
+	}
 	color, seated := g.seatOf(guest)
 	switch {
 	case !seated:
@@ -257,9 +392,11 @@ func (g *Game) resign(guest string) error {
 	case g.status() == Waiting:
 		return ErrWaiting
 	}
-	g.g.Result = rules.Result{Over: true, Winner: color.Other(), Reason: Resignation}
+	if g.running() && g.g.Pos.Turn == color {
+		g.charge(color, now) // the clock shows what they had left
+	}
 	g.last = nil
-	g.broadcast()
+	g.end(now, rules.Result{Over: true, Winner: color.Other(), Reason: Resignation}, nil)
 	return nil
 }
 
@@ -334,6 +471,7 @@ func send(sub *Sub, v *View) {
 
 func (g *Game) viewFor(r role) *View {
 	p := &g.g.Pos
+	now := time.Now()
 	v := &View{
 		Code:     g.code,
 		Status:   g.status(),
@@ -348,6 +486,9 @@ func (g *Game) viewFor(r role) *View {
 		Lost:     LostJSON{White: append([]string{}, g.lost[rules.White]...), Black: append([]string{}, g.lost[rules.Black]...)},
 		Stats:    g.stats,
 		Seq:      len(g.g.Turns),
+		Clock:    g.clockJSON(now),
+		Online:   OnlineJSON{White: g.connected(rules.White), Black: g.connected(rules.Black)},
+		Rematch:  g.rematchJSON(),
 	}
 	color, seated := rules.Color(r), r != roleSpectator
 	if seated {
@@ -370,10 +511,7 @@ func (g *Game) viewFor(r role) *View {
 		v.Last = append(v.Last, eventJSON(e))
 	}
 	if r := g.g.Result; r.Over {
-		v.Result = &ResultJSON{Draw: r.Draw, Reason: r.Reason}
-		if !r.Draw {
-			v.Result.Winner = colorName(r.Winner)
-		}
+		v.Result = &ResultJSON{Winner: winnerName(r), Draw: r.Draw, Reason: r.Reason}
 	}
 	return v
 }
