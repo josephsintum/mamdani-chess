@@ -84,8 +84,13 @@ export async function trySendMove(code: string, move: MoveJSON, seq: number): Pr
 		return 'unsent';
 	}
 	if (res.ok) return 'sent';
+	// A gateway error means the server is restarting (a deploy): it never
+	// saw the move, so send it again. A 500 is the game's own error: not that.
+	if (res.status >= 502 && res.status <= 504) return 'unsent';
 	const body: { error?: string; state?: View } = await res.json().catch(() => ({}));
-	const refused: { refused: string; state?: View } = { refused: body.error ?? res.statusText };
+	const refused: { refused: string; state?: View } = {
+		refused: body.error || res.statusText || 'The server refused the move.'
+	};
 	if (body.state) refused.state = body.state;
 	return refused;
 }
@@ -98,6 +103,15 @@ export async function trySendMove(code: string, move: MoveJSON, seq: number): Pr
 export function followsRematch(prev: View | null, next: View): boolean {
 	const player = next.you === 'white' || next.you === 'black';
 	return player && !!next.rematch.code && prev !== null && !prev.rematch.code;
+}
+
+/**
+ * Whether a view is older than the one on screen: the server built it
+ * earlier (clock.now), as a 409's state can be when a newer stream update
+ * overtakes the HTTP reply. Showing it would roll the board back.
+ */
+export function isStale(current: View | null, next: View): boolean {
+	return current !== null && next.clock.now < current.clock.now;
 }
 
 /**
@@ -204,7 +218,7 @@ export const reasons: Record<string, string> = {
 	checkmate: 'checkmate',
 	resignation: 'resignation',
 	timeout: 'timeout',
-	timeout_vs_insufficient: 'timeout vs insufficient material',
+	timeout_vs_insufficient: 'timeout, no mate possible',
 	aborted: 'no first move',
 	expired: 'nobody joining',
 	stalemate: 'stalemate',

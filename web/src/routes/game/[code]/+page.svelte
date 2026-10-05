@@ -19,6 +19,7 @@
 		createGame,
 		followsRematch,
 		gameExists,
+		isStale,
 		showsOffline,
 		reasons,
 		rematch,
@@ -59,6 +60,7 @@
 	let copyHint = $state('');
 
 	function receive(next: View) {
+		if (isStale(anim.view, next)) return; // a slow reply, overtaken by the stream
 		error = '';
 		offset = next.clock.now - Date.now();
 		serverNow = next.clock.now;
@@ -77,27 +79,51 @@
 	}
 
 	onMount(() => {
-		let source: EventSource | null = null;
+		// Every stream this page has open. A new one replaces the others only
+		// once it is up, so the server never sees the player leave in between
+		// (which would withdraw a rematch offer, say).
+		const streams = new Set<EventSource>();
+		let generation = 0; // the latest connect(); older retries do nothing
 		let retry: ReturnType<typeof setTimeout> | undefined;
 		let disposed = false; // the page has gone: open nothing more
 		const connect = () => {
 			if (disposed) return;
-			source = new EventSource(`/api/games/${code}/stream`);
-			source.onopen = () => (connected = true);
-			source.onerror = () => {
+			clearTimeout(retry);
+			const gen = ++generation;
+			const es = new EventSource(`/api/games/${code}/stream`);
+			streams.add(es);
+			es.onopen = () => {
+				if (gen !== generation) {
+					es.close(); // a newer stream is on its way
+					streams.delete(es);
+					return;
+				}
+				connected = true;
+				for (const old of streams) {
+					if (old !== es) {
+						old.close();
+						streams.delete(old);
+					}
+				}
+			};
+			es.onerror = () => {
+				if (gen !== generation) return;
 				connected = false;
 				// Network errors reconnect by themselves. An error status (a
 				// proxy's 502 while the server restarts, or a 404) closes the
 				// stream for good: ask whether the game still exists, and if it
 				// might, open a new stream.
-				if (source?.readyState !== EventSource.CLOSED) return;
+				if (es.readyState !== EventSource.CLOSED) return;
+				streams.delete(es);
 				retry = setTimeout(async () => {
-					if (await gameExists(code)) connect();
+					const exists = await gameExists(code);
+					if (gen !== generation || disposed) return; // something newer took over
+					if (exists) connect();
 					else if (view) lost = true;
 					else notFound = true;
 				}, 2000);
 			};
-			source.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
+			es.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
 		};
 		connect();
 		// The browser knows at once when the device loses its network; the
@@ -105,10 +131,7 @@
 		// is back, start a fresh stream (the old one may be dead without
 		// knowing it): its first state resends a move made meanwhile.
 		const goneOffline = () => (connected = false);
-		const backOnline = () => {
-			source?.close();
-			connect();
-		};
+		const backOnline = () => connect();
 		window.addEventListener('offline', goneOffline);
 		window.addEventListener('online', backOnline);
 		const tick = setInterval(() => (serverNow = Date.now() + offset), 100);
@@ -119,7 +142,7 @@
 		document.addEventListener('visibilitychange', finishOnReturn);
 		return () => {
 			disposed = true;
-			source?.close();
+			for (const es of streams) es.close();
 			window.removeEventListener('offline', goneOffline);
 			window.removeEventListener('online', backOnline);
 			clearTimeout(retry);
@@ -297,10 +320,10 @@
 		if (r.reason === 'checkmate') detail = `${winner} mated with ${lastSan}.`;
 		if (r.reason === 'timeout') detail = `${loser} ran out of time.`;
 		if (r.reason === 'timeout_vs_insufficient')
-			detail = `${toMove} ran out of time, but ${toMove === 'White' ? 'Black' : 'White'} couldn’t have mated.`;
+			detail = `${toMove} ran out of time; ${toMove === 'White' ? 'Black' : 'White'} couldn’t mate.`;
 		if (r.reason === 'aborted') {
 			title = 'Aborted';
-			detail = `${toMove} didn’t make a first move in time. Nobody wins.`;
+			detail = `${toMove} didn’t make a first move. Nobody wins.`;
 		}
 		if (r.reason === 'expired') {
 			title = 'Expired';
@@ -743,6 +766,14 @@
 	}
 	.ph-detail {
 		font-size: 14px;
+	}
+	/* The result card keeps one line, so it fits the bottom block's height
+	   and the board doesn't move at game over. */
+	.ph-card.accent-line .ph-detail,
+	.ph-card.accent-line .ph-kicker {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 	}
 	.ph-error {
 		margin-bottom: 0;
