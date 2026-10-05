@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { blockedSquares, type Stage } from './board.ts';
+	import { blockedSquares, squareIndex, type Stage } from './board.ts';
 	import { squareName, type MoveJSON } from './game.ts';
+	import { reducedMotion } from './motion.ts';
+	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
 	let {
 		stage,
@@ -9,6 +11,8 @@
 		flipped = false,
 		interactive = false,
 		dim = false,
+		check = '',
+		saved = '',
 		onmove
 	}: {
 		stage: Stage;
@@ -17,46 +21,26 @@
 		flipped?: boolean;
 		interactive?: boolean;
 		dim?: boolean;
+		/** The king's square to glow when in check, or "". */
+		check?: string;
+		/** A square whose piece just survived a saving roll, or "". */
+		saved?: string;
 		onmove: (move: MoveJSON) => void;
 	} = $props();
 
-	// U+FE0E asks for the text form: iOS can draw ♟ as a colour emoji that
-	// ignores CSS colour, which would make both sides' pawns look the same.
-	const glyphs: Record<string, string> = {
-		K: '♚︎',
-		Q: '♛︎',
-		R: '♜︎',
-		B: '♝︎',
-		N: '♞︎',
-		P: '♟︎'
-	};
 	const promoOptions = [
 		{ promo: 'q', kind: 'Q', name: 'Queen' },
 		{ promo: 'r', kind: 'R', name: 'Rook' },
 		{ promo: 'b', kind: 'B', name: 'Bishop' },
 		{ promo: 'n', kind: 'N', name: 'Knight' }
 	];
+	const names: Record<string, string> = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight', P: 'pawn' };
 
 	let selected = $state<string | null>(null);
 	let promoting = $state<{ from: string; to: string } | null>(null);
+	let hovered = $state<string | null>(null);
 	let drag = $state<{ from: string; x: number; y: number; moved: boolean; pointer: number } | null>(null);
 	let boardEl: HTMLDivElement | undefined = $state();
-
-	// Drag follows the pointer across the whole board, so the listeners live
-	// on the board element rather than on each square.
-	function dragArea(node: HTMLDivElement) {
-		boardEl = node;
-		const cancel = () => (drag = null);
-		node.addEventListener('pointermove', pointerMove);
-		node.addEventListener('pointerup', pointerUp);
-		node.addEventListener('pointercancel', cancel);
-		return () => {
-			node.removeEventListener('pointermove', pointerMove);
-			node.removeEventListener('pointerup', pointerUp);
-			node.removeEventListener('pointercancel', cancel);
-			boardEl = undefined;
-		};
-	}
 
 	// Without moves to make (not your turn, dice still rolling) nothing is selectable.
 	let active = $derived(interactive && legal.length > 0);
@@ -76,14 +60,54 @@
 	});
 	let targets = $derived(new Set(legal.filter((m) => m.from === current).map((m) => m.to)));
 	let movable = $derived(new Set(active ? legal.map((m) => m.from) : []));
-	let holes = $derived(new Set(stage.potholes.map((p) => p.sq)));
 	let blocked = $derived(new Set(current ? blockedSquares(stage, current) : []));
-	let dragPiece = $derived(drag?.moved ? pieceAt(drag.from) : '');
+
+	// Each piece keeps an id across positions so it can glide (see pieces.ts).
+	// prevPieces is plain bookkeeping for the next reconcile, not state.
+	let prevPieces: PieceRef[] = [];
+	let nextId = 0;
+	let pieces = $derived.by(() => {
+		const before = new Map(prevPieces.map((p) => [p.id, p.sq]));
+		const next = reconcile(prevPieces, stage.board, stage.mamdani, () => ++nextId, lastMove ?? undefined);
+		prevPieces = next;
+		return next.map((p) => {
+			const from = before.get(p.id);
+			return { ...p, dur: from && !reducedMotion() ? moveDuration(from, p.sq) : 0 };
+		});
+	});
+
+	/** Column and row on screen for a square, 0..7 from the top left. */
+	function cell(sq: string): { col: number; row: number } {
+		const file = sq.charCodeAt(0) - 97;
+		const rank = Number(sq[1]) - 1;
+		return flipped ? { col: 7 - file, row: rank } : { col: file, row: 7 - rank };
+	}
+
+	function place(sq: string): string {
+		const { col, row } = cell(sq);
+		return `--col: ${col}; --row: ${row}`;
+	}
+
+	function pieceStyle(p: PieceRef & { dur: number }): string {
+		if (drag?.moved && drag.from === p.sq && boardEl) {
+			const r = boardEl.getBoundingClientRect();
+			const size = r.width / 8;
+			return `transform: translate(${drag.x - r.left - size / 2}px, ${drag.y - r.top - size / 2}px); transition: none; z-index: 3`;
+		}
+		return `${place(p.sq)}; --dur: ${p.dur}ms`;
+	}
 
 	function pieceAt(sq: string): string {
-		if (sq === stage.mamdani) return 'M';
-		const i = (Number(sq[1]) - 1) * 8 + (sq.charCodeAt(0) - 97);
-		return stage.board[i];
+		return sq === stage.mamdani ? 'M' : stage.board[squareIndex(sq)];
+	}
+
+	function label(sq: string): string {
+		const piece = pieceAt(sq);
+		let text = sq;
+		if (piece === 'M') text += ', the Mamdani';
+		else if (piece) text += `, ${piece[0] === 'w' ? 'white' : 'black'} ${names[piece[1]]}`;
+		if (stage.potholes.some((h) => h.sq === sq)) text += ', pothole';
+		return text;
 	}
 
 	function moveTo(from: string, to: string) {
@@ -126,6 +150,10 @@
 	// lands on the board too, so no square's tap handler runs.
 	function pointerMove(e: PointerEvent) {
 		if (!drag || e.pointerId !== drag.pointer) return;
+		if (e.buttons === 0) {
+			drag = null; // the button came up somewhere we didn't see
+			return;
+		}
 		const moved = drag.moved || Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 6;
 		if (moved && !drag.moved) {
 			boardEl?.setPointerCapture(e.pointerId);
@@ -143,6 +171,27 @@
 		if (!to || to === from || !moveTo(from, to)) selected = from;
 	}
 
+	// Drag follows the pointer across the whole board, so the listeners live
+	// on the board element rather than on each square.
+	function dragArea(node: HTMLDivElement) {
+		boardEl = node;
+		const cancel = () => (drag = null);
+		const leave = () => (hovered = null);
+		node.addEventListener('pointermove', pointerMove);
+		node.addEventListener('pointerup', pointerUp);
+		node.addEventListener('pointercancel', cancel);
+		node.addEventListener('lostpointercapture', cancel);
+		node.addEventListener('pointerleave', leave);
+		return () => {
+			node.removeEventListener('pointermove', pointerMove);
+			node.removeEventListener('pointerup', pointerUp);
+			node.removeEventListener('pointercancel', cancel);
+			node.removeEventListener('lostpointercapture', cancel);
+			node.removeEventListener('pointerleave', leave);
+			boardEl = undefined;
+		};
+	}
+
 	function promote(promo: string) {
 		if (!pending) return;
 		const { from, to } = pending;
@@ -151,73 +200,103 @@
 		onmove({ from, to, promo });
 	}
 
-	function cancelPromotion() {
-		promoting = null;
+	function promoKey(e: KeyboardEvent) {
+		if (e.key === 'Escape') promoting = null;
 	}
 
-	let ghostStyle = $derived.by(() => {
-		if (!drag?.moved || !boardEl) return '';
-		const r = boardEl.getBoundingClientRect();
-		const size = r.width / 8;
-		return `width: ${size}px; height: ${size}px; left: ${drag.x - r.left - size / 2}px; top: ${drag.y - r.top - size / 2}px`;
-	});
+	// Transitions. Each one collapses to nothing under reduced motion.
+	const ms = (n: number) => (reducedMotion() ? 0 : n);
+
+	/** A piece leaving the board: a fall shrinks into the hole, a capture fades. */
+	function leave(_node: Element, { fell }: { fell: boolean }) {
+		return fell
+			? { duration: ms(450), css: (t: number) => `opacity: ${t}; transform: scale(${0.25 + 0.75 * t}) rotate(${(1 - t) * 25}deg)` }
+			: { duration: ms(300), css: (t: number) => `opacity: ${1 - (1 - t) ** 3}` };
+	}
+
+	/** A pothole cracks open. */
+	function crack(_node: Element) {
+		return { duration: ms(420), css: (t: number) => `transform: scale(${t < 0.7 ? t / 0.7 : 1 + 0.12 * Math.sin(((t - 0.7) / 0.3) * Math.PI)}) rotate(${(1 - t) * -20}deg); opacity: ${Math.min(1, t * 2)}` };
+	}
+
+	/** A pothole closes (its roller moved again, or the Mamdani repaired it). */
+	function closeUp(_node: Element) {
+		return { duration: ms(350), css: (t: number) => `transform: scale(${t}); opacity: ${t}` };
+	}
+
+	/** The target ring drops onto its square. */
+	function drop(_node: Element) {
+		return { duration: ms(260), css: (t: number) => `transform: scale(${1.5 - 0.5 * t}); opacity: ${t}` };
+	}
 </script>
 
 <div class="board" class:dim role="group" aria-label="Chessboard" {@attach dragArea}>
 	{#each order as index, n (index)}
 		{@const sq = squareName(index)}
-		{@const piece = stage.mamdani === sq ? 'M' : stage.board[index]}
 		{@const dark = (Math.floor(index / 8) + (index % 8)) % 2 === 0}
-		{@const dragging = drag?.moved && drag.from === sq}
 		<button
 			class="square"
 			class:dark
 			class:last={lastMove?.from === sq || lastMove?.to === sq}
+			class:legal={targets.has(sq)}
 			class:selected={current === sq}
 			class:movable={movable.has(sq)}
-			aria-label={sq + (piece === 'M' ? ', the Mamdani' : '') + (holes.has(sq) ? ', pothole' : '')}
+			class:check={check === sq}
+			aria-label={label(sq)}
+			aria-pressed={current === sq}
 			onclick={() => tap(sq)}
 			onpointerdown={(e) => pointerDown(e, sq)}
+			onpointerenter={() => (hovered = sq)}
 		>
-			{#if holes.has(sq)}
-				<span class="hole"></span>
-			{/if}
-			{#if stage.target === sq}
-				<span class="target"></span>
-			{/if}
-			{#if piece === 'M'}
-				<span class="mamdani" class:ghosted={dragging}>M</span>
-			{:else if piece}
-				<span class="piece" class:white={piece[0] === 'w'} class:ghosted={dragging}>{glyphs[piece[1]]}</span>
-			{/if}
-			{#if targets.has(sq)}
-				<span class="dot" class:capture={!!piece}></span>
-			{:else if blocked.has(sq)}
+			{#if blocked.has(sq)}
 				<span class="blocked" title="Blocked by a pothole">×</span>
+			{/if}
+			{#if saved === sq}
+				<span class="saved"></span>
 			{/if}
 			{#if n % 8 === 0}<span class="rank-label">{sq[1]}</span>{/if}
 			{#if n >= 56}<span class="file-label">{sq[0]}</span>{/if}
 		</button>
 	{/each}
 
-	{#if dragPiece}
-		<span class="drag" style={ghostStyle} aria-hidden="true">
-			{#if dragPiece === 'M'}
-				<span class="mamdani">M</span>
-			{:else}
-				<span class="piece" class:white={dragPiece[0] === 'w'}>{glyphs[dragPiece[1]]}</span>
-			{/if}
-		</span>
-	{/if}
+	<div class="layer" aria-hidden="true">
+		{#each stage.potholes as h (h.sq)}
+			<span class="slot" style={place(h.sq)}><span class="hole" in:crack out:closeUp></span></span>
+		{/each}
+		{#if stage.target}
+			{#key stage.target}
+				<span class="slot" style={place(stage.target)}><span class="target" in:drop></span></span>
+			{/key}
+		{/if}
+	</div>
+
+	<div class="layer" aria-hidden="true">
+		{#each pieces as p (p.id)}
+			<span
+				class="slot piece-slot"
+				class:lifted={movable.has(p.sq) && (hovered === p.sq || current === p.sq) && !drag?.moved}
+				class:dragging={drag?.moved && drag.from === p.sq}
+				style={pieceStyle(p)}
+			>
+				<span class="piece" out:leave={{ fell: stage.target === p.sq }}>
+					{#if p.code === 'M'}
+						<span class="mamdani">M</span>
+					{:else}
+						<img src="/pieces/{p.code}.svg" alt="" draggable="false" />
+					{/if}
+				</span>
+			</span>
+		{/each}
+	</div>
 
 	{#if pending}
-		<div class="promote" role="dialog" aria-label="Promote to">
+		<div class="promote" role="dialog" aria-label="Promote to" tabindex="-1" onkeydown={promoKey}>
 			{#each promoOptions as option (option.promo)}
 				<button aria-label={option.name} onclick={() => promote(option.promo)}>
-					<span class="piece" class:white={pieceAt(pending.from)?.[0] === 'w'}>{glyphs[option.kind]}</span>
+					<img src="/pieces/{pieceAt(pending.from)[0]}{option.kind}.svg" alt="" draggable="false" />
 				</button>
 			{/each}
-			<button class="cancel" onclick={cancelPromotion}>Cancel</button>
+			<button class="cancel" onclick={() => (promoting = null)}>Cancel</button>
 		</div>
 	{/if}
 </div>
@@ -236,9 +315,11 @@
 			0 14px 36px var(--hole);
 		touch-action: none;
 		user-select: none;
+		-webkit-touch-callout: none;
 	}
-	.board.dim .square {
-		opacity: 0.4;
+	.board.dim {
+		filter: saturate(0.6) brightness(0.55);
+		transition: filter 0.4s ease;
 	}
 	.square {
 		position: relative;
@@ -261,69 +342,49 @@
 		background: var(--board-last-dark);
 	}
 	.square.movable {
-		cursor: grab;
+		cursor: pointer;
 	}
-	.square.selected {
-		outline: 3px solid var(--accent);
-		outline-offset: -3px;
+	.square.legal {
+		cursor: pointer;
 	}
-	.piece {
-		position: relative;
-		font-family: 'Apple Symbols', 'Segoe UI Symbol', 'Noto Sans Symbols 2', serif;
-		font-size: clamp(24px, 8vmin, 54px);
-		line-height: 1;
-		color: var(--piece-dark);
-	}
-	.piece.white {
-		color: var(--piece-light);
-		-webkit-text-stroke: 1px var(--piece-dark);
-	}
-	.ghosted {
-		opacity: 0.3;
-	}
-	.mamdani {
-		position: relative;
-		display: grid;
-		place-items: center;
-		width: 72%;
-		aspect-ratio: 1;
-		border-radius: 50%;
-		background: var(--surface);
-		border: 3px solid var(--accent);
-		color: var(--accent);
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: clamp(14px, 4vmin, 28px);
-	}
-	.hole {
+	/* Full-square fills, One Million Chessboards style, in road-works yellow. */
+	.square::after {
+		content: '';
 		position: absolute;
-		inset: 12%;
-		border-radius: 46% 54% 42% 58% / 55% 45% 55% 45%;
-		background: var(--hole);
-		box-shadow:
-			0 0 0 3px var(--hazard),
-			inset 0 4px 10px var(--bg);
-	}
-	.target {
-		position: absolute;
-		inset: 4%;
-		border: 3px dashed var(--target-ring);
-		border-radius: 6px;
+		inset: 0;
+		background: transparent;
+		transition: background-color 0.15s ease;
 		pointer-events: none;
 	}
-	.dot {
-		position: absolute;
-		width: 28%;
-		aspect-ratio: 1;
-		border-radius: 50%;
-		background: var(--target-ring);
-		opacity: 0.85;
-		pointer-events: none;
+	.square.legal::after {
+		background: var(--legal-fill);
 	}
-	.dot.capture {
-		width: 86%;
-		background: none;
-		border: 4px solid var(--target-ring);
+	.square.selected::after {
+		background: var(--selected-fill);
+	}
+	.square.check::after {
+		background: radial-gradient(circle, var(--hazard) 0%, transparent 72%);
+	}
+	.saved {
+		position: absolute;
+		inset: 0;
+		background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+		animation: pulse 0.9s ease-out both;
+		pointer-events: none;
+		z-index: 1;
+	}
+	@keyframes pulse {
+		0% {
+			opacity: 0;
+			transform: scale(0.6);
+		}
+		35% {
+			opacity: 0.9;
+		}
+		100% {
+			opacity: 0;
+			transform: scale(1.25);
+		}
 	}
 	.blocked {
 		position: absolute;
@@ -332,6 +393,7 @@
 		font-size: clamp(16px, 4vmin, 26px);
 		color: var(--hazard);
 		pointer-events: none;
+		z-index: 1;
 	}
 	.rank-label,
 	.file-label {
@@ -341,6 +403,7 @@
 		font-size: 11px;
 		color: var(--board-dark);
 		pointer-events: none;
+		z-index: 1;
 	}
 	.square.dark .rank-label,
 	.square.dark .file-label {
@@ -354,13 +417,78 @@
 		bottom: 2px;
 		right: 4px;
 	}
-	.drag {
+
+	/* Layers over the squares: potholes, the target ring, then pieces. They
+	   never take clicks; the squares underneath do. */
+	.layer {
 		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
+	.slot {
+		position: absolute;
+		top: 0;
+		left: 0;
 		display: grid;
 		place-items: center;
-		pointer-events: none;
+		width: 12.5%;
+		height: 12.5%;
+		transform: translate(calc(var(--col) * 100%), calc(var(--row) * 100%));
+	}
+	/* The glide: easeInOutQuad, duration by distance (pieces.ts moveDuration). */
+	.piece-slot {
+		transition: transform var(--dur, 0ms) cubic-bezier(0.455, 0.03, 0.515, 0.955);
 		z-index: 2;
 	}
+	.piece-slot.dragging {
+		z-index: 3;
+	}
+	.piece {
+		display: grid;
+		place-items: center;
+		width: 100%;
+		height: 100%;
+		transition: transform 0.3s ease;
+	}
+	.lifted .piece,
+	.dragging .piece {
+		transform: scale(1.12);
+	}
+	.piece img {
+		width: 92%;
+		height: 92%;
+		filter: drop-shadow(0 2px 2px var(--hole));
+	}
+	.mamdani {
+		display: grid;
+		place-items: center;
+		width: 72%;
+		aspect-ratio: 1;
+		border-radius: 50%;
+		background: var(--surface);
+		border: 3px solid var(--accent);
+		color: var(--accent);
+		font-family: var(--font-display);
+		font-weight: 800;
+		font-size: clamp(14px, 4vmin, 28px);
+		box-shadow: 0 2px 4px var(--hole);
+	}
+	.hole {
+		width: 76%;
+		height: 76%;
+		border-radius: 46% 54% 42% 58% / 55% 45% 55% 45%;
+		background: var(--hole);
+		box-shadow:
+			0 0 0 3px var(--hazard),
+			inset 0 4px 10px var(--bg);
+	}
+	.target {
+		width: 92%;
+		height: 92%;
+		border: 3px dashed var(--target-ring);
+		border-radius: 6px;
+	}
+
 	.promote {
 		position: absolute;
 		inset: 32% 8%;
@@ -371,7 +499,7 @@
 		background: var(--surface);
 		border: 2px solid var(--accent);
 		border-radius: 10px;
-		z-index: 3;
+		z-index: 4;
 	}
 	.promote button {
 		min-height: 44px;
@@ -380,9 +508,23 @@
 		background: var(--surface-2);
 		cursor: pointer;
 	}
+	.promote img {
+		width: 80%;
+		height: 80%;
+	}
 	.promote .cancel {
 		grid-column: 1 / -1;
 		color: var(--text);
 		font: inherit;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.piece-slot,
+		.piece,
+		.square::after {
+			transition: none;
+		}
+		.saved {
+			animation: none;
+		}
 	}
 </style>

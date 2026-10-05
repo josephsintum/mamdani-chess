@@ -20,6 +20,8 @@
 	--accent-wash: #26241b; /* background behind a highlighted row */
 	--accent-line: #5a4c1c;
 	--hazard-text: #ff9a6b; /* pothole lines in the log, readable on --surface */
+	--legal-fill: #f2c23073; /* a square the selected piece can move to */
+	--selected-fill: #ff7a3d8c; /* the selected piece's square */
 	--piece-light: #fbf8f0;
 	--piece-dark: #141518;
 
