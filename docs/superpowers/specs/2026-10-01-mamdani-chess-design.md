@@ -60,14 +60,14 @@ Accounts, ratings, game history, private games, chat, draw offers, takebacks, pr
 - **Mobile**: board full width, player bars above and below, log in a collapsible drawer, emoji bar pinned at the bottom.
 
 ### Result
-Overlay with the winner and reason (checkmate, timeout, resignation, forfeit, or draw and its type). **Rematch** (colors swap; both must accept) and **Home**. Spectators see the result and a link to another live game.
+Overlay with the winner and reason (checkmate, timeout, resignation, or draw and its type), or "Aborted" when a first move never came. **Rematch** (colors swap; both must accept) and **Home**. Spectators see the result and a link to another live game.
 
 ### Rules `/rules`
 RULES.md as a page, with small board diagrams for potholes, the Mamdani, and saving rolls.
 
 ### Connection problems
 - Own connection: "Reconnecting…" banner; the browser's EventSource reconnects and receives a fresh `state`.
-- Opponent disconnected: "Opponent disconnected — they forfeit in 60s" countdown. Their clock keeps running; the game ends at whichever runs out first.
+- Opponent disconnected: their player bar shows "Disconnected", for information only. There is no forfeit; their clock keeps running on their turn, and only the clock ends the game (milestone 05 spec).
 
 ---
 
@@ -77,7 +77,7 @@ RULES.md as a page, with small board diagrams for potholes, the Mamdani, and sav
 | Package | Responsibility |
 | --- | --- |
 | `rules` | Pure game logic. No I/O, no time, no randomness of its own. |
-| `game` | One running game: seats, clocks, dice, subscribers, disconnect timers. |
+| `game` | One running game: seats, clocks, dice, subscribers, rematch offers. |
 | `match` | Quick-match queue. |
 | `store` | SQLite persistence of games and their move/roll logs. |
 | `http` | Routes, guest cookie, SSE, rate limits, static frontend. |
@@ -101,26 +101,28 @@ Each live game is one goroutine that owns its state. Handlers send it commands (
 ### SSE events
 - `state` — full snapshot after every change: board, potholes, Mamdani, clocks (remaining ms per side + turn start time + server time), side to move, legal moves for the side to move (sent only to that player), log, result, `seq`. Includes `last`: the ordered events of the latest turn, for animation. Sent immediately on connect, so reconnecting needs no replay.
 - `reaction` — `{from, emoji, spectator}`. Ephemeral.
-- `presence` — watcher count, opponent connected, forfeit deadline if any.
+- `presence` — watcher count, opponent connected.
 - `rematch` — offer or new game code.
 - Heartbeat comment every 15 s.
 
 ### Clocks
 - Server stores remaining time per side and when the current turn started; the browser counts down locally from those values.
+- Clocks start after each side's first move. White has 60 s from Black joining to make the first move, and Black 60 s from White's first move; missing it aborts the game with no winner.
 - After a move, the next player's clock starts after a fixed resolution delay (2 s) so dice animations don't cost time. Increment (+5 s) is added to the mover after their move.
 - The game goroutine runs a timer for the side to move; on expiry that side loses on time (or draws if the opponent has insufficient material).
-- Time is injected (`Clock` interface) so tests can control it.
+- Tests control time with `testing/synctest` (no `Clock` interface).
+- Details: [milestone 05 spec](2026-10-04-05-real-games-design.md).
 
 ### Dice and persistence
 - Dice use `crypto/rand`. Every roll is recorded in the log.
 - Each turn's move and rolls are written to SQLite before the `state` broadcast.
-- On startup, unfinished games are rebuilt by replaying their logs through `rules` with recorded dice. Clocks resume from stored values.
+- On startup, unfinished games (and games that ended in the last 24 h) are rebuilt by replaying their logs through `rules` with recorded dice. Clocks resume from stored values; downtime isn't charged to either player.
 
 ### Matchmaking
 One goroutine owns a FIFO queue. It pairs the two longest-waiting guests, skipping a guest matched with themselves (two tabs). Colors are random. Leaving the stream removes the guest from the queue.
 
 ### Disconnects
-The game counts open streams per player. At zero, a 60 s forfeit timer starts and a `presence` event announces the deadline. Any reconnection cancels it.
+The game counts open streams per player and reports "opponent connected" in `presence`. Disconnecting never forfeits: the clock is the only automatic loss, so a short dropout (on the subway, say) costs only the clock time it takes.
 
 ### Errors and abuse
 - Illegal, out-of-turn, or stale-`seq` moves → `409` with the current `state`; the browser resyncs.
@@ -175,7 +177,7 @@ Evaluated after resolution: checkmate; stalemate (Mamdani moves count as legal m
 - **Perft** with potholes and Mamdani disabled: start position (depth 4 = 197,281) and Kiwipete, to prove standard move generation.
 - **Rule tests** with scripted dice, one or more per rule in RULES.md, including both clarifications.
 - **Random-game invariants** over ~10,000 games: kings never removed; at most 2 potholes; Mamdani never on a piece or pothole; mover never left in check; replaying the log rebuilds the same position.
-- **`game` tests** with a fake clock: timeouts, paused clock during resolution, increment, 60 s disconnect forfeit, rematch.
+- **`game` tests** with `testing/synctest`: timeouts, paused clock during resolution, increment, first-move abort, rematch.
 - **HTTP integration**: two SSE clients quick-match and play a short game end to end.
 - **Playwright smoke test**: two browsers match and play a few moves.
 
