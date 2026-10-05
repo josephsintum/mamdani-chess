@@ -14,7 +14,7 @@ A browser game where friends — and strangers via quick match — play Pothole 
 
 | Topic | Decision |
 | --- | --- |
-| Identity | Guests only. Random editable name (e.g. "Pothole Pete") stored with a guest ID in a cookie. The server keeps only the cookie's SHA-256 (milestone 05). |
+| Identity | Guests only, identified by a cookie; the server keeps only its SHA-256 (milestone 05). A guest gets a generated name (e.g. `pizza-rat-astoria`) when they first play, and can re-roll it but not type one (milestone 06a, [guest names](../../guest-names.md)). |
 | Visibility | All games are public. |
 | Time control | One fixed clock for every game: 10+5 (10 minutes each, +5 seconds per move). |
 | Matchmaking | Quick match only: first-come-first-served queue, random colors. |
@@ -37,11 +37,11 @@ Accounts, ratings, game history, private games, chat, draw offers, takebacks, pr
 ## 1. Screens and flows
 
 ### Identity and codes
-- First request assigns a guest cookie (`guest_id` + name). The name shows top-right and is editable.
+- The first API request assigns a guest cookie. A guest gets a name when they first play (create a game, take a seat, or join quick match); it shows top-right with a die button that draws a new one (milestone 06a).
 - Each game has a 6-character code from an alphabet without lookalikes (no `0 O 1 I L`), e.g. `K7F3QZ`. The game URL is `/game/K7F3QZ`; "join with code" navigates there.
 
 ### Home `/`
-- Header: logo, Rules link, guest name.
+- Header: logo and the guest's name (the Rules link comes with the Rules page, milestone 07).
 - Hero: one-line pitch and three actions — **Play online** (quick match), **Play a friend** (create game; the canvas's *House rules* panel is deferred), **Join with code** (input + Go).
 - **Live games**: cards for games in progress — players, move number, watcher count, mini board. Click to spectate. Refreshed every 10 s.
 - **About**: 2–3 sentences on potholes and the Mamdani, link to Rules.
@@ -88,10 +88,11 @@ Each live game is one goroutine that owns its state. Handlers send it commands (
 ### API
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `PATCH` | `/api/me` | `{name}` — rename guest (1–20 chars). |
+| `GET` | `/api/me` | `{name}`, or `{name: null}` before the guest has played. |
+| `POST` | `/api/me/name` | Re-rolls the guest's name; returns `{name}`. |
 | `POST` | `/api/games` | `{settings?}` — create friend game, returns `{code}`. |
-| `GET` | `/api/games` | Live games for the homepage. |
-| `GET` | `/api/match` | SSE. Open stream = in queue; close = cancel. Emits `matched {code}`. |
+| `GET` | `/api/games` | Live games for the homepage, and how many guests are in quick match: `{games, looking}`. |
+| `GET` | `/api/match` | SSE. Open stream = in queue; close = cancel. Emits `queued {looking}`, then `matched {code}` and ends. |
 | `GET` | `/api/games/:code` | The caller's current view, without taking a seat; 404 once the game is gone. |
 | `GET` | `/api/games/:code/stream` | SSE. Takes the free seat if any, otherwise spectates. |
 | `POST` | `/api/games/:code/move` | `{from, to, promo?, seq}`. A Mamdani move uses the Mamdani's square as `from`. |
@@ -120,7 +121,7 @@ Each live game is one goroutine that owns its state. Handlers send it commands (
 - On startup, unfinished games (and games that ended in the last 24 h) are rebuilt by replaying their logs through `rules` with recorded dice. Clocks resume from stored values; downtime isn't charged to either player.
 
 ### Matchmaking
-One goroutine owns a FIFO queue. It pairs the two longest-waiting guests, skipping a guest matched with themselves (two tabs). Colors are random. Leaving the stream removes the guest from the queue.
+The `match` package keeps a FIFO queue behind a mutex, one entry per guest (two tabs share it, so nobody is matched with themselves). It pairs the two longest-waiting guests with random colors. Leaving the stream removes the guest from the queue. Details: [milestone 06a spec](2026-10-05-06a-finding-games-design.md).
 
 ### Disconnects
 The game counts open streams per player and reports "opponent connected" in `presence`. Disconnecting never forfeits: the clock is the only automatic loss, so a short dropout (on the subway, say) costs only the clock time it takes.

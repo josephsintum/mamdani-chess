@@ -1,6 +1,6 @@
 # server_rs: the Rust server (experiment)
 
-A Rust implementation of the game server. It runs alongside the Go server and speaks the same API, so the SvelteKit frontend in `web/` runs unchanged against either one. The Go server is still the one that ships. Design: [`docs/superpowers/specs/2026-10-04-rust-server-design.md`](../docs/superpowers/specs/2026-10-04-rust-server-design.md).
+A Rust implementation of the game server. It runs alongside the Go server and speaks the same API, so the SvelteKit frontend in `web/` runs unchanged against either one. The Go server is still the one that ships. The Rust server stops at the milestone 05 API: it has no guest names, quick match or live games list (milestone 06a), so the new home page and `/play` don't work against it, and its parity tests don't cover them. Design: [`docs/superpowers/specs/2026-10-04-rust-server-design.md`](../docs/superpowers/specs/2026-10-04-rust-server-design.md).
 
 - `rules/` is the rules engine. It is pure (no I/O, no clock, no randomness of its own) and uses bitboards.
 - `server/` is the HTTP server, built on tokio and axum. Each game is its own task, and views go out over SSE.
