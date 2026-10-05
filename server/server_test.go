@@ -45,7 +45,7 @@ func newTestServerWith(t *testing.T, dice rules.Dice) (*Server, *httptest.Server
 		"favicon.svg.br":        {Data: []byte("brotli bytes")},
 		"favicon.svg.gz":        {Data: svgGzip},
 	}
-	s := New(st, game.NewHub(dice), assets)
+	s := New(st, game.NewHub(dice, st), assets)
 	s.log = slog.New(slog.DiscardHandler) // tests that check logging swap in their own
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)

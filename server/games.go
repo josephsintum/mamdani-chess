@@ -12,7 +12,12 @@ import (
 
 // createGame starts a friend game with the caller as White.
 func (s *Server) createGame(w http.ResponseWriter, r *http.Request) {
-	g := s.games.Create(guestID(w, r))
+	g, err := s.games.Create(guestID(w, r))
+	if err != nil {
+		s.log.Error("create game", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]string{"code": g.Code()})
 }
 

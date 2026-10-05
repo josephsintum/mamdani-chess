@@ -26,7 +26,7 @@ type Server struct {
 }
 
 // New returns a Server for the games in hub that serves the frontend from
-// assets. st is unused until games are saved (a later milestone).
+// assets. st is the database the hub saves games to.
 func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	s := &Server{
 		store:     st,

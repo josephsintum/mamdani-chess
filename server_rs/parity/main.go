@@ -80,7 +80,10 @@ func main() {
 func play(seed uint64, plies int) (*record, error) {
 	r := rand.New(rand.NewPCG(seed, 2))
 	dice := &recDice{r: r}
-	g := game.NewHub(dice).Create("white")
+	g, err := game.NewHub(dice, nil).Create("white")
+	if err != nil {
+		return nil, err
+	}
 	subs := map[string]*game.Sub{}
 	cur := map[string]*game.View{}
 	for _, guest := range []string{"white", "black", "spectator"} {
@@ -109,7 +112,6 @@ func play(seed uint64, plies int) (*record, error) {
 	}
 
 	rec := &record{Seed: seed}
-	var err error
 	if rec.Start, err = snapshot(); err != nil {
 		return nil, err
 	}

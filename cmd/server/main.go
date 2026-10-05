@@ -37,7 +37,7 @@ func run() error {
 	}
 	defer st.Close()
 
-	handler := server.New(st, game.NewHub(game.CryptoDice{}), web.Assets())
+	handler := server.New(st, game.NewHub(game.CryptoDice{}, st), web.Assets())
 	srv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           handler,

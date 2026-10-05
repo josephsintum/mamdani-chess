@@ -4,6 +4,7 @@
 package game
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -34,7 +35,9 @@ const Resignation rules.Reason = "resignation"
 // Game is one live game.
 type Game struct {
 	code   string
+	hub    *Hub // creates rematches
 	dice   rules.Dice
+	store  Store
 	idle   time.Duration
 	calls  chan call
 	done   chan struct{} // closed when the game stops
@@ -48,6 +51,9 @@ type Game struct {
 	log   []LogEntry
 	lost  [2][]string // piece codes lost to potholes, by color
 	stats StatsJSON
+	// failed is set when a save fails. The loop then retires the game
+	// before anyone sees the change that wasn't saved.
+	failed error
 }
 
 // Sub is one open stream. C always holds the newest View: a reader that
@@ -64,23 +70,24 @@ type call struct {
 	reply chan error
 }
 
-// newGame starts a game with White's seat taken by creator. After idle with
-// no calls, the game stops if it is over or nobody is watching; onExit runs
+// newGame returns a game with the given seats, not yet running: the caller
+// starts it with go g.loop() once its state is set. After idle with no
+// calls, the game stops if it is over or nobody is watching; onExit runs
 // when it stops.
-func newGame(code, creator string, dice rules.Dice, idle time.Duration, onExit func()) *Game {
-	g := &Game{
+func newGame(h *Hub, code string, seats [2]string, onExit func()) *Game {
+	return &Game{
 		code:   code,
-		dice:   dice,
-		idle:   idle,
+		hub:    h,
+		dice:   h.dice,
+		store:  h.store,
+		idle:   h.Idle,
 		calls:  make(chan call),
 		done:   make(chan struct{}),
 		onExit: onExit,
 		g:      rules.NewGame(),
-		seats:  [2]string{creator, ""},
+		seats:  seats,
 		subs:   map[*Sub]struct{}{},
 	}
-	go g.loop()
-	return g
 }
 
 func (g *Game) loop() {
@@ -89,10 +96,11 @@ func (g *Game) loop() {
 	for {
 		select {
 		case c := <-g.calls:
-			if err := g.run(c.f); err != nil {
+			if err := g.check(g.run(c.f)); err != nil {
 				// A panic may have left the game half-updated (the position
-				// moved but the log didn't, say), so the game can't go on.
-				// Stop before replying, so the caller never sees it listed.
+				// moved but the log didn't, say), and a failed save means
+				// the database is behind, so the game can't go on. Stop
+				// before replying, so the caller never sees it listed.
 				g.stop()
 				c.reply <- err
 				return
@@ -108,6 +116,15 @@ func (g *Game) loop() {
 			idle.Reset(g.idle)
 		}
 	}
+}
+
+// check returns err, or the save failure that f left behind.
+func (g *Game) check(err error) error {
+	if err == nil && g.failed != nil {
+		slog.Error("game retired: save failed", "code", g.code, "err", g.failed)
+		err = g.failed
+	}
+	return err
 }
 
 // run calls f, turning a panic into ErrInternal so one bad game can't take
@@ -159,8 +176,13 @@ func (g *Game) Join(guest string) (*Sub, error) {
 	ch := make(chan *View, 1)
 	sub := &Sub{C: ch, ch: ch, guest: guest}
 	err := g.do(func() {
-		if g.seats[rules.Black] == "" && guest != g.seats[rules.White] {
+		if g.seats[rules.Black] == "" && guest != g.seats[rules.White] && !g.g.Result.Over {
+			g.save("black", func(ctx context.Context) error { return g.store.SeatBlack(ctx, g.code, guest) })
+			if g.failed != nil {
+				return
+			}
 			g.seats[rules.Black] = guest
+			slog.Info("black joined", "code", g.code, "black", guestTag(guest))
 			g.subs[sub] = struct{}{}
 			g.broadcast() // White's view changes from waiting to playing
 			return
