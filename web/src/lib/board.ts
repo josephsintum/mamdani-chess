@@ -252,7 +252,12 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 				pending = false;
 				break;
 			case 'reroll': {
-				chips[chips.length - 1] = { text: `${e.sq}↻`, kind: 'plain' };
+				// The re-rolled square becomes "e1↻"; a second re-roll folds both into "↻2".
+				chips.pop();
+				const prev = chips[chips.length - 1];
+				const folded = prev?.text.endsWith('↻') ? 2 : prev?.text.startsWith('↻') ? Number(prev.text.slice(1)) + 1 : 0;
+				if (folded) chips[chips.length - 1] = { text: `↻${folded}`, kind: 'plain' };
+				else chips.push({ text: `${e.sq}↻`, kind: 'plain' });
 				const why = rerollReasons[e.reason ?? ''] ?? e.reason ?? '';
 				[line, tone, pending] = [`Re-roll: ${why.charAt(0).toLowerCase()}${why.slice(1)}`, 'muted', true];
 				break;

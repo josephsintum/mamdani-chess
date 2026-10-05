@@ -77,7 +77,7 @@
 		animation: none;
 	}
 	.sheet::backdrop {
-		background: rgb(8 9 10 / 62%);
+		background: color-mix(in srgb, var(--hole) 62%, transparent);
 	}
 	@keyframes slide-up {
 		from {

@@ -42,6 +42,7 @@
 	function receive(next: View) {
 		error = '';
 		if (settlesGuess(optimistic, next)) optimistic = null;
+		if (next.result) confirmResign = false; // the game ended before you chose
 		anim.receive(next, { hidden: document.hidden });
 	}
 
@@ -114,15 +115,22 @@
 		confirmResign = false;
 	}
 
+	let hintTimer: ReturnType<typeof setTimeout> | undefined;
+
 	async function copyLink() {
 		try {
 			await navigator.clipboard.writeText(page.url.href);
 			copyHint = 'Link copied';
 		} catch {
 			// No clipboard on plain-http addresses: select the link instead.
-			(document.getElementById('link') as HTMLInputElement | null)?.select();
-			copyHint = 'Press Ctrl+C (⌘C on a Mac) to copy';
+			const link = document.getElementById('link') as HTMLInputElement | null;
+			link?.select();
+			if (!phone.current) copyHint = 'Press Ctrl+C (⌘C on a Mac) to copy';
+			else copyHint = link ? 'Tap and hold the link to copy it' : 'Copy the address bar to share';
 		}
+		// The phone's header shows the hint in place of the code, briefly.
+		clearTimeout(hintTimer);
+		hintTimer = setTimeout(() => (copyHint = ''), 2500);
 	}
 
 	async function newGame() {

@@ -8,12 +8,13 @@
 	let { view, shown }: { view: View; shown: number } = $props();
 
 	let summary = $derived(diceSummary(view, shown));
-	let title = $derived(summary.who ? `${summary.who === 'white' ? 'White' : 'Black'}’s roll` : 'Dice');
+	let side = $derived(summary.who ? (summary.who === 'white' ? 'White' : 'Black') : 'Dice');
+	let title = $derived(summary.who ? `${side}’s roll` : 'Dice');
 </script>
 
 <section class="card" aria-label={title}>
 	<div class="chips">
-		<span class="who">{title}</span>
+		<span class="who" aria-hidden="true">{side}</span>
 		{#each summary.chips as chip, i (i)}
 			{#if i > 0}<span class="arrow" aria-hidden="true">→</span>{/if}
 			{#if chip.kind === 'die'}
@@ -23,7 +24,7 @@
 			{/if}
 		{/each}
 	</div>
-	<p class="line {summary.tone}">{summary.line}</p>
+	<p class="line {summary.tone}" aria-live="polite">{summary.line}</p>
 </section>
 
 <style>
@@ -42,6 +43,7 @@
 		align-items: center;
 		gap: 6px;
 		min-height: 26px;
+		overflow: hidden; /* a turn too long for a very narrow phone clips, never wraps */
 		font-family: var(--font-mono);
 		font-size: 13px;
 		font-weight: 600;
@@ -55,6 +57,13 @@
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		color: var(--text-muted);
+	}
+	.who,
+	.arrow,
+	.chip,
+	.chips > :global(.die) {
+		flex-shrink: 0;
+		white-space: nowrap;
 	}
 	.arrow {
 		color: var(--text-muted);

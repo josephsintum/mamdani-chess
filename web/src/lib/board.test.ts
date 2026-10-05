@@ -220,6 +220,14 @@ describe('diceSummary', () => {
 		expect(sum(fellOnG8, 4).line).toBe('Re-roll: kings never fall');
 	});
 
+	it('folds two or more re-rolls into one chip, so a long turn fits a phone', () => {
+		const twice: EventJSON[] = [moved, { kind: 'rolled_pothole', roll: 4, color: 'white' },
+			{ kind: 'target', sq: 'e1' }, { kind: 'reroll', sq: 'e1', reason: 'king' }, { kind: 'target', sq: 'e8' }, { kind: 'reroll', sq: 'e8', reason: 'king' },
+			{ kind: 'target', sq: 'g8' }, { kind: 'saving_roll', sq: 'g8', piece: 'bN', roll: 6, saved: false, color: 'black' }, { kind: 'fell', sq: 'g8', piece: 'bN' }];
+		expect(sum(twice).chips).toEqual(['4:die', '↻2:plain', 'g8:square', 'save 6:bad']);
+		expect(sum(twice, 6).chips).toEqual(['4:die', '↻2:plain', '?:pending']);
+	});
+
 	it('names a piece that falls, and the square', () => {
 		expect(sum(fellOnG8)).toEqual({
 			who: 'white', chips: ['2:die', 'e1↻:plain', 'g8:square', 'falls:bad'], line: 'Black knight falls into g8', tone: 'hazard'
