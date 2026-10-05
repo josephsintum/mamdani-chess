@@ -9,6 +9,7 @@
 //   pnpm --dir web playtest --browser webkit      # Safari's engine
 //   pnpm --dir web playtest --games 12 --drag 0.5 # half the moves by dragging
 //   pnpm --dir web playtest --phone               # as iPhones: taps, the phone layout
+//   pnpm --dir web playtest --match               # both guests tap Play online (quick match)
 //
 // Against a production build (no ?instant: the dice play out in full), allow
 // each turn longer:
@@ -27,7 +28,8 @@ const { values: opts } = parseArgs({
 		'max-plies': { type: 'string', default: '1000' },
 		'turn-ms': { type: 'string', default: '3000' }, // how long a move may take to land
 		headed: { type: 'boolean', default: false },
-		phone: { type: 'boolean', default: false } // play as an iPhone 15, in the phone layout
+		phone: { type: 'boolean', default: false }, // play as an iPhone 15, in the phone layout
+		match: { type: 'boolean', default: false } // find each other through quick match, not a link
 	}
 });
 const GAMES = Number(opts.games);
@@ -112,6 +114,18 @@ async function dragMove(page) {
 	return { from: fromLabel, to: toLabel, dragged: true };
 }
 
+let pairing = Promise.resolve();
+
+/** Both guests tap Play online, the second once the first is queued. */
+async function quickMatch(first, second) {
+	for (const p of [first, second]) {
+		await p.goto(`${opts.base}/`);
+		await p.getByRole('link', { name: /Play online/ }).click();
+		if (p === first) await p.getByText('Keep this tab open').waitFor();
+	}
+	await Promise.all([first.waitForURL(/\/game\//), second.waitForURL(/\/game\//)]);
+}
+
 async function playGame(browser, n) {
 	const device = opts.phone ? { ...devices['iPhone 15'], defaultBrowserType: undefined } : {};
 	const contexts = [await browser.newContext(device), await browser.newContext(device)];
@@ -125,10 +139,18 @@ async function playGame(browser, n) {
 		p.on('console', (m) => m.type() === 'error' && errors.push(`${who} console: ${m.text().slice(0, 240)}`));
 	}
 	const started = Date.now();
-	await w.goto(`${opts.base}/`);
-	await w.getByRole('button', { name: 'Play a friend' }).click();
-	await w.waitForURL(/\/game\//);
-	const url = w.url().split('?')[0] + '?instant';
+	let url;
+	if (opts.match) {
+		// One pair queues at a time, so each game's two guests match each other.
+		await (pairing = pairing.then(() => quickMatch(w, b)));
+		if (w.url() !== b.url()) errors.push(`quick match sent the guests to different games: ${w.url()} / ${b.url()}`);
+		url = w.url().split('?')[0] + '?instant';
+	} else {
+		await w.goto(`${opts.base}/`);
+		await w.getByRole('button', { name: 'Play a friend' }).click();
+		await w.waitForURL(/\/game\//);
+		url = w.url().split('?')[0] + '?instant';
+	}
 	await w.goto(url);
 	await b.goto(url);
 
