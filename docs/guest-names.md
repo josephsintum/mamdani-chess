@@ -92,7 +92,7 @@ These are enforced by `names_test.go`:
   - Every entry must be a real noun-place pair (`TestBlockedPairsExist`), so a typo can't quietly block nothing.
   - When you add a word, read its pairs with the sensitive places and block any that read as a dig at the people who live there.
 
-Names are display-only and don't need to be unique. With about 10,500 possible names, two guests out of about 120 are likely to share one.
+Names are display-only and don't need to be unique, but new names prefer ones nobody has: the server draws up to 5 candidates and keeps the first unused one, and falls back to the last draw if all are taken. That keeps names unique in practice until roughly 10,000 guests. Without that check, with about 10,500 possible names, two guests out of about 120 are likely to share one.
 
 ## Names are stored, not derived
 

@@ -35,12 +35,17 @@ CREATE TABLE guests (
   name       TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE INDEX guests_name ON guests(name);  -- for preferring unused names
 ALTER TABLE games ADD COLUMN white_name TEXT;
 ALTER TABLE games ADD COLUMN black_name TEXT;
 ```
 
-- `store.EnsureGuest(ctx, id, candidate) (name, error)` returns the guest's name, inserting `candidate` (from `names.Random()`) if there is no row yet (`INSERT … ON CONFLICT DO NOTHING`, then read back). Every path that needs a name goes through it.
-- `store.RerollGuest(ctx, id, name)` upserts a new name.
+- `store.EnsureGuest(ctx, id, draw) (name, error)` returns the guest's name. If there's no row yet, it inserts a fresh name (`INSERT … ON CONFLICT DO NOTHING`, then read back). Every path that needs a name goes through it.
+- `store.RerollGuest(ctx, id, draw) (name, error)` gives the guest a fresh name and returns it.
+- **A fresh name prefers names nobody has.** `draw` is `names.Random`. The store draws up to 5 candidates and keeps the first one that no other guest has and that differs from the guest's current name. If all 5 are taken, it uses the last one.
+  - So names are unique in practice until roughly 10,000 guests, and repeats become possible gradually after that instead of failing.
+  - It also means the second player in a game never gets the name of the player already seated.
+  - Two guests named at the same moment can still collide, which is harmless: names are display-only and there's no unique index.
 - Games saved before migration 4 have no names. Their player bars fall back to "White" and "Black".
 - **The cookie is unchanged** (`server/guest.go`). It's still set on the first API request; only a name is deferred.
 
@@ -124,7 +129,7 @@ The mini board is `Board` with `interactive={false}`, no coordinates and no anim
 
 - **Go**
   - `match`, under `testing/synctest`: two guests pair in arrival order; a guest with two tabs is one entry and both tabs get `matched`; one guest alone never pairs; closing the last stream leaves the queue; a failed `create` keeps both at the front; the looking count follows.
-  - `store`: migration 4 on a database with 05 games (old games still restore, names empty); `EnsureGuest` creates once and then returns the same name; `RerollGuest` changes it.
+  - `store`: migration 4 on a database with 05 games (old games still restore, names empty); `EnsureGuest` creates once and then returns the same name; `RerollGuest` changes it; with a scripted `draw`, a fresh name skips candidates another guest already has and falls back to the last one when all 5 are taken.
   - `game`: a seated Black gets a name snapshot; a spectator calls no name function; a re-roll after seating doesn't change the game's names; `Hub.List` filters, orders and caps; `watching` counts guests, not tabs.
   - `server`: viewing endpoints (`GET /api/me`, `GET /api/games`, a spectator stream) create no `guests` row; `POST /api/games`, `GET /api/match` and taking a seat each create exactly one; `GET /api/match` end to end with two clients.
 - **Web:** Vitest for `#lib/code.ts`; `pnpm --dir web check`, `test`, `build`; `npx @sveltejs/mcp svelte-autofixer` on every new or changed component.
