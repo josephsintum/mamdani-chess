@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -37,7 +38,11 @@ func run() error {
 	}
 	defer st.Close()
 
-	handler := server.New(st, game.NewHub(game.CryptoDice{}, st), web.Assets())
+	hub := game.NewHub(game.CryptoDice{}, st)
+	if err := restore(context.Background(), st, hub, time.Now()); err != nil {
+		return err
+	}
+	handler := server.New(st, hub, web.Assets())
 	srv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           handler,
@@ -69,6 +74,23 @@ func run() error {
 	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+	return nil
+}
+
+// restore ends games nobody joined within a day, then rebuilds every
+// unfinished game, and every game that ended within the last day, so open
+// tabs carry on after a restart or a deploy.
+func restore(ctx context.Context, st *store.Store, hub *game.Hub, now time.Time) error {
+	expired, err := st.ExpireWaiting(ctx, now.Add(-game.DefaultIdle), now)
+	if err != nil {
+		return fmt.Errorf("expire waiting games: %w", err)
+	}
+	saved, err := st.LoadForRestore(ctx, now.Add(-game.DefaultIdle))
+	if err != nil {
+		return fmt.Errorf("load saved games: %w", err)
+	}
+	n := hub.Restore(saved)
+	slog.Info("games restored", "restored", n, "failed", len(saved)-n, "expired", expired)
 	return nil
 }
 
