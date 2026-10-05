@@ -72,6 +72,29 @@ export async function sendMove(code: string, move: MoveJSON, seq: number): Promi
 	return post(`/api/games/${code}/move`, { ...move, seq });
 }
 
+/** What became of a move: the server took it, refused it (and why), or never got it. */
+export type SendOutcome = 'sent' | 'unsent' | { refused: string };
+
+/** Sends a move and says what became of it, without throwing. */
+export async function trySendMove(code: string, move: MoveJSON, seq: number): Promise<SendOutcome> {
+	try {
+		const error = await sendMove(code, move, seq);
+		return error === null ? 'sent' : { refused: error };
+	} catch {
+		return 'unsent';
+	}
+}
+
+/**
+ * Whether a player's page should go to the rematch: only when it starts
+ * while the page is open. A finished game opened later (Back, or the old
+ * link) stays put and offers a link instead.
+ */
+export function followsRematch(prev: View | null, next: View): boolean {
+	const player = next.you === 'white' || next.you === 'black';
+	return player && !!next.rematch.code && prev !== null && !prev.rematch.code;
+}
+
 /** Offers or accepts a rematch, or declines one. Returns null or the error. */
 export async function rematch(code: string, decline = false): Promise<string | null> {
 	return post(`/api/games/${code}/rematch`, { decline });

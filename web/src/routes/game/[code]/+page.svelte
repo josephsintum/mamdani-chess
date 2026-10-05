@@ -14,11 +14,12 @@
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
 	import {
 		createGame,
+		followsRematch,
 		gameExists,
 		reasons,
 		rematch,
 		resign,
-		sendMove,
+		trySendMove,
 		type Color,
 		type MoveJSON,
 		type View
@@ -58,15 +59,14 @@
 			optimistic = null;
 			unsent = false;
 		}
+		const prev = anim.view;
 		anim.receive(next, { hidden: document.hidden });
 		if (unsent) resend();
-		// Accepted rematch: players go to the new game (spectators get a link).
-		if (next.rematch.code && (next.you === 'white' || next.you === 'black') && !leaving) {
-			leaving = true;
-			location.assign(`/game/${next.rematch.code}`); // a full load gives the new game a fresh stream
-		}
+		// A rematch accepted while this page is open: players go to it. Replace,
+		// so Back returns to where they were before, not to a page that would
+		// forward them again. A full load gives the new game a fresh stream.
+		if (followsRematch(prev, next)) location.replace(`/game/${next.rematch.code}`);
 	}
-	let leaving = false;
 
 	onMount(() => {
 		let source: EventSource | null = null;
@@ -130,17 +130,17 @@
 		if (!view || busy) return;
 		busy = true;
 		optimistic = { seq: view.seq, move: m };
-		try {
-			error = (await sendMove(code, m, view.seq)) ?? '';
-		} catch {
+		const sent = await trySendMove(code, m, view.seq);
+		busy = false;
+		if (sent === 'unsent') {
 			// No connection (a train in a tunnel, say): keep the move on the
 			// board and send it again when the server can be reached.
 			unsent = true;
 			retryLater();
-		} finally {
-			busy = false;
+		} else if (sent !== 'sent') {
+			error = sent.refused;
+			optimistic = null; // refused: glide back
 		}
-		if (error) optimistic = null; // refused: glide back
 	}
 
 	let resendTimer: ReturnType<typeof setTimeout> | undefined;
@@ -156,12 +156,11 @@
 		if (!unsent || !guess || view?.seq !== guess.seq) return;
 		if (!connected) return retryLater();
 		unsent = false;
-		try {
-			if ((await sendMove(code, guess.move, guess.seq)) && optimistic === guess) optimistic = null;
-		} catch {
+		const sent = await trySendMove(code, guess.move, guess.seq);
+		if (sent === 'unsent') {
 			unsent = true;
 			retryLater();
-		}
+		} else if (sent !== 'sent' && optimistic === guess) optimistic = null;
 	}
 
 	async function offerRematch(decline = false) {
@@ -354,7 +353,7 @@
 						{@const offer = view.rematch.offer}
 						<div class="actions" aria-live="polite">
 							{#if view.rematch.code}
-								<span class="note">Starting the rematch…</span>
+								<a class="primary" href={`/game/${view.rematch.code}`} data-sveltekit-reload>Go to the rematch</a>
 							{:else if offer && offer !== you}
 								<span class="note">Your opponent wants a rematch.</span>
 								<button class="primary" onclick={() => offerRematch()} disabled={busy}>Accept</button>
