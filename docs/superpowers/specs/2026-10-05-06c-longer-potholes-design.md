@@ -20,7 +20,8 @@ Taken with the user on 2026-10-05.
 | How many (#10) | At most 5 open. Opening a 6th closes the oldest at that moment. | A safety net, not the usual limit: in simulation it closes about one hole per game. The alternative, "holes last until the cap", keeps 5 open almost all the time and makes a hole vanish far away on nearly every roll, the moving hazard the rules doc says felt unfair. |
 | A roll that would checkmate (#11) | No re-roll: a roll can deliver checkmate. Kings still never fall (#6). | The user's call. It almost never happens (about 1 game in 1,000 in simulation) and removes a re-roll case from the engine. Goals 2 and 3 are reworded to match. |
 | Check held off only by your own hole (#16) | Still checkmate, but only for your holes on their last round. | Only those close on your next move. |
-| Repetition | The holes' rounds left must match too. | Two positions with the same holes but different countdowns have different futures. |
+| Repetition | The holes' rounds left (and rollers) must match too. | Two positions with the same holes but different countdowns have different futures. The old key already told the holes' rollers apart. |
+| The cap and the roller's king | If the cap closing the oldest hole would leave the roller in check, the target is re-rolled, as for a fall that would (the "exposes" re-roll). | Found while building: that hole may be the only thing shielding the roller's king, and a player must never end their own turn in check. |
 | Games saved under the old rules | Retired, not replayed (option B). | Simpler than versioning the engine. Only playtest games exist. Milestone 08's history starts with the new rules. |
 | Rounds-left display | One small traffic cone per round left, standing on the hole's front edge; the last one blinks. No owner marker on the board. | Tried in the sandbox: lit pips inside the hole, then cones outside it. The cones read at phone size and match the repair cone. An owner tab on the ring was tried and dropped because it didn't explain itself; ownership is in the tooltip and screen-reader label. |
 | Repair celebration | When the Mamdani repairs a hole: a cone drops on it, the hole shrinks, a flash and sparks burst, and 👍 pops above the Mamdani (about 1.3 s). | Repairs nearly double (9 → 16 a game in simulation), and today a repair looks exactly like an ordinary close. |
@@ -56,7 +57,7 @@ The bots don't plan around holes, so how much longer holes shape play can only b
 | #16 Own hole holds off check | Checkmate (every move closes it) | Checkmate when only your holes on their last round hold it off |
 | Repetition | Pieces, Mamdani, holes | Also each hole's rounds left |
 
-Unchanged: repairs next to the Mamdani (after every move and the moment a hole opens there), saving rolls, re-rolls for kings and for "already a pothole", the "exposes the roller's king" re-roll, the 64 re-roll cap, blocking (sliders can't cross, knights jump, no castling through, no double step across, en passant cancelled). If the Mamdani falls, holes still close on schedule.
+Unchanged: repairs next to the Mamdani (after every move and the moment a hole opens there), saving rolls, re-rolls for kings and for "already a pothole", the "exposes the roller's king" re-roll (which now also covers the cap closing a hole that shields the roller's king), the 64 re-roll cap, blocking (sliders can't cross, knights jump, no castling through, no double step across, en passant cancelled). If the Mamdani falls, holes still close on schedule.
 
 Turn order in RULES.md becomes: 1 Move. 2 Count down: each of your holes loses a round; any at zero closes. 3 Repair. 4 Roll for a pothole. 5 Place it; if it opens with 5 already open, the oldest closes first.
 
