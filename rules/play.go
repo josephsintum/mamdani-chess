@@ -2,16 +2,17 @@ package rules
 
 // play makes move m for the side to move, then runs the close and repair
 // steps and passes the turn. It assumes m is pseudo-legal. Events are
-// appended to ev; pass nil when only the resulting position matters.
-func (p *Position) play(m Move, ev []Event) []Event {
+// appended to *ev; pass nil when only the resulting position matters, and
+// nothing is recorded or allocated.
+func (p *Position) play(m Move, ev *[]Event) {
 	mover := p.Turn
 	if m.From == p.Mamdani {
-		ev = append(ev, Event{Kind: Moved, Move: m, Piece: MamdaniPiece, Color: mover})
+		emit(ev, Event{Kind: Moved, Move: m, Piece: MamdaniPiece, Color: mover})
 		p.Mamdani = m.To
 		p.EP = NoSquare
 		p.Halfmove++ // Mamdani moves never reset the 50-move count
 	} else {
-		ev = p.movePiece(m, ev)
+		p.movePiece(m, ev)
 	}
 	if mover == Black {
 		p.Fullmove++
@@ -19,17 +20,23 @@ func (p *Position) play(m Move, ev []Event) []Event {
 	// Close: the mover's own pothole from their previous turn.
 	if s := p.Potholes[mover]; s != NoSquare {
 		p.Potholes[mover] = NoSquare
-		ev = append(ev, Event{Kind: PotholeClosed, Square: s})
+		emit(ev, Event{Kind: PotholeClosed, Square: s})
 	}
-	ev = p.repair(ev)
+	p.repair(ev)
 	p.Turn = mover.Other()
-	return ev
 }
 
-func (p *Position) movePiece(m Move, ev []Event) []Event {
+// emit records e if events are being kept.
+func emit(ev *[]Event, e Event) {
+	if ev != nil {
+		*ev = append(*ev, e)
+	}
+}
+
+func (p *Position) movePiece(m Move, ev *[]Event) {
 	pc := p.Board[m.From]
 	c := pc.Color()
-	ev = append(ev, Event{Kind: Moved, Move: m, Piece: pc, Color: c})
+	emit(ev, Event{Kind: Moved, Move: m, Piece: pc, Color: c})
 
 	capSq := m.To
 	if pc.Kind() == Pawn && m.To == p.EP && p.Board[m.To] == NoPiece {
@@ -38,7 +45,7 @@ func (p *Position) movePiece(m Move, ev []Event) []Event {
 	captured := p.Board[capSq]
 	if captured != NoPiece {
 		p.Board[capSq] = NoPiece
-		ev = append(ev, Event{Kind: Captured, Square: capSq, Piece: captured})
+		emit(ev, Event{Kind: Captured, Square: capSq, Piece: captured})
 	}
 
 	p.Board[m.From] = NoPiece
@@ -68,7 +75,6 @@ func (p *Position) movePiece(m Move, ev []Event) []Event {
 	} else {
 		p.Halfmove++
 	}
-	return ev
 }
 
 // rightsLost returns the castling rights that disappear when a piece moves
@@ -92,15 +98,14 @@ func rightsLost(s Square) Castling {
 }
 
 // repair removes every open pothole next to the Mamdani.
-func (p *Position) repair(ev []Event) []Event {
+func (p *Position) repair(ev *[]Event) {
 	if p.Mamdani == NoSquare {
-		return ev
+		return
 	}
 	for c, s := range p.Potholes {
 		if s != NoSquare && adjacent(s, p.Mamdani) {
 			p.Potholes[c] = NoSquare
-			ev = append(ev, Event{Kind: Repaired, Square: s})
+			emit(ev, Event{Kind: Repaired, Square: s})
 		}
 	}
-	return ev
 }

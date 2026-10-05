@@ -3,7 +3,6 @@ package rules
 import (
 	"errors"
 	"fmt"
-	"slices"
 )
 
 // Dice rolls eight-sided dice. D8 returns 1..8.
@@ -25,12 +24,13 @@ const maxRerolls = 64
 // A move that checkmates ends the game at once: no pothole roll follows, so
 // the dice can't undo a mate made on the board. p is not modified.
 func Apply(p Position, m Move, dice Dice) (Position, []Event, error) {
-	if !slices.Contains(p.LegalMoves(), m) {
+	if !p.isLegal(m) {
 		return p, nil, ErrIllegalMove
 	}
 	mover := p.Turn
 	next := p
-	ev := next.play(m, nil)
+	var ev []Event
+	next.play(m, &ev)
 	if next.Mated() {
 		return next, ev, nil
 	}
@@ -66,7 +66,7 @@ func (c *checkedDice) D8() int {
 // move closes that pothole, so a check it is only holding off can't be
 // escaped either.
 func (p *Position) Mated() bool {
-	return p.threatened() && len(p.LegalMoves()) == 0
+	return p.threatened() && !p.hasLegalMove()
 }
 
 // threatened reports whether the side to move's king is attacked, ignoring

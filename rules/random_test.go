@@ -57,6 +57,12 @@ func checkInvariants(t *testing.T, seed, ply int, before Position, m Move, g *Ga
 		t.Helper()
 		t.Fatalf("seed %d ply %d after %s: "+format, append([]any{seed, ply, m}, args...)...)
 	}
+	if !before.isLegal(m) {
+		fail("isLegal rejects a move LegalMoves offered")
+	}
+	if p.hasLegalMove() != (len(p.LegalMoves()) > 0) {
+		fail("hasLegalMove disagrees with LegalMoves")
+	}
 	if p.King(White) == NoSquare || p.King(Black) == NoSquare {
 		fail("a king fell")
 	}

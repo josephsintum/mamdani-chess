@@ -1,6 +1,9 @@
 package rules
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // Move is one move. A Mamdani move has From set to the Mamdani's square.
 // Castling is the king's two-square move (e1g1). Promo is NoKind unless a
@@ -52,15 +55,46 @@ func ParseMove(s string) (Move, error) {
 // and the Mamdani. A move is legal only if the mover's king is safe after
 // the move, the close step and the repair step.
 func (p *Position) LegalMoves() []Move {
-	var legal []Move
-	for _, m := range p.pseudoMoves() {
-		q := *p
-		q.play(m, nil)
-		if !q.InCheck(p.Turn) {
+	var buf [maxMoves]Move
+	pseudo := p.pseudoMoves(buf[:0])
+	legal := make([]Move, 0, len(pseudo))
+	for _, m := range pseudo {
+		if p.safe(m) {
 			legal = append(legal, m)
 		}
 	}
 	return legal
+}
+
+// maxMoves is room for every pseudo-legal move in any reachable position:
+// chess tops out at 218 legal moves and the Mamdani adds at most 27. If a
+// position ever had more, append would just move to the heap.
+const maxMoves = 320
+
+// safe reports whether pseudo-legal m leaves the mover's king unattacked
+// once the close and repair steps have run.
+func (p *Position) safe(m Move) bool {
+	q := *p
+	q.play(m, nil)
+	return !q.InCheck(p.Turn)
+}
+
+// hasLegalMove reports whether the side to move has any legal move. It
+// stops at the first one, which is all mate and stalemate checks need.
+func (p *Position) hasLegalMove() bool {
+	var buf [maxMoves]Move
+	for _, m := range p.pseudoMoves(buf[:0]) {
+		if p.safe(m) {
+			return true
+		}
+	}
+	return false
+}
+
+// isLegal reports whether m is one of LegalMoves, without building them all.
+func (p *Position) isLegal(m Move) bool {
+	var buf [maxMoves]Move
+	return slices.Contains(p.pseudoMoves(buf[:0]), m) && p.safe(m)
 }
 
 // canLand reports whether a piece of color c may finish a move on s.
@@ -72,9 +106,9 @@ func (p *Position) canLand(s Square, c Color) bool {
 	return pc == NoPiece || pc.Color() != c
 }
 
-func (p *Position) pseudoMoves() []Move {
+// pseudoMoves appends every pseudo-legal move to moves and returns it.
+func (p *Position) pseudoMoves(moves []Move) []Move {
 	c := p.Turn
-	moves := make([]Move, 0, 64)
 	if p.Mamdani != NoSquare {
 		for _, d := range queenDirs {
 			for t := p.Mamdani.Offset(d[0], d[1]); t != NoSquare && !p.Blocked(t); t = t.Offset(d[0], d[1]) {

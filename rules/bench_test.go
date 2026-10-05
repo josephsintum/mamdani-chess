@@ -46,3 +46,21 @@ func BenchmarkRandomGame(b *testing.B) {
 		seed++
 	}
 }
+
+func TestLegalityChecksDoNotAllocate(t *testing.T) {
+	p := StartPosition()
+	for name, f := range map[string]func(){
+		"LegalMoves":   func() { _ = p.LegalMoves() },
+		"hasLegalMove": func() { _ = p.hasLegalMove() },
+		"isLegal":      func() { _ = p.isLegal(Move{From: E2, To: E4}) },
+		"Mated":        func() { _ = p.Mated() },
+	} {
+		want := 0.0
+		if name == "LegalMoves" {
+			want = 1 // the returned slice
+		}
+		if got := testing.AllocsPerRun(100, f); got > want {
+			t.Errorf("%s: %v allocations, want at most %v", name, got, want)
+		}
+	}
+}
