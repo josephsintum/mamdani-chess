@@ -14,7 +14,7 @@ A browser game where friends — and strangers via quick match — play Pothole 
 
 | Topic | Decision |
 | --- | --- |
-| Identity | Guests only. Random editable name (e.g. "Pothole Pete") stored with a guest ID in a cookie. |
+| Identity | Guests only. Random editable name (e.g. "Pothole Pete") stored with a guest ID in a cookie. The server keeps only the cookie's SHA-256 (milestone 05). |
 | Visibility | All games are public. |
 | Time control | One fixed clock for every game: 10+5 (10 minutes each, +5 seconds per move). |
 | Matchmaking | Quick match only: first-come-first-served queue, random colors. |
@@ -92,17 +92,18 @@ Each live game is one goroutine that owns its state. Handlers send it commands (
 | `POST` | `/api/games` | `{settings?}` — create friend game, returns `{code}`. |
 | `GET` | `/api/games` | Live games for the homepage. |
 | `GET` | `/api/match` | SSE. Open stream = in queue; close = cancel. Emits `matched {code}`. |
+| `GET` | `/api/games/:code` | The caller's current view, without taking a seat; 404 once the game is gone. |
 | `GET` | `/api/games/:code/stream` | SSE. Takes the free seat if any, otherwise spectates. |
 | `POST` | `/api/games/:code/move` | `{from, to, promo?, seq}`. A Mamdani move uses the Mamdani's square as `from`. |
 | `POST` | `/api/games/:code/react` | `{emoji}` |
 | `POST` | `/api/games/:code/resign` | — |
-| `POST` | `/api/games/:code/rematch` | Offer or accept. On accept, both players get `rematch {code}`. |
+| `POST` | `/api/games/:code/rematch` | `{decline?}`. Offer, accept, or decline. On accept, every view's `rematch.code` is the new game. |
 
 ### SSE events
 - `state` — full snapshot after every change: board, potholes, Mamdani, clocks (remaining ms per side + turn start time + server time), side to move, legal moves for the side to move (sent only to that player), log, result, `seq`. Includes `last`: the ordered events of the latest turn, for animation. Sent immediately on connect, so reconnecting needs no replay.
 - `reaction` — `{from, emoji, spectator}`. Ephemeral.
-- `presence` — watcher count, opponent connected.
-- `rematch` — offer or new game code.
+- `state` also carries `online` (which players have a stream open) and `rematch` (offer, declined, or the new game's code) since milestone 05.
+- `presence` — watcher count (milestone 06).
 - Heartbeat comment every 15 s.
 
 ### Clocks

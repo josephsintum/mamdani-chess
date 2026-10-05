@@ -1,7 +1,7 @@
 # Milestone 05: Real games — Design
 
 Date: 2026-10-04
-Status: Draft for review
+Status: Built (plan: [2026-10-04-05-real-games](../plans/2026-10-04-05-real-games.md))
 Builds on: [the main design spec](2026-10-01-mamdani-chess-design.md) and [the roadmap](../plans/2026-10-03-00-roadmap.md), row 05.
 
 ## Goal
@@ -38,7 +38,7 @@ Each game is in one of four clock phases:
 
 - **Start:** both clocks start at 10:00. When Black joins, White's first-move deadline starts. When White's first move lands, Black's deadline starts 2 s later, after the dice pause. When Black's first move lands, White's clock starts 2 s later, and the game is in the Playing phase.
 - **The dice pause:** after every move, the next player's clock starts 2 s (`ResolveDelay`) after the move lands, so the dice animation doesn't cost them time. The browser shows "Paused for dice" meanwhile.
-- **Increment:** +5 s is added to the mover after each move, from the first move on.
+- **Increment:** +5 s is added to the mover after each move made while their clock was running, so not after the two first moves: play starts at 10:00 each.
 - **Flag fall:** when the side to move's clock reaches zero, that side loses on `timeout`. It's a draw (`timeout_vs_insufficient`) if the other side can't mate (`rules.Position.CannotMate`, already written for this). The server's timer ends the game even if nobody is watching.
 - **Time used** is measured on the server from when the clock started (after the pause) to when the move request arrives. No lag compensation: at 10+5, a few hundred milliseconds don't matter.
 
@@ -50,27 +50,28 @@ Tests use `testing/synctest` (Go 1.27) with the real `time` package, instead of 
 
 ### What the browser gets
 
-`state` gains a `clock` object:
+`state` gains three objects, in the camelCase the rest of the view uses:
 
 ```json
-"clock": {
-  "white_ms": 594000, "black_ms": 600000,
-  "running": "black",
-  "since": 1791234567890,
-  "now": 1791234566100,
-  "first_move_deadline": null
-}
+"clock": {"whiteMs": 594000, "blackMs": 600000, "running": "black", "since": 1791234567890, "now": 1791234566100},
+"online": {"white": true, "black": false},
+"rematch": {}
 ```
 
-- `running`: the color whose clock is running, or `null`.
+- `running`: the color whose clock is running; left out when no clock runs.
 - `since`: the server time (unix ms) when the running clock starts or started. It can be in the future during the dice pause.
-- `now`: the server's time when it sent this state. The browser keeps the offset from its own clock and counts down locally. That way it doesn't matter if the phone's clock is wrong.
-- `first_move_deadline`: unix ms, or `null` outside the First moves phase.
+- `now`: the server's time when it built this state. The browser keeps the offset from its own clock and counts down locally. That way it doesn't matter if the phone's clock is wrong.
+- `firstMoveDeadline`: unix ms, only during the First moves phase.
+- `online`: which players have a stream open (see Disconnects).
+- `rematch`: `offer` (the color that offered), `declined`, or `code` once accepted (see Rematch).
+
+Every change goes out as a `state`, so a reconnecting tab gets all of it at once; there are no separate `presence` or `rematch` events in this milestone. The browser's animator keeps a dice roll playing through a `state` with the same `seq` (a player going offline mid-roll, say).
 
 ## Disconnects
 
 - **Your own connection drops:** the "Reconnecting…" banner shows (already built). EventSource reconnects and gets a fresh `state`.
-- **Your opponent's connection drops:** the opponent's player bar shows "Disconnected", for information only. There's no countdown. `presence` keeps "opponent connected" and drops the forfeit deadline.
+- **Your opponent's connection drops:** the opponent's player bar shows "Disconnected", for information only. There's no countdown. `state.online` says which players have a stream open; the game broadcasts when a player's last stream closes or their first one opens.
+- **The server restarts:** EventSource reconnects by itself after a network error, but an error status (a proxy's 502 while the server is down) closes it for good. The page then asks `GET /api/games/:code` (the caller's view, without taking a seat): a 404 means the game is gone; anything else, it opens a new stream after 2 s.
 - **A move sent while offline:** the board shows it at once (instant move). If the POST fails with a network error, the browser re-sends it with the same `seq` when the stream reconnects. If the server already has the move, the `seq` check answers 409 with the current `state`, which already includes it, so the move is never played twice. If the game changed in the meantime (the clock ran out, say), the 409's `state` replaces the guess. This is the case where it matters: you move just as the train enters a tunnel.
 
 ## Storage
@@ -80,7 +81,7 @@ Tests use `testing/synctest` (Go 1.27) with the real `time` package, instead of 
 ```sql
 CREATE TABLE games (
   code        TEXT PRIMARY KEY,
-  white       TEXT NOT NULL,             -- guest ID
+  white       TEXT NOT NULL,             -- guest ID: SHA-256 of the guest cookie (black too)
   black       TEXT,                      -- NULL until Black joins
   created_at  INTEGER NOT NULL,          -- unix ms
   ended_at    INTEGER,                   -- NULL while unfinished
@@ -88,7 +89,7 @@ CREATE TABLE games (
   winner      TEXT,                      -- 'white' | 'black' | NULL (draw, aborted, unfinished)
   rematch_of  TEXT REFERENCES games(code)
 );
-CREATE INDEX games_unfinished ON games(ended_at) WHERE ended_at IS NULL;
+CREATE INDEX games_ended_at ON games(ended_at);  -- unfinished (NULL) and recently ended
 
 CREATE TABLE turns (
   game      TEXT NOT NULL REFERENCES games(code),
@@ -129,12 +130,14 @@ About 60–100 bytes per turn, so roughly 12 KB for a long game, and 12 MB for 1
 
 Methods on `store.Store`, each one plain SQL:
 
-- `CreateGame(ctx, Game)`; returns an error that `errors.Is(err, store.ErrCodeTaken)` on a code clash.
-- `SeatBlack(ctx, code, guest)`
-- `AddTurn(ctx, code, Turn)`
-- `EndGame(ctx, code, Result)`; `AddFinalTurn(ctx, code, Turn, Result)` does both in one transaction.
-- `LoadForRestore(ctx, now) ([]SavedGame, error)`: unfinished games and those that ended in the last 24 h, each with its turns in order.
-- `ExpireWaiting(ctx, before)`: ends games still waiting for Black that were created before `before`, with result `expired`.
+- `CreateGame(ctx, Game) error`: `store.ErrCodeTaken` on a code clash.
+- `SeatBlack(ctx, code, guest) error`
+- `AddTurn(ctx, code, Turn) error`
+- `EndGame(ctx, code, Result, final *Turn) error`: saves `final` (the move that ended the game, if any) and the result in one transaction.
+- `LoadForRestore(ctx, endedAfter) ([]SavedGame, error)`: unfinished games and those that ended after `endedAfter`, each with its turns in order.
+- `ExpireWaiting(ctx, cutoff, now) (int64, error)`: ends games still waiting for Black that were created before `cutoff`, with result `expired`.
+
+A game still waiting for Black that is evicted from memory after its quiet day is also ended as `expired`.
 
 The `game` package depends on a small interface holding these methods, so its tests can use a real store on a temporary file.
 
@@ -145,7 +148,7 @@ In `cmd/server/main.go`, after `store.Open` and before the server starts listeni
 1. `ExpireWaiting(now − 24 h)`.
 2. `LoadForRestore(now)`. For each game, replay its turns one by one through `rules.Game.Play` with a scripted `Dice` that returns the recorded rolls. `rules.Replay` isn't enough here, because it returns no events, and the log, lost pieces and stats are built from events by the existing `tally` and log code in `game/game.go`. If a replay fails (it shouldn't: the rules are deterministic), log it at ERROR and skip that game.
 3. Put each game in the hub with its seats, and start its loop. The clocks come from the last turn's `white_ms` and `black_ms`. Restart the phase where it was:
-   - Playing: the side to move's clock starts 10 s after the restore (`RestoreGrace`), so the players have time to reconnect.
+   - Playing: the side to move's clock starts 10 s after the restore (`RestoreGrace`), so the players have time to reconnect. Only finished turns are saved, so the time used on the turn in progress when the server stopped is given back too.
    - First moves: the deadline restarts at a full 60 s.
    - Over: no timer. The game is evicted after its quiet day as usual.
 4. Log one INFO line per restored game, and one summary line.
@@ -156,14 +159,16 @@ Railway stops the old process before starting the new one (the volume allows one
 
 ## Rematch
 
-- **API:** `POST /api/games/:code/rematch` with `{}` to offer or accept, or `{"decline": true}`. Only the two players can call it, and only once the game is over; otherwise 409.
-- **Offer:** the opponent gets a `rematch` event `{offer: "white"|"black"}` and sees "Opponent wants a rematch" with **Accept** and **Decline**. Offering when the opponent's offer is already waiting counts as accepting it.
+- **API:** `POST /api/games/:code/rematch` with `{}` to offer or accept, or `{"decline": true}`. A spectator gets 403; before the game is over, 409.
+- **Offer:** the opponent's `state.rematch` becomes `{offer: "white"|"black"}` and they see "Your opponent wants a rematch." with **Accept** and **Decline**. Offering when the opponent's offer is already waiting counts as accepting it.
 - **How long an offer lasts:** until it's declined, or until the offering player's last stream for that game closes. It isn't stored, so a restart also clears it.
-- **On accept:** the game asks the hub for a new game with both seats filled, colors swapped, and `rematch_of` set. Then it broadcasts `rematch {code}` to everyone watching. The players' pages go to `/game/<code>`; spectators get a **Watch rematch** link instead. The new game starts in the First moves phase.
-- **Declined:** the offerer gets `rematch {declined: true}` and the button reads "Declined".
+- **On accept:** the game asks the hub for a new game with both seats filled, colors swapped, and `rematch_of` set. Then everyone's `state.rematch` gets `{code}`. The players' pages go to `/game/<code>`; spectators get a **Watch rematch** link instead. The new game starts in the First moves phase.
+- **Declined:** `state.rematch` becomes `{declined: true}`; the offerer sees "Rematch declined." and can ask again.
 - The hub creates the new game from inside the old game's goroutine. That's safe: `Hub.Create` only takes the hub's mutex, and never calls into an existing game.
 
 ## Log lines
+
+The guest cookie works as a login (whoever holds it takes that guest's seat), so `guestID()` in `server/guest.go` hands the rest of the server only its SHA-256: seats, the database and logs never hold the cookie. The 128 random bits need no salt. Leaderboards and achievements (milestone 08) key on the same hash. Logs shorten it further to an 8-character `guestTag`.
 
 At INFO, one line per game event, each with `code`:
 
@@ -203,12 +208,12 @@ The main design spec changes to match:
 - **Restore:** play some turns against a real store, throw the hub away, restore from the same file, and compare. The position, log, lost pieces, stats, `seq` and clocks must match, and a game in the First moves phase restarts its deadline.
 - **Write failure:** a store that fails `AddTurn` makes the move return 500, and the game stops without broadcasting.
 - **Server:** HTTP tests for the rematch endpoint (wrong caller, game not over, decline), and the `clock` object in `state`.
-- **Web:** Vitest tests for the countdown (server offset, `since` in the future, `running: null`) and for re-sending a move after a network error. Then `pnpm --dir web check` and `pnpm --dir web build`.
+- **Web:** Vitest tests for the countdown (`since` in the future, a stopped clock, the first-move deadline, formatting) and for the animator keeping a roll playing through a same-turn update. Re-sending a move after a network error lives in the game page, which has no unit tests, so a browser check covers it (go offline in DevTools, move, go online: the move lands once). Then `pnpm --dir web check` and `pnpm --dir web build`.
 - **Whole system:**
   - `pnpm --dir web playtest` in Chromium and WebKit, with clocks on.
   - A manual restart check: play a few moves, kill and restart `go run ./cmd/server`, and confirm both tabs carry on without a reload and the clocks continue.
   - An offline move: turn the network off in DevTools, move, turn it back on, and confirm the move lands once.
-- **Write load:** run `tools/loadgen` with a few hundred games at once against a server writing to SQLite, and record the insert latency at p50 and p99 in the implementation plan. A batched writer is the fallback, only if the numbers show a problem.
+- **Write load:** run `tools/loadgen` with a few hundred games at once against a server writing to SQLite, and record the insert latency at p50 and p99 in the implementation plan. A batched writer is the fallback, only if the numbers show a problem. Measured while writing the plan (300 games, 2 spectators each, 60 plies, about 12,000 moves/s, roughly 100 times the real rate): move POST p50 135 µs → 177 µs and p99 585 µs → 858 µs against the in-memory server; every turn saved. No batching needed.
 
 ## Out of scope
 
