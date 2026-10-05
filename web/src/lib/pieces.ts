@@ -58,6 +58,15 @@ export function applyMove(state: { board: string[]; mamdani: string }, move: Mov
 }
 
 /**
+ * Whether a view from the server settles your instant move (the guess made
+ * at seq). Only a new turn does: an update for the same turn (a clock, a
+ * reaction) keeps the guess, or the piece would glide back and forth.
+ */
+export function settlesGuess(guess: { seq: number } | null, next: { seq: number }): boolean {
+	return guess === null || next.seq !== guess.seq;
+}
+
+/**
  * Works out which piece is which in a new position, so ids carry over:
  * 1. a piece of the same kind still on its square keeps its id;
  * 2. the hinted move (the last move, if known) carries its piece over, even

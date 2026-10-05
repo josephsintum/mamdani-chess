@@ -10,7 +10,7 @@
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
 	import { stageAt } from '#lib/board.ts';
-	import { applyMove } from '#lib/pieces.ts';
+	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { createGame, reasons, resign, sendMove, type Color, type MoveJSON, type View } from '#lib/game.ts';
 
 	const code = page.params.code ?? '';
@@ -35,7 +35,7 @@
 
 	function receive(next: View) {
 		error = '';
-		optimistic = null;
+		if (settlesGuess(optimistic, next)) optimistic = null;
 		anim.receive(next, { hidden: document.hidden });
 	}
 
