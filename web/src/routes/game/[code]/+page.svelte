@@ -9,7 +9,7 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
-	import { checkSquare, stageAt } from '#lib/board.ts';
+	import { checkSquare, pillFor, stageAt } from '#lib/board.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { createGame, reasons, resign, sendMove, type Color, type MoveJSON, type View } from '#lib/game.ts';
 
@@ -84,6 +84,8 @@
 	});
 	let playing = $derived(view?.status === 'playing');
 	let isPlayer = $derived(you === 'white' || you === 'black');
+	let topPill = $derived(view ? pillFor(view, top, animating) : { text: '', tone: 'turn' as const });
+	let bottomPill = $derived(view ? pillFor(view, bottom, animating) : { text: '', tone: 'turn' as const });
 
 	async function move(m: MoveJSON) {
 		if (!view || busy) return;
@@ -202,7 +204,7 @@
 			</div>
 
 			<div class="board-col">
-				<PlayerBar color={top} you={you === top} lost={stage.lost[top]} toMove={playing && view.turn === top && !animating} />
+				<PlayerBar color={top} you={you === top} lost={stage.lost[top]} pill={topPill.text} pillTone={topPill.tone} />
 				<div class="board-wrap">
 					<Board
 						{stage}
@@ -227,7 +229,8 @@
 					color={bottom}
 					you={you === bottom}
 					lost={stage.lost[bottom]}
-					toMove={playing && view.turn === bottom && !animating}
+					pill={bottomPill.text}
+					pillTone={bottomPill.tone}
 				/>
 			</div>
 
