@@ -13,6 +13,14 @@ export interface PieceRef {
 
 const files = 'abcdefgh';
 
+const kinds: Record<string, string> = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight', P: 'pawn' };
+
+/** A piece's name for screen readers: "black knight", or "the Mamdani". */
+export function pieceName(code: string): string {
+	if (code === 'M') return 'the Mamdani';
+	return `${code[0] === 'w' ? 'white' : 'black'} ${kinds[code[1]]}`;
+}
+
 function squareName(index: number): string {
 	return files[index % 8] + (Math.floor(index / 8) + 1);
 }

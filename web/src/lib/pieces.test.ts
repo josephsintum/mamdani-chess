@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { squareIndex } from './board.ts';
-import { applyMove, moveDuration, reconcile, settlesGuess, type PieceRef } from './pieces.ts';
+import { applyMove, moveDuration, pieceName, reconcile, settlesGuess, type PieceRef } from './pieces.ts';
 
 /** A board with the given pieces, e.g. { e1: 'wK' }. */
 function boardOf(pieces: Record<string, string>): string[] {
@@ -116,5 +116,13 @@ describe('settlesGuess', () => {
 
 	it('has nothing to settle without a guess', () => {
 		expect(settlesGuess(null, { seq: 8 })).toBe(true);
+	});
+});
+
+describe('pieceName', () => {
+	it('names a piece for screen readers', () => {
+		expect(pieceName('bN')).toBe('black knight');
+		expect(pieceName('wQ')).toBe('white queen');
+		expect(pieceName('M')).toBe('the Mamdani');
 	});
 });

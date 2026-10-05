@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockedSquares, diceSteps, firstDiceStep, squareIndex, stageAt } from './board.ts';
+import { blockedSquares, checkSquare, diceSteps, firstDiceStep, squareIndex, stageAt } from './board.ts';
 import type { EventJSON, View } from './game.ts';
 
 /** A view with the given pieces ({"e1": "wK"}), potholes and Mamdani square. */
@@ -167,5 +167,23 @@ describe('diceSteps', () => {
 		expect(steps[2].detail).toBe('The Mamdani on a5 has a clear line to d2.');
 		const odd = makeView({}, { last: [saved[0], { kind: 'rolled_pothole', roll: 7, color: 'black' }] });
 		expect(diceSteps(odd, 2)[0]).toMatchObject({ title: 'Odd. No pothole', dice: [7], tone: 'muted' });
+	});
+});
+
+describe('checkSquare', () => {
+	const v = makeView({ e1: 'wK', e8: 'bK', e5: 'bQ' }, { check: true, turn: 'white' });
+	const stage = stageAt(v, v.last.length);
+
+	it('is the checked king’s square', () => {
+		expect(checkSquare(v, stage, { animating: false, guessing: false })).toBe('e1');
+	});
+
+	it('is empty when nobody is in check', () => {
+		expect(checkSquare({ ...v, check: false }, stage, { animating: false, guessing: false })).toBe('');
+	});
+
+	it('waits for the dice, and for the server while your move is in flight', () => {
+		expect(checkSquare(v, stage, { animating: true, guessing: false })).toBe('');
+		expect(checkSquare(v, stage, { animating: false, guessing: true })).toBe('');
 	});
 });
