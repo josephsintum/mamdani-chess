@@ -14,7 +14,7 @@ A browser game where friends — and strangers via quick match — play Pothole 
 
 | Topic | Decision |
 | --- | --- |
-| Identity | Guests only, identified by a cookie; the server keeps only its SHA-256 (milestone 05). A guest gets a generated name (e.g. `pizza-rat-astoria`) when they first play, and can re-roll it but not type one (milestone 06a, [guest names](../../guest-names.md)). |
+| Identity | Guests only, identified by a cookie; the server keeps only its SHA-256 (milestone 05). A guest gets a generated name (e.g. `pizza-rat-astoria`) when they first play, and can change it to one of 3 offered names, 3 times a day, but not type one (milestone 06a, [guest names](../../guest-names.md)). |
 | Visibility | All games are public. |
 | Time control | One fixed clock for every game: 10+5 (10 minutes each, +5 seconds per move). |
 | Matchmaking | Quick match only: first-come-first-served queue, random colors. |
@@ -37,7 +37,7 @@ Accounts, ratings, game history, private games, chat, draw offers, takebacks, pr
 ## 1. Screens and flows
 
 ### Identity and codes
-- The first API request assigns a guest cookie. A guest gets a name when they first play (create a game, take a seat, or join quick match); it shows top-right with a die button that draws a new one (milestone 06a).
+- The first API request assigns a guest cookie. A guest gets a name when they first play (create a game, take a seat, or join quick match); it shows top-right with a die button that offers 3 new names to pick from, 3 changes in any 24 hours (milestone 06a).
 - Each game has a 6-character code from an alphabet without lookalikes (no `0 O 1 I L`), e.g. `K7F3QZ`. The game URL is `/game/K7F3QZ`; "join with code" navigates there.
 
 ### Home `/`
@@ -89,7 +89,8 @@ Each live game is one goroutine that owns its state. Handlers send it commands (
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/me` | `{name}`, or `{name: null}` before the guest has played. |
-| `POST` | `/api/me/name` | Re-rolls the guest's name; returns `{name}`. |
+| `GET` | `/api/me/names` | Three names the guest may change to (the same three until one is chosen). |
+| `POST` | `/api/me/name` | `{name}`, one of the offers: changes the guest's name. 3 changes in any 24 hours. |
 | `POST` | `/api/games` | `{settings?}` — create friend game, returns `{code}`. |
 | `GET` | `/api/games` | Live games for the homepage, and how many guests are in quick match: `{games, looking}`. |
 | `GET` | `/api/match` | SSE. Open stream = in queue; close = cancel. Emits `queued {looking}`, then `matched {code}` and ends. |

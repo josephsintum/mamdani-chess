@@ -16,10 +16,11 @@ Milestone 06 is split. This spec is **06a**. **06b** (a live watcher count over 
 
 | Topic | Decision | Why |
 | --- | --- | --- |
-| Names | Generated from `names/` (e.g. `pizza-rat-astoria`; how the words were chosen: [guest-names](../../guest-names.md)). A 🎲 button re-rolls; there is no free text. | All games are public and nobody moderates. Sites where strangers meet never let anonymous players pick a name: Lichess shows "Anonymous", chess.com guests get a generated `Guest…` name. Re-rolling gives some personality while strangers only ever see words from our list. |
+| Names | Generated from `names/` (e.g. `pizza-rat-astoria`; how the words were chosen: [guest-names](../../guest-names.md)). A die offers 3 new names to pick from, 3 changes in any 24 hours; there is no free text. | All games are public and nobody moderates. Sites where strangers meet never let anonymous players pick a name: Lichess shows "Anonymous", chess.com guests get a generated `Guest…` name. Picking from offers gives some personality while strangers only ever see words from our list. |
 | Where names live | A `guests` table keyed by the guest ID (the cookie's SHA-256). Stored, never derived from the ID. | A name derived from the ID would change for everyone whenever the word list changes. The cookie stays an opaque ID, so nobody can choose a name by editing it. |
-| When a guest gets a name | Only when playing needs one: creating a friend game, joining quick match, taking a seat, or pressing 🎲. Visiting, browsing and watching never create one. | Every row in `guests` belongs to someone who played, so the table needs no pruning. |
-| Names in games | Each seat keeps a snapshot of its player's name. | A re-roll mid-game doesn't rename anyone in that game, a restored game keeps its names, and old games never need rewriting. |
+| When a guest gets a name | Only when playing needs one: creating a friend game, joining quick match, or taking a seat. Visiting, browsing and watching never create one. | Every row in `guests` belongs to someone who played, so the table needs no pruning. |
+| Names in games | Each seat keeps a snapshot of its player's name. | A name change mid-game doesn't rename anyone in that game, a restored game keeps its names, and old games never need rewriting. |
+| Name changes | 3 in any 24 hours, counted from the first change in the window; the name given at first play doesn't count. Each change picks one of 3 offered names, and the offers stay the same until one is chosen. Enforced on the server. | A name only works if it stays put long enough to be recognised. Fixed offers mean closing and reopening the picker isn't a free re-roll, so nobody can fish for one combination. A limit kept only in the browser would be a hint anyone can clear. Clearing cookies still gives a new guest with a new random name; that's accepted for a guest-only site. |
 | Quick match | First come, first served; random colors; no rating. The queue is an SSE stream: open means queued, closed means gone. A mutex guards the queue. | A small pool makes waits the real problem, so any skill filter would only lengthen them. A closed tab can't leave a ghost in the queue. |
 | Empty queue | Wait with no limit and a Cancel button. Home shows how many are looking; after 60 s the searching screen also offers "Play a friend instead". | Someone arriving later can see there's a person to match. |
 | Live games | Games being played (both seated, not over), most watched first, then newest, at most 12. Polled every 10 s. | Friend games still waiting for their friend aren't for strangers. |
@@ -31,9 +32,12 @@ Milestone 06 is split. This spec is **06a**. **06b** (a live watcher count over 
 ```sql
 -- migration 4
 CREATE TABLE guests (
-  id         TEXT PRIMARY KEY,   -- sha256 of the cookie, as games.white/black
-  name       TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  id            TEXT PRIMARY KEY,   -- sha256 of the cookie, as games.white/black
+  name          TEXT NOT NULL,
+  created_at    INTEGER NOT NULL,
+  changes       INTEGER NOT NULL DEFAULT 0,  -- name changes in the current window
+  changes_since INTEGER,                     -- when the window's first change was
+  offers        TEXT                         -- names on offer, comma-separated
 );
 CREATE INDEX guests_name ON guests(name);  -- for preferring unused names
 ALTER TABLE games ADD COLUMN white_name TEXT;
@@ -42,7 +46,9 @@ ALTER TABLE games ADD COLUMN black_name TEXT;
 
 - `store.GuestName(ctx, id) (name, error)` returns the guest's name, or `""` without creating one.
 - `store.EnsureGuest(ctx, id, draw) (name, error)` returns the guest's name. If there's no row yet, it inserts a fresh name (`INSERT … ON CONFLICT DO NOTHING`, then read back). Every path that needs a name goes through it.
-- `store.RerollGuest(ctx, id, draw) (name, error)` gives the guest a fresh name and returns it.
+- `store.Allowance(ctx, id, now)` returns the changes left (`store.NameChanges` = 3 per `store.NameWindow` = 24 h) and when the window ends.
+- `store.NameOffers(ctx, id, draw, now)` returns the guest's 3 offers, drawing and saving them if there are none. They never include the current name. It returns `ErrNoName` before the guest has played, and `ErrNoChanges` (with the allowance) when none are left.
+- `store.ChooseName(ctx, id, name, now)` takes one of the offers, uses a change and clears the offers. It returns `ErrNotOffered` for any other name, so nobody can set an arbitrary name through the API.
 - **A fresh name prefers names nobody has.** `draw` is `names.Random`. The store draws up to 5 candidates and keeps the first one that no other guest has and that differs from the guest's current name. If all 5 are taken, it uses the last one.
   - So names are unique in practice until roughly 9,000 guests, and repeats become possible gradually after that instead of failing.
   - It also means the second player in a game never gets the name of the player already seated.
@@ -54,8 +60,9 @@ ALTER TABLE games ADD COLUMN black_name TEXT;
 
 | Method | Path | Answer |
 | --- | --- | --- |
-| `GET` | `/api/me` | `{name}`, or `{name: null}` for a guest without one. Never creates a name. |
-| `POST` | `/api/me/name` | Re-rolls (or creates) the name and returns `{name}`. The new name is always different from the old one. |
+| `GET` | `/api/me` | `{name, changesLeft, changesResetAt}`; `name` is null for a guest without one, and `changesResetAt` (Unix ms) is null while no change is used. Never creates a name. |
+| `GET` | `/api/me/names` | `{names: [3], changesLeft, changesResetAt}`. 409 before the guest has played; 429 `{changesResetAt}` when no changes are left. |
+| `POST` | `/api/me/name` | `{name}` must be one of the offers. Answers `{name, changesLeft, changesResetAt}`; 409 for a name not on offer; 429 when no changes are left. |
 
 ### Seats
 
@@ -101,8 +108,9 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 
 ### `Header.svelte`
 
-- The logo (links home) and the name pill: initials, name, and a die button labelled "New name". There's no Play or Rules link yet: Play is the home page itself, and the Rules page is milestone 07.
-- Pressing the die calls `POST /api/me/name`; the new name flips in (no motion under reduced motion) and is announced to screen readers.
+- The logo (links home) and the name pill: initials, name, and a die button labelled with the changes left ("New name (2 changes left today)"). There's no Play or Rules link yet: Play is the home page itself, and the Rules page is milestone 07.
+- Pressing the die opens a panel under the pill. It shows the 3 offers as buttons (focus moves to the first), "Keep <name>", and how many changes are left. Choosing one changes the name, which flips in (no motion under reduced motion) and is announced to screen readers. Escape or a click outside closes the panel.
+- With no changes left, the die is dimmed and labelled "New names again in 5 h", and the panel says so instead of offering names.
 - A guest without a name sees no pill.
 - On phones (under 640 px), as on the canvas's phone artboard: a 24 px mark, no edition tag, and the name as its initials next to the die (screen readers still hear the whole name). A full name next to the title didn't fit: it covered the title on phones narrower than about 410 px.
 - Used on `/` and `/play`. The game page keeps its own header.
@@ -131,8 +139,8 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 
 - **Go**
   - `match`: two guests pair in arrival order; a guest with two tabs is one entry and both tabs get `matched`; one guest alone never pairs; closing the last stream leaves the queue; a failed `create` keeps both at the front; the looking count follows.
-  - `store`: migration 4 on a database with 05 games (old games still restore, names empty); `EnsureGuest` creates once and then returns the same name; `RerollGuest` changes it; with a scripted `draw`, a fresh name skips candidates another guest already has and falls back to the last one when all 5 are taken.
-  - `game`: a seated Black gets a name snapshot; a spectator gets no name; a re-roll after seating doesn't change the game's names; `Hub.List` filters, orders and caps; `watching` counts guests, not tabs.
+  - `store`: migration 4 on a database with 05 games (old games still restore, names empty); `EnsureGuest` creates once and then returns the same name; offers stay the same until one is chosen; only an offered name can be chosen; a fourth change within 24 hours is refused and three come back after; with a scripted `draw`, a fresh name skips candidates another guest already has and falls back to the last one when all 5 are taken.
+  - `game`: a seated Black gets a name snapshot; a spectator gets no name; a name change after seating doesn't change the game's names; `Hub.List` filters, orders and caps; `watching` counts guests, not tabs.
   - `server`: viewing endpoints (`GET /api/me`, `GET /api/games`, a spectator stream) create no `guests` row; `POST /api/games`, `GET /api/match` and taking a seat each create exactly one; `GET /api/match` end to end with two clients; closing the stream leaves the queue; `matched` carries the long retry.
 - **Web:** Vitest for `#lib/lobby.ts` (codes, initials, the FEN helper, elapsed time); `pnpm --dir web check`, `test`, `build`; `npx @sveltejs/mcp svelte-autofixer` on every new or changed component.
 - **Playtest:** `playtest.js` gains `--match`: both guests tap Play online and play the matched game. Run the default and `--match` in Chromium and WebKit, and with `--phone`.

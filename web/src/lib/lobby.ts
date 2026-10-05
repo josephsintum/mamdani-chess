@@ -22,18 +22,51 @@ export interface LiveGames {
 	looking: number;
 }
 
-/** The caller's name, or null if they haven't played yet. */
-export async function myName(): Promise<string | null> {
-	const res = await fetch('/api/me');
-	if (!res.ok) throw new Error(`could not load your name (${res.status})`);
-	return (await res.json()).name;
+/**
+ * The caller's name (null until they first play) and their name changes:
+ * 3 in any 24 hours. changesResetAt (Unix ms) is when they get 3 again, or
+ * null while none are used. Mirrors server/me.go.
+ */
+export interface Me {
+	name: string | null;
+	changesLeft: number;
+	changesResetAt: number | null;
 }
 
-/** Draws a new name for the caller and returns it. */
-export async function rerollName(): Promise<string> {
-	const res = await fetch('/api/me/name', { method: 'POST' });
-	if (!res.ok) throw new Error(`could not change your name (${res.status})`);
-	return (await res.json()).name;
+export async function me(): Promise<Me> {
+	const res = await fetch('/api/me');
+	if (!res.ok) throw new Error(`could not load your name (${res.status})`);
+	return res.json();
+}
+
+/** The names on offer, or none left today (with when they come back). */
+export type Offers = { names: string[]; changesLeft: number } | { resetAt: number };
+
+/** The names the caller may change to; the same ones until one is chosen. */
+export async function nameOffers(): Promise<Offers> {
+	const res = await fetch('/api/me/names');
+	const body = await res.json().catch(() => ({}));
+	if (res.status === 429) return { resetAt: body.changesResetAt };
+	if (!res.ok) throw new Error(body.error ?? `could not load names (${res.status})`);
+	return { names: body.names, changesLeft: body.changesLeft };
+}
+
+/** Changes the caller's name to one of their offers; returns the new state. */
+export async function chooseName(name: string): Promise<Me> {
+	const res = await fetch('/api/me/name', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ name })
+	});
+	const body = await res.json().catch(() => ({}));
+	if (!res.ok) throw new Error(body.error ?? `could not change your name (${res.status})`);
+	return body;
+}
+
+/** How long until resetAt, for "New names again in 5 h": hours or minutes, rounded up. */
+export function untilText(resetAt: number, now: number): string {
+	const mins = Math.max(1, Math.ceil((resetAt - now) / 60_000));
+	return mins >= 60 ? `${Math.ceil(mins / 60)} h` : `${mins} min`;
 }
 
 export async function liveGames(): Promise<LiveGames> {

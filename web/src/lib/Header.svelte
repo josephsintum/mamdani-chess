@@ -1,21 +1,52 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { initials, rerollName } from './lobby.ts';
+	import { chooseName, initials, nameOffers, untilText, type Me } from './lobby.ts';
 	import { reducedMotion } from './motion.ts';
 
-	// The site header on the home and quick-match pages: logo, Play, and the
-	// guest's name with a button that draws a new one. A guest who hasn't
-	// played yet has no name, so no name shows.
-	let { name = $bindable(null) }: { name?: string | null } = $props();
+	// The site header on the home and quick-match pages: the logo, and the
+	// guest's name with a die that offers three new names to pick from (3
+	// changes in any 24 hours). A guest who hasn't played yet has no name,
+	// so no name shows.
+	let { me = $bindable(null) }: { me?: Me | null } = $props();
 
+	let open = $state(false);
+	let offers = $state<string[] | null>(null);
 	let busy = $state(false);
 	let error = $state('');
+	let announce = $state(''); // read out after a change, not on every load
+	let pill: HTMLDivElement | undefined = $state();
+	let die: HTMLButtonElement | undefined = $state();
 
-	async function reroll() {
+	let name = $derived(me?.name ?? null);
+	let left = $derived(me?.changesLeft ?? 0);
+	let wait = $derived(me?.changesResetAt ? untilText(me.changesResetAt, Date.now()) : '');
+	let dieLabel = $derived(left > 0 ? `New name (${left} ${left === 1 ? 'change' : 'changes'} left today)` : `New names again in ${wait}`);
+
+	async function toggle() {
+		if (open) return close();
+		open = true;
+		error = '';
+		offers = null;
+		if (left === 0) return; // the panel says when names come back
+		try {
+			const o = await nameOffers();
+			if ('resetAt' in o) {
+				if (me) me = { ...me, changesLeft: 0, changesResetAt: o.resetAt };
+			} else {
+				offers = o.names;
+			}
+		} catch {
+			error = 'Could not load new names. Try again.';
+		}
+	}
+
+	async function choose(next: string) {
 		busy = true;
 		error = '';
 		try {
-			name = await rerollName();
+			me = await chooseName(next);
+			announce = `Your name is now ${next}`;
+			close();
 		} catch {
 			error = 'Could not change your name. Try again.';
 		} finally {
@@ -23,8 +54,23 @@
 		}
 	}
 
+	function close() {
+		open = false;
+		die?.focus();
+	}
+
+	function onKey(e: KeyboardEvent) {
+		if (open && e.key === 'Escape') close();
+	}
+
+	function onPointer(e: PointerEvent) {
+		if (open && pill && !pill.contains(e.target as Node)) open = false;
+	}
+
 	const flip = (node: Element) => fly(node, { y: reducedMotion() ? 0 : -10, duration: reducedMotion() ? 0 : 180 });
 </script>
+
+<svelte:window onkeydown={onKey} onpointerdown={onPointer} />
 
 <header>
 	<div class="inner">
@@ -39,7 +85,7 @@
 			<span class="edition">Mamdani Edition</span>
 		</a>
 		{#if name}
-			<div class="me">
+			<div class="me" bind:this={pill}>
 				<span class="badge" aria-hidden="true">{initials(name)}</span>
 				{#key name}
 					<span class="name" title={name} in:flip>{name}</span>
@@ -47,10 +93,13 @@
 				<button
 					type="button"
 					class="reroll"
-					onclick={reroll}
-					disabled={busy}
-					aria-label="New name"
-					title="New name"
+					class:spent={left === 0}
+					onclick={toggle}
+					bind:this={die}
+					aria-expanded={open}
+					aria-controls="name-picker"
+					aria-label={dieLabel}
+					title={dieLabel}
 				>
 					<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 						<rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="2" />
@@ -61,11 +110,42 @@
 						<circle cx="16" cy="16" r="1.6" fill="currentColor" />
 					</svg>
 				</button>
+				{#if open}
+					<div class="picker" id="name-picker" role="group" aria-label="Change your name">
+						{#if left === 0}
+							<p class="pick-title">No name changes left</p>
+							<p class="quiet">You've used today's 3. New names again in {wait}.</p>
+						{:else}
+							<p class="pick-title">Pick a new name</p>
+							{#if offers}
+								<ul>
+									{#each offers as offer, i (offer)}
+										<li>
+											<button
+												type="button"
+												class="offer"
+												onclick={() => choose(offer)}
+												disabled={busy}
+												{@attach (el) => {
+													if (i === 0) el.focus();
+												}}>{offer}</button
+											>
+										</li>
+									{/each}
+								</ul>
+							{:else if !error}
+								<p class="quiet">Drawing names…</p>
+							{/if}
+							<p class="quiet">{left} {left === 1 ? 'change' : 'changes'} left today. Choosing one uses a change.</p>
+						{/if}
+						<button type="button" class="keep" onclick={close}>Keep {name}</button>
+						{#if error}<p class="error" role="alert">{error}</p>{/if}
+					</div>
+				{/if}
 			</div>
 		{/if}
 	</div>
-	<p class="sr-only" aria-live="polite">{name ? `Your name is ${name}` : ''}</p>
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	<p class="sr-only" aria-live="polite">{announce}</p>
 </header>
 
 <style>
@@ -164,14 +244,80 @@
 		background: var(--surface-2);
 		color: var(--accent);
 	}
-	.reroll:disabled {
-		opacity: 0.5;
+	.reroll.spent {
+		opacity: 0.45;
+	}
+	.me {
+		position: relative;
+	}
+	/* The name picker: under the pill on desktop, across the screen on phones. */
+	.picker {
+		position: absolute;
+		top: calc(100% + 8px);
+		right: 0;
+		z-index: 10;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		width: 300px;
+		padding: 16px;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		background: var(--surface);
+		box-shadow: 0 14px 36px var(--hole);
+	}
+	.pick-title {
+		margin: 0;
+		color: var(--text);
+		font-family: var(--font-display);
+		font-weight: 800;
+		font-size: 20px;
+		text-transform: uppercase;
+	}
+	.picker ul {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.offer,
+	.keep {
+		width: 100%;
+		min-height: 44px;
+		padding: 0 14px;
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		background: var(--surface-2);
+		color: var(--text);
+		font: inherit;
+		font-weight: 600;
+		text-align: left;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		cursor: pointer;
+	}
+	.offer:hover,
+	.offer:focus-visible {
+		border-color: var(--accent);
+	}
+	.offer:disabled {
+		opacity: 0.6;
 		cursor: default;
 	}
+	.keep {
+		background: transparent;
+		color: var(--text-muted);
+	}
+	.quiet {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: 13px;
+	}
 	.error {
-		max-width: 1280px;
-		margin: 0 auto;
-		padding: 0 32px 8px;
+		margin: 0;
 		color: var(--hazard-text);
 		font-size: 14px;
 	}
@@ -207,6 +353,16 @@
 		.me {
 			flex-shrink: 0;
 			gap: 6px;
+		}
+		.me {
+			position: static;
+		}
+		.picker {
+			position: fixed;
+			top: 68px;
+			left: 16px;
+			right: 16px;
+			width: auto;
 		}
 		.name {
 			position: absolute;

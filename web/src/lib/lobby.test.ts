@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardFromFen, formatElapsed, initials, isCode, normalizeCode } from './lobby.ts';
+import { boardFromFen, formatElapsed, initials, isCode, normalizeCode, untilText } from './lobby.ts';
 
 describe('normalizeCode', () => {
 	it('upper-cases and keeps only code characters', () => {
@@ -55,5 +55,21 @@ describe('formatElapsed', () => {
 		expect(formatElapsed(7_900)).toBe('0:07');
 		expect(formatElapsed(90_000)).toBe('1:30');
 		expect(formatElapsed(725_000)).toBe('12:05');
+	});
+});
+
+describe('untilText', () => {
+	const now = 1_000_000_000;
+	it('says hours, rounding up, for an hour or more', () => {
+		expect(untilText(now + 5 * 3_600_000, now)).toBe('5 h');
+		expect(untilText(now + 4 * 3_600_000 + 1, now)).toBe('5 h');
+		expect(untilText(now + 3_600_000, now)).toBe('1 h');
+	});
+	it('says minutes, rounding up, under an hour', () => {
+		expect(untilText(now + 40 * 60_000, now)).toBe('40 min');
+		expect(untilText(now + 1, now)).toBe('1 min');
+	});
+	it('never goes below a minute', () => {
+		expect(untilText(now - 5_000, now)).toBe('1 min');
 	});
 });

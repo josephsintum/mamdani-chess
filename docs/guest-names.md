@@ -4,7 +4,7 @@ Every guest who plays gets a generated name like `pizza-rat-astoria`: a thing yo
 
 ## Why generated names
 
-All games are public and there are no moderators, so guests can't type their own name. Players can re-roll (🎲) until they like one. Strangers then only ever see words from our own list. Lichess and chess.com do the same for players without an account: Lichess shows "Anonymous", and chess.com guests get a generated name.
+All games are public and there are no moderators, so guests can't type their own name. Players can change it with the die: it offers 3 names to pick from, and they get 3 changes in any 24 hours. A name only works if it stays put long enough to be recognised, and offers that stay the same until one is chosen mean nobody can fish for a particular combination. Strangers then only ever see words from our own list. Lichess and chess.com do the same for players without an account: Lichess shows "Anonymous", and chess.com guests get a generated name.
 
 ## Where the words came from
 
@@ -117,4 +117,4 @@ Names are display-only and don't need to be unique, but new names prefer ones no
 
 ## Names are stored, not derived
 
-A guest's name is saved in the `guests` table when they first play. It is never recomputed from their ID. So editing `words.go` (adding, removing or blocking words) never renames anyone who already has a name. It only changes what new guests and re-rolls can draw. Each game also keeps a copy of both players' names from when they sat down.
+A guest's name is saved in the `guests` table when they first play. It is never recomputed from their ID. So editing `words.go` (adding, removing or blocking words) never renames anyone who already has a name. It only changes what new guests and name offers can draw. Each game also keeps a copy of both players' names from when they sat down.

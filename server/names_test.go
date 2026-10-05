@@ -69,18 +69,69 @@ func TestPlayingGivesANameThatShowsInTheGame(t *testing.T) {
 	}
 }
 
-func TestRerollName(t *testing.T) {
+func (p *player) me() meJSON {
+	p.t.Helper()
+	status, body := p.get("/api/me")
+	var out meJSON
+	if status != http.StatusOK || json.Unmarshal([]byte(body), &out) != nil {
+		p.t.Fatalf("GET /api/me: %d %s", status, body)
+	}
+	return out
+}
+
+// offers is the caller's GET /api/me/names.
+func (p *player) offers() (int, []string) {
+	p.t.Helper()
+	status, body := p.get("/api/me/names")
+	var out struct{ Names []string }
+	json.Unmarshal([]byte(body), &out)
+	return status, out.Names
+}
+
+func TestChangeNameFromOffers(t *testing.T) {
 	_, ts := newTestServer(t)
 	alice := newPlayer(t, ts)
-	status, body := alice.post("/api/me/name", "")
-	var out struct{ Name string }
-	if status != http.StatusOK || json.Unmarshal([]byte(body), &out) != nil || out.Name == "" {
-		t.Fatalf("first reroll: %d %s", status, body)
+	if status, _ := alice.offers(); status != http.StatusConflict {
+		t.Fatalf("offers before playing: %d, want 409", status)
 	}
-	first := out.Name
-	_, body = alice.post("/api/me/name", "")
-	json.Unmarshal([]byte(body), &out)
-	if out.Name == first || alice.name() != out.Name {
-		t.Fatalf("second reroll %q (first %q), GET /api/me %q", out.Name, first, alice.name())
+	alice.create() // playing gives a name
+	before := alice.me()
+	if before.Name == nil || before.ChangesLeft != 3 || before.ChangesResetAt != nil {
+		t.Fatalf("me after playing: %+v", before)
+	}
+	status, offers := alice.offers()
+	if status != http.StatusOK || len(offers) != 3 {
+		t.Fatalf("offers: %d %v", status, offers)
+	}
+	if status, body := alice.post("/api/me/name", `{"name":"not-on-offer"}`); status != http.StatusConflict {
+		t.Fatalf("choosing an unoffered name: %d %s, want 409", status, body)
+	}
+	status, body := alice.post("/api/me/name", `{"name":"`+offers[1]+`"}`)
+	var out meJSON
+	if status != http.StatusOK || json.Unmarshal([]byte(body), &out) != nil || *out.Name != offers[1] || out.ChangesLeft != 2 || out.ChangesResetAt == nil {
+		t.Fatalf("choosing: %d %s", status, body)
+	}
+	if me := alice.me(); *me.Name != offers[1] || me.ChangesLeft != 2 {
+		t.Fatalf("me after choosing: %+v", me)
+	}
+}
+
+func TestNoChangesLeftIs429(t *testing.T) {
+	_, ts := newTestServer(t)
+	alice := newPlayer(t, ts)
+	alice.create()
+	for range 3 {
+		_, offers := alice.offers()
+		if status, body := alice.post("/api/me/name", `{"name":"`+offers[0]+`"}`); status != http.StatusOK {
+			t.Fatalf("change: %d %s", status, body)
+		}
+	}
+	status, body := alice.get("/api/me/names")
+	var out struct{ ChangesResetAt int64 }
+	if status != http.StatusTooManyRequests || json.Unmarshal([]byte(body), &out) != nil || out.ChangesResetAt == 0 {
+		t.Fatalf("a fourth change: %d %s, want 429 with the reset time", status, body)
+	}
+	if me := alice.me(); me.ChangesLeft != 0 || me.ChangesResetAt == nil {
+		t.Fatalf("me with none left: %+v", me)
 	}
 }

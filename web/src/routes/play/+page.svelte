@@ -3,13 +3,13 @@
 	import { goto } from '$app/navigation';
 	import Header from '#lib/Header.svelte';
 	import { createGame } from '#lib/game.ts';
-	import { formatElapsed, myName } from '#lib/lobby.ts';
+	import { formatElapsed, me, type Me } from '#lib/lobby.ts';
 
 	// Quick match: the guest is in the queue while this page's stream is
 	// open. Cancel, Back or closing the tab all leave it.
 	const OFFER_FRIEND_MS = 60_000;
 
-	let name = $state<string | null>(null);
+	let user = $state<Me | null>(null);
 	let started = Date.now();
 	let now = $state(Date.now());
 	let connected = $state(false);
@@ -29,8 +29,8 @@
 			stream.addEventListener('queued', () => {
 				connected = true;
 				// Joining the queue gave the guest a name if they had none.
-				myName()
-					.then((n) => (name = n))
+				me()
+					.then((m) => (user = m))
 					.catch(() => {});
 			});
 			stream.addEventListener('matched', (e) => {
@@ -73,7 +73,7 @@
 	<title>Finding an opponent · Pothole Chess</title>
 </svelte:head>
 
-<Header bind:name />
+<Header bind:me={user} />
 
 <main>
 	<div class="ring" aria-hidden="true">

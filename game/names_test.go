@@ -3,7 +3,9 @@ package game
 import (
 	"context"
 	"testing"
+	"time"
 
+	"mamdani-chess/names"
 	"mamdani-chess/store"
 )
 
@@ -51,9 +53,13 @@ func TestARerollDoesntRenameAPlayerMidGame(t *testing.T) {
 	g := create(t, NewHub(odd{}, st), "alice")
 	join(t, g, "bob")
 	before := guestName(t, st, "alice")
-	after, err := st.RerollGuest(context.Background(), "alice", func() string { return "pigeon-astoria" })
-	if err != nil || after == before {
-		t.Fatalf("reroll: %q, %v", after, err)
+	ctx, now := context.Background(), time.Now()
+	offers, _, err := st.NameOffers(ctx, "alice", names.Random, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ChooseName(ctx, "alice", offers[0], now); err != nil || guestName(t, st, "alice") == before {
+		t.Fatalf("change name: %v", err)
 	}
 	if p := recvView(t, g, "bob").Players; p.White != before {
 		t.Fatalf("white is %q after the reroll, want %q", p.White, before)

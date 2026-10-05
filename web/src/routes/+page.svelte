@@ -4,13 +4,13 @@
 	import Header from '#lib/Header.svelte';
 	import MiniBoard from '#lib/MiniBoard.svelte';
 	import { createGame } from '#lib/game.ts';
-	import { boardFromFen, isCode, liveGames, myName, normalizeCode, type LiveGame } from '#lib/lobby.ts';
+	import { boardFromFen, isCode, liveGames, me, normalizeCode, type LiveGame, type Me } from '#lib/lobby.ts';
 
 	// The canvas's hero position: a pothole open on f4, the Mamdani on a5.
 	const demo = boardFromFen('r1bqkb1r/1p3ppp/p1n1pn2/3N4/3P4/5N2/PP2PPPP/R1BQKB1R');
 	const REFRESH_MS = 10_000;
 
-	let name = $state<string | null>(null);
+	let user = $state<Me | null>(null);
 	let games = $state<LiveGame[] | null>(null); // null until the first answer
 	let looking = $state(0);
 	let code = $state('');
@@ -26,8 +26,8 @@
 	}
 
 	onMount(() => {
-		myName()
-			.then((n) => (name = n))
+		me()
+			.then((m) => (user = m))
 			.catch(() => {});
 		refresh();
 		// Every 10 s while the tab is visible, and at once when it comes back.
@@ -67,7 +67,7 @@
 	<title>Pothole Chess: Mamdani Edition</title>
 </svelte:head>
 
-<Header bind:name />
+<Header bind:me={user} />
 
 <main>
 	<section class="hero">
