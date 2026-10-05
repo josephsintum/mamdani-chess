@@ -39,8 +39,12 @@ func (h *Hub) restore(sg store.SavedGame, now time.Time) error {
 	}
 	if r := sg.Result; r != nil {
 		g.g.Result = savedRules(r)
-		if r.Reason != string(rules.Checkmate) && !g.g.Result.Draw {
-			g.last = nil // resigned or out of time: no move ended it
+		switch rules.Reason(r.Reason) {
+		case Timeout, TimeoutVsInsufficient:
+			g.clock.remaining[g.g.Pos.Turn] = 0 // the side to move ran out
+			g.last = nil
+		case Resignation, Aborted, Expired:
+			g.last = nil // no move ended it
 		}
 	}
 	// Downtime isn't charged: the side to move's clock starts again after
@@ -56,7 +60,7 @@ func (h *Hub) restore(sg store.SavedGame, now time.Time) error {
 		defer h.mu.Unlock()
 		delete(h.games, sg.Code)
 	}
-	slog.Info("game restored", "code", sg.Code, "moves", len(sg.Turns), "status", g.status())
+	slog.Info("game restored", "code", sg.Code, "moves", len(sg.Turns), "phase", g.status())
 	go g.loop()
 	return nil
 }

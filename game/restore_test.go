@@ -103,6 +103,41 @@ func TestRestoreRestartsTheFirstMoveDeadline(t *testing.T) {
 	}
 }
 
+// A game that ended on time comes back as it looked: the loser's clock at
+// 0:00, and no dice replayed from the last move (the flag ended it, not a move).
+func TestRestoreShowsAFlagFallAsItWas(t *testing.T) {
+	turns := []store.Turn{
+		{Ply: 0, Move: "e2e4", Dice: []int{1}, WhiteMS: 600_000, BlackMS: 600_000},
+		{Ply: 1, Move: "e7e5", Dice: []int{1}, WhiteMS: 600_000, BlackMS: 600_000},
+	}
+	cases := []struct {
+		reason, winner string
+	}{
+		{string(Timeout), "black"},          // White to move, out of time
+		{string(TimeoutVsInsufficient), ""}, // the same flag, but a draw
+	}
+	for _, c := range cases {
+		h := NewHub(odd{}, nil)
+		code := "FLAG" + c.reason[:2]
+		h.Restore([]store.SavedGame{{
+			Game:   store.Game{Code: code, White: "a", Black: "b"},
+			Turns:  turns,
+			Result: &store.Result{EndedAt: time.Now(), Reason: c.reason, Winner: c.winner},
+		}})
+		g, ok := h.Get(code)
+		if !ok {
+			t.Fatalf("%s: not restored", c.reason)
+		}
+		v := recvView(t, g, "b")
+		if v.Clock.WhiteMS != 0 || v.Clock.BlackMS != 600_000 {
+			t.Errorf("%s: clocks %+v, want White at 0", c.reason, v.Clock)
+		}
+		if len(v.Last) != 0 {
+			t.Errorf("%s: last %v, want no dice replayed", c.reason, v.Last)
+		}
+	}
+}
+
 func TestRestoreSkipsAGameThatWontReplay(t *testing.T) {
 	saved := []store.SavedGame{
 		{Game: store.Game{Code: "BAD001", White: "a", Black: "b"},
