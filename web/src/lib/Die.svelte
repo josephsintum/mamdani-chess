@@ -21,7 +21,9 @@
 </script>
 
 <span class="die" class:highlight class:rolling={face !== 0} {@attach tumble}>
-	<span>{face || value}</span>
+	<!-- The tray is a live region: screen readers get the value, never the tumbling faces. -->
+	<span aria-hidden="true">{face || value}</span>
+	<span class="sr-only">{value}</span>
 </span>
 
 <style>
@@ -52,6 +54,14 @@
 		font-weight: 600;
 		font-size: 15px;
 		color: var(--text);
+	}
+	.die .sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.die.highlight {
 		background: var(--accent);

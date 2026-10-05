@@ -89,9 +89,14 @@
 		if (!view || busy) return;
 		busy = true;
 		optimistic = { seq: view.seq, move: m };
-		error = (await sendMove(code, m, view.seq)) ?? '';
-		busy = false;
-		if (error) optimistic = null; // refused: glide back
+		try {
+			error = (await sendMove(code, m, view.seq)) ?? '';
+		} catch {
+			error = 'Could not reach the server. Try again.';
+		} finally {
+			busy = false;
+		}
+		if (error) optimistic = null; // refused or unsent: glide back
 	}
 
 	async function doResign() {
@@ -204,7 +209,7 @@
 						legal={view.legal}
 						{lastMove}
 						flipped={bottom === 'black'}
-						interactive={!animating && !busy && playing}
+						interactive={!animating && !busy && !optimistic && playing}
 						dim={!!resultCard}
 						check={checkSquare}
 						saved={savedSquare}
