@@ -28,8 +28,15 @@ export class Animator {
 	 * the next turn; anything else (first load, reconnect, resignation)
 	 * shows at once. A hidden tab skips the animation: browsers throttle its
 	 * timers, so a player coming back would otherwise wait through slow dice.
+	 * An update for the same turn (a player going offline, a rematch offer)
+	 * keeps a roll that is playing where it is.
 	 */
 	receive(next: View, { hidden = false }: { hidden?: boolean } = {}) {
+		if (this.view !== null && next.seq === this.view.seq) {
+			this.view = next;
+			this.shown = Math.min(this.shown, next.last.length);
+			return;
+		}
 		const animate = this.view !== null && next.seq === this.view.seq + 1 && next.last.length > 0 && !hidden;
 		this.view = next;
 		clearTimeout(this.#timer);

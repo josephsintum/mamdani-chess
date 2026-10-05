@@ -64,6 +64,27 @@ describe('Animator', () => {
 		expect(a.animating).toBe(false);
 	});
 
+	it('keeps playing when an update for the same turn arrives', () => {
+		const a = new Animator(100);
+		a.receive(view(0));
+		a.receive(view(1, roll));
+		vi.advanceTimersByTime(100);
+		a.receive(view(1, roll)); // the opponent went offline, say
+		expect(a.shown).toBe(2);
+		expect(a.animating).toBe(true);
+		vi.advanceTimersByTime(100);
+		expect(a.shown).toBe(3);
+	});
+
+	it('stops at the end of a shorter turn for the same move', () => {
+		const a = new Animator(100);
+		a.receive(view(0));
+		a.receive(view(1, roll));
+		a.receive(view(1, [])); // resigned during the roll: nothing left to show
+		expect(a.shown).toBe(0);
+		expect(a.animating).toBe(false);
+	});
+
 	it('takes a new step time for the next turn', () => {
 		const a = new Animator(100);
 		a.receive(view(0));

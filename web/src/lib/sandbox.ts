@@ -41,7 +41,10 @@ function emptyView(): View {
 		lost: { white: [], black: [] },
 		stats: { savingRolls: 0, saved: 0, repaired: 0, mamdaniFell: false },
 		result: null,
-		seq: 0
+		seq: 0,
+		clock: { whiteMs: 600_000, blackMs: 600_000, now: 0 },
+		online: { white: true, black: true },
+		rematch: {}
 	};
 }
 

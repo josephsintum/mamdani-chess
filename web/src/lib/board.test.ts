@@ -22,6 +22,9 @@ function makeView(pieces: Record<string, string>, extra: Partial<View> = {}): Vi
 		stats: { savingRolls: 0, saved: 0, repaired: 0, mamdaniFell: false },
 		result: null,
 		seq: 1,
+		clock: { whiteMs: 600_000, blackMs: 600_000, now: 0 },
+		online: { white: true, black: true },
+		rematch: {},
 		...extra
 	};
 }
