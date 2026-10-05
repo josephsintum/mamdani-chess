@@ -125,6 +125,43 @@ func TestCreateDoesNotBlockLookupsWhileSaving(t *testing.T) {
 	<-looked
 }
 
+// Two creates running at once never get the same code, even when the code
+// generator offers it to both, and a code freed by a failed save can be
+// used again.
+func TestCreatesNeverShareACode(t *testing.T) {
+	var mu sync.Mutex
+	draws := []string{"SAME00", "SAME00", "OTHER1"}
+	h := NewHub(odd{}, nil)
+	h.newCode = func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		c := draws[0]
+		draws = draws[1:]
+		return c
+	}
+	var wg sync.WaitGroup
+	codes := make([]string, 2)
+	for i := range codes {
+		wg.Go(func() { codes[i] = create(t, h, "alice").Code() })
+	}
+	wg.Wait()
+	if codes[0] == codes[1] {
+		t.Fatalf("both games got %s", codes[0])
+	}
+}
+
+func TestAFailedSaveFreesItsCode(t *testing.T) {
+	st := &failing{fail: true}
+	h := withCodes(NewHub(odd{}, st), "RETRY1", "RETRY1")
+	if _, err := h.Create("alice"); err == nil {
+		t.Fatal("create should fail")
+	}
+	st.fail = false
+	if g := create(t, h, "bob"); g.Code() != "RETRY1" {
+		t.Fatalf("code %s, want RETRY1 reused", g.Code())
+	}
+}
+
 func TestCreateFailsWhenTheSaveFails(t *testing.T) {
 	h := NewHub(odd{}, &failing{fail: true})
 	if _, err := h.Create("alice"); !errors.Is(err, errDiskFull) {

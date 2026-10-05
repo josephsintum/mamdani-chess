@@ -187,7 +187,7 @@ Agents played the deployed build (desktop, phone size, and the edge cases). No b
 - **Offline:** the page shows "Reconnecting — your move will be sent" as soon as the device goes offline, and opens a fresh stream when it's back.
 - **A refused move** resyncs from the `state` its 409 carries.
 - **The first-move countdown** never shows more than 60 s (it read 62 s during the dice pause).
-- **Restore:** a game that ended on time comes back with the loser at 0:00 and no dice replayed; an accepted rematch is linked again from `rematch_of`; a saved game that won't replay is ended as `unrestorable`, so startups stop retrying it. A resigner's time on their last turn isn't saved, so a restored resignation shows the clock from the turn before.
+- **Restore:** a game that ended on time comes back with the loser at 0:00 and no dice replayed; an accepted rematch is linked again from `rematch_of`. A saved game that won't replay is skipped and logged at ERROR on each startup, and deliberately not marked ended: a bad deploy that breaks replay would otherwise end every game in progress for good, even after a rollback. A resigner's time on their last turn isn't saved, so a restored resignation shows the clock from the turn before.
 - **Creating a game** no longer holds the hub's lock during the database write (codes are reserved instead).
 - **`/healthz`** reports the deployed commit (`RAILWAY_GIT_COMMIT_SHA`, `dev` locally), so a deploy can be checked without creating a game.
 - **Logs:** move requests log at DEBUG; game events and other requests stay at INFO.
