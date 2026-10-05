@@ -24,7 +24,7 @@ In scope: everything the Go server does at milestone 04, which is the `rules`, `
 
 Out of scope:
 - `names/`, which is unused until milestone 06.
-- The SQLite store. In Go it holds only two migrations that cancel each other out, and nothing calls it. It arrives with persistence in milestone 05, designed then.
+- The SQLite store. In Go it holds only two migrations that cancel each other out, and nothing calls it. Persistence is a later phase (see the end of this spec).
 - Clocks, quick match and everything else from milestone 05 onwards.
 - Dockerfile and Railway changes.
 - Any change to Go code, `go.mod`, `names/` or `web/`.
@@ -259,6 +259,26 @@ There is one task per game, and it owns the game state with no locks. This is th
 - `.gitignore` gains `server_rs/target/` and the large parity files.
 - The only edit to an existing file is the CI job.
 - Stage specific paths only. No Claude attribution in commits (CLAUDE.md).
+
+## Later phase: persistence
+
+This is not part of the first pass. It starts once parity is proven, so the parity tests compare like with like. It implements the product spec's §persistence. That is roadmap milestone 05 territory, so here the Rust server would get ahead of Go.
+
+- **Schema:**
+  - `games(code PRIMARY KEY, white, black, created_at, result)`
+  - `turns(code, seq, mv, dice, PRIMARY KEY(code, seq))`
+  - Only moves and rolls are stored, because rules plus fixed dice are deterministic, so `Game::replay` rebuilds any position.
+- **Writer:** `rusqlite` with the `bundled` feature, on one dedicated blocking thread that owns the connection (WAL, `busy_timeout`). Actors send it requests over an `mpsc` channel with `oneshot` replies. There's no pool in front of a single-writer database.
+- **Write ordering:**
+  - The actor writes each turn *before* broadcasting it.
+  - If the write fails, the move gets a 500 and nothing is broadcast, so clients never see a turn the database didn't keep.
+  - Game creation, Black's seat, resignation and results are written the same way.
+- **Startup:** before binding the listener, load unfinished games, replay each into an actor, and register it in the `Hub`.
+- **Migrations:** an append-only list tracked in `schema_version`. It starts fresh, with no `honks`.
+- **Tests:**
+  - a restart in the middle of a game restores an identical view;
+  - a failed write blocks the broadcast;
+  - running migrations twice is safe.
 
 ## Risks
 
