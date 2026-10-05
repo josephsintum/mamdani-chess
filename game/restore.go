@@ -22,6 +22,19 @@ func (h *Hub) Restore(saved []store.SavedGame) int {
 		}
 		n++
 	}
+	// An accepted rematch isn't saved on the old game, only as rematch_of on
+	// the new one: point each restored old game at its rematch again.
+	for _, sg := range saved {
+		if sg.RematchOf == "" {
+			continue
+		}
+		if _, ok := h.Get(sg.Code); !ok {
+			continue // the rematch itself wasn't restored
+		}
+		if old, ok := h.Get(sg.RematchOf); ok {
+			old.do(func() { old.rematch = rematch{code: sg.Code} })
+		}
+	}
 	return n
 }
 

@@ -103,6 +103,28 @@ func TestRestoreRestartsTheFirstMoveDeadline(t *testing.T) {
 	}
 }
 
+// After a restart the old game still points at its rematch, so it doesn't
+// offer a second one, and spectators keep their link.
+func TestRestoreRemembersAnAcceptedRematch(t *testing.T) {
+	st := openStore(t)
+	g, _, _ := over(t, NewHub(odd{}, st))
+	g.Rematch("alice", false)
+	g.Rematch("bob", false)
+	next := recvView(t, g, "alice").Rematch.Code
+	if next == "" {
+		t.Fatal("test setup: no rematch")
+	}
+	h2 := NewHub(odd{}, st)
+	h2.Restore(load(t, st))
+	g2, ok := h2.Get(g.Code())
+	if !ok {
+		t.Fatal("the old game wasn't restored")
+	}
+	if got := recvView(t, g2, "alice").Rematch; got.Code != next {
+		t.Fatalf("restored rematch %+v, want code %s", got, next)
+	}
+}
+
 // A game that ended on time comes back as it looked: the loser's clock at
 // 0:00, and no dice replayed from the last move (the flag ended it, not a move).
 func TestRestoreShowsAFlagFallAsItWas(t *testing.T) {
