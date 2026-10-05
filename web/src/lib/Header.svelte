@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { chooseName, initials, nameOffers, untilText, type Me } from './lobby.ts';
+	import { chooseName, initials, NAME_CHANGES, nameOffers, untilText, type Me } from './lobby.ts';
 	import { reducedMotion } from './motion.ts';
 
 	// The site header on the home and quick-match pages: the logo, and the
@@ -112,11 +112,20 @@
 				</button>
 				{#if open}
 					<div class="picker" id="name-picker" role="group" aria-label="Change your name">
+						<div class="pick-head">
+							<p class="pick-title">{left === 0 ? 'No changes left' : 'Pick a new name'}</p>
+							<span class="left">
+								<span class="pips" aria-hidden="true">
+									{#each Array.from({ length: NAME_CHANGES }, (_, i) => i) as i (i)}
+										<span class="pip" class:used={i >= left}></span>
+									{/each}
+								</span>
+								{left} of {NAME_CHANGES} left today
+							</span>
+						</div>
 						{#if left === 0}
-							<p class="pick-title">No name changes left</p>
-							<p class="quiet">You've used today's 3. New names again in {wait}.</p>
+							<p class="quiet">New names again in {wait}.</p>
 						{:else}
-							<p class="pick-title">Pick a new name</p>
 							{#if offers}
 								<ul>
 									{#each offers as offer, i (offer)}
@@ -136,9 +145,9 @@
 							{:else if !error}
 								<p class="quiet">Drawing names…</p>
 							{/if}
-							<p class="quiet">{left} {left === 1 ? 'change' : 'changes'} left today. Choosing one uses a change.</p>
+							<p class="quiet">Choosing one uses a change.</p>
 						{/if}
-						<button type="button" class="keep" onclick={close}>Keep {name}</button>
+						<button type="button" class="keep" onclick={close}>{left === 0 ? 'OK' : `Keep ${name}`}</button>
 						{#if error}<p class="error" role="alert">{error}</p>{/if}
 					</div>
 				{/if}
@@ -265,6 +274,34 @@
 		border-radius: 12px;
 		background: var(--surface);
 		box-shadow: 0 14px 36px var(--hole);
+	}
+	.pick-head {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.left {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-shrink: 0;
+		color: var(--text);
+		font-family: var(--font-mono);
+		font-size: 12px;
+	}
+	.pips {
+		display: flex;
+		gap: 4px;
+	}
+	.pip {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--accent);
+	}
+	.pip.used {
+		background: transparent;
+		box-shadow: inset 0 0 0 1.5px var(--line);
 	}
 	.pick-title {
 		margin: 0;

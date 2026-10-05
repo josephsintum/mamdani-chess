@@ -33,6 +33,9 @@ export interface Me {
 	changesResetAt: number | null;
 }
 
+/** Name changes a guest gets in any 24 hours (store.NameChanges on the server). */
+export const NAME_CHANGES = 3;
+
 export async function me(): Promise<Me> {
 	const res = await fetch('/api/me');
 	if (!res.ok) throw new Error(`could not load your name (${res.status})`);

@@ -109,8 +109,8 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 ### `Header.svelte`
 
 - The logo (links home) and the name pill: initials, name, and a die button labelled with the changes left ("New name (2 changes left today)"). There's no Play or Rules link yet: Play is the home page itself, and the Rules page is milestone 07.
-- Pressing the die opens a panel under the pill. It shows the 3 offers as buttons (focus moves to the first), "Keep <name>", and how many changes are left. Choosing one changes the name, which flips in (no motion under reduced motion) and is announced to screen readers. Escape or a click outside closes the panel.
-- With no changes left, the die is dimmed and labelled "New names again in 5 h", and the panel says so instead of offering names.
+- Pressing the die opens a panel under the pill. At its top, under the title, it shows the changes left, as three pips and "2 of 3 left today", so they're in view while choosing. Then the 3 offers as buttons (focus moves to the first) and "Keep <name>". Choosing one changes the name, which flips in (no motion under reduced motion) and is announced to screen readers. Escape or a click outside closes the panel.
+- With no changes left, the die is dimmed and labelled "New names again in 5 h". The panel shows "0 of 3 left today" and when names come back instead of offering names, and its button says OK.
 - A guest without a name sees no pill.
 - On phones (under 640 px), as on the canvas's phone artboard: a 24 px mark, no edition tag, and the name as its initials next to the die (screen readers still hear the whole name). A full name next to the title didn't fit: it covered the title on phones narrower than about 410 px.
 - Used on `/` and `/play`. The game page keeps its own header.
