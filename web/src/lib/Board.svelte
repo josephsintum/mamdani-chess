@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { blockedSquares, squareIndex, type Stage } from './board.ts';
-	import { squareName, type MoveJSON } from './game.ts';
+	import { pieceName, squareName, type MoveJSON } from './game.ts';
 	import { reducedMotion } from './motion.ts';
-	import { moveDuration, pieceName, reconcile, type PieceRef } from './pieces.ts';
+	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
 	let {
 		stage,

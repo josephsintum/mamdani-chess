@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockedSquares, checkSquare, diceSteps, firstDiceStep, squareIndex, stageAt } from './board.ts';
+import { blockedSquares, checkSquare, diceSteps, diceSummary, firstDiceStep, pillFor, squareIndex, stageAt } from './board.ts';
 import type { EventJSON, View } from './game.ts';
 
 /** A view with the given pieces ({"e1": "wK"}), potholes and Mamdani square. */
@@ -185,5 +185,119 @@ describe('checkSquare', () => {
 	it('waits for the dice, and for the server while your move is in flight', () => {
 		expect(checkSquare(v, stage, { animating: true, guessing: false })).toBe('');
 		expect(checkSquare(v, stage, { animating: false, guessing: true })).toBe('');
+	});
+});
+
+describe('diceSummary', () => {
+	const sum = (last: EventJSON[], shown = last.length, extra: Partial<View> = {}, pieces: Record<string, string> = { g8: 'bN', e1: 'wK' }) => {
+		const d = diceSummary(makeView(pieces, { last, ...extra }), shown);
+		return { who: d.who, chips: d.chips.map((c) => `${c.text}:${c.kind}`), line: d.line, tone: d.tone };
+	};
+	const moved = { kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' } as const;
+
+	it('has nothing to show before the first roll', () => {
+		expect(sum([])).toEqual({ who: null, chips: [], line: 'The dice roll after every move.', tone: 'muted' });
+	});
+
+	it('shows the d8 rolling until it lands', () => {
+		expect(sum(fellOnG8, 1)).toEqual({ who: 'white', chips: ['?:pending'], line: 'Rolling the d8…', tone: 'muted' });
+	});
+
+	it('says an odd roll does nothing', () => {
+		expect(sum([moved, { kind: 'rolled_pothole', roll: 3, color: 'white' }])).toEqual({
+			who: 'white', chips: ['3:die'], line: 'Odd: nothing happens', tone: 'muted'
+		});
+	});
+
+	it('waits for the square after an even roll', () => {
+		expect(sum(fellOnG8, 2)).toEqual({
+			who: 'white', chips: ['2:die', '?:pending'], line: 'Even: a pothole opens · finding its square…', tone: 'normal'
+		});
+	});
+
+	it('marks re-rolled squares and keeps going', () => {
+		expect(sum(fellOnG8, 4).chips).toEqual(['2:die', 'e1↻:plain', '?:pending']);
+		expect(sum(fellOnG8, 4).line).toBe('Re-roll: kings never fall');
+	});
+
+	it('folds two or more re-rolls into one chip, so a long turn fits a phone', () => {
+		const twice: EventJSON[] = [moved, { kind: 'rolled_pothole', roll: 4, color: 'white' },
+			{ kind: 'target', sq: 'e1' }, { kind: 'reroll', sq: 'e1', reason: 'king' }, { kind: 'target', sq: 'e8' }, { kind: 'reroll', sq: 'e8', reason: 'king' },
+			{ kind: 'target', sq: 'g8' }, { kind: 'saving_roll', sq: 'g8', piece: 'bN', roll: 6, saved: false, color: 'black' }, { kind: 'fell', sq: 'g8', piece: 'bN' }];
+		expect(sum(twice).chips).toEqual(['4:die', '↻2:plain', 'g8:square', 'save 6:bad']);
+		expect(sum(twice, 6).chips).toEqual(['4:die', '↻2:plain', '?:pending']);
+	});
+
+	it('names a piece that falls, and the square', () => {
+		expect(sum(fellOnG8)).toEqual({
+			who: 'white', chips: ['2:die', 'e1↻:plain', 'g8:square', 'falls:bad'], line: 'Black knight falls into g8', tone: 'hazard'
+		});
+	});
+
+	it('opens a pothole on an empty square', () => {
+		const last: EventJSON[] = [moved, { kind: 'rolled_pothole', roll: 4, color: 'white' }, { kind: 'target', sq: 'd4' }, { kind: 'pothole_opened', sq: 'd4', color: 'white' }];
+		expect(sum(last)).toEqual({ who: 'white', chips: ['4:die', 'd4:square', 'opens:bad'], line: 'Pothole on d4 · closes when White moves', tone: 'hazard' });
+	});
+
+	it('repairs a pothole next to the Mamdani at once', () => {
+		const last: EventJSON[] = [moved, { kind: 'rolled_pothole', roll: 4, color: 'white' }, { kind: 'target', sq: 'b4' }, { kind: 'repaired', sq: 'b4' }];
+		expect(sum(last)).toEqual({ who: 'white', chips: ['4:die', 'b4:square', 'repaired:good'], line: 'The Mamdani repairs b4 at once', tone: 'good' });
+	});
+
+	it('shows a saving roll, saved or lost', () => {
+		const roll = (save: number, saved: boolean): EventJSON[] => [
+			moved, { kind: 'rolled_pothole', roll: 4, color: 'white' }, { kind: 'target', sq: 'd5' },
+			{ kind: 'saving_roll', sq: 'd5', piece: 'bN', roll: save, saved, color: 'black' },
+			...(saved ? [] : ([{ kind: 'fell', sq: 'd5', piece: 'bN' }, { kind: 'pothole_opened', sq: 'd5', color: 'white' }] as EventJSON[]))
+		];
+		expect(sum(roll(3, true))).toEqual({ who: 'white', chips: ['4:die', 'd5:square', 'save 3:good'], line: 'Black knight saved', tone: 'good' });
+		expect(sum(roll(6, false))).toEqual({ who: 'white', chips: ['4:die', 'd5:square', 'save 6:bad'], line: 'Black knight falls into d5', tone: 'hazard' });
+	});
+
+	it('drops the Mamdani', () => {
+		const last: EventJSON[] = [moved, { kind: 'rolled_pothole', roll: 8, color: 'white' }, { kind: 'target', sq: 'a5' },
+			{ kind: 'saving_roll', sq: 'a5', piece: 'M', roll: 2, saved: false, color: 'white' }, { kind: 'fell', sq: 'a5', piece: 'M' }, { kind: 'pothole_opened', sq: 'a5', color: 'white' }];
+		expect(sum(last).line).toBe('The Mamdani falls into a5');
+	});
+
+	it('says when no square could take a pothole', () => {
+		expect(sum([moved, { kind: 'rolled_pothole', roll: 2, color: 'white' }, { kind: 'no_pothole' }])).toEqual({
+			who: 'white', chips: ['2:die', 'none:plain'], line: 'No pothole: no square could take one', tone: 'muted'
+		});
+	});
+
+	it('says a game-ending move has no roll', () => {
+		const end = makeView({}, { last: [{ kind: 'moved', from: 'd8', to: 'h4', piece: 'bQ', color: 'black' }], status: 'over', result: { winner: 'black', draw: false, reason: 'checkmate' } });
+		expect(diceSummary(end, 1)).toEqual({ who: 'black', chips: [], line: 'No roll: the game is over', tone: 'muted' });
+	});
+});
+
+describe('pillFor', () => {
+	const v = (extra: Partial<View>) => makeView({}, { status: 'playing', turn: 'white', you: 'white', ...extra });
+
+	it('tells you it is your move, and the other bar whose move it is', () => {
+		expect(pillFor(v({}), 'white', false)).toEqual({ text: 'Your move', tone: 'turn' });
+		expect(pillFor(v({ you: 'black' }), 'white', false)).toEqual({ text: 'To move', tone: 'turn' });
+		expect(pillFor(v({}), 'black', false)).toEqual({ text: '', tone: 'turn' });
+	});
+
+	it('warns the side in check', () => {
+		expect(pillFor(v({ check: true }), 'white', false)).toEqual({ text: 'In check', tone: 'check' });
+	});
+
+	it('shows nothing while the dice play out', () => {
+		expect(pillFor(v({}), 'white', true).text).toBe('');
+	});
+
+	it('marks Black waiting to join', () => {
+		expect(pillFor(v({ status: 'waiting' }), 'black', false)).toEqual({ text: 'Waiting…', tone: 'muted' });
+		expect(pillFor(v({ status: 'waiting' }), 'white', false).text).toBe('');
+	});
+
+	it('marks the checkmated side at the end', () => {
+		const over = v({ status: 'over', result: { winner: 'black', draw: false, reason: 'checkmate' } });
+		expect(pillFor(over, 'white', false)).toEqual({ text: 'Checkmated', tone: 'check' });
+		expect(pillFor(over, 'black', false).text).toBe('');
+		expect(pillFor(v({ status: 'over', result: { winner: 'black', draw: false, reason: 'resignation' } }), 'white', false).text).toBe('');
 	});
 });

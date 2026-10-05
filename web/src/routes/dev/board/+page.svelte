@@ -4,7 +4,7 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
-	import { stageAt } from '#lib/board.ts';
+	import { pillFor, stageAt } from '#lib/board.ts';
 	import type { Color, MoveJSON, View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
@@ -173,7 +173,7 @@
 		</div>
 
 		<div class="board-col">
-			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} toMove={!view.result && view.turn === top && !anim.animating} />
+			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} pill={pillFor(view, top, anim.animating).text} pillTone={pillFor(view, top, anim.animating).tone} />
 			<Board
 				{stage}
 				{legal}
@@ -184,7 +184,7 @@
 				saved={savedSquare}
 				onmove={move}
 			/>
-			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} toMove={!view.result && view.turn === bottom && !anim.animating} />
+			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={pillFor(view, bottom, anim.animating).text} pillTone={pillFor(view, bottom, anim.animating).tone} />
 		</div>
 
 		<div class="side">
