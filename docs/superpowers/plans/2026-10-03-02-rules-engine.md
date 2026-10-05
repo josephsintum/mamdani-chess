@@ -2324,3 +2324,15 @@ git commit -m "rules: random-game invariants and replay over 10,000 seeded games
 - `go vet ./...` is clean, and `go test ./rules/` passes, including perft and 10,000 random games.
 - `rules` imports nothing outside the standard library and has no `time` or `crypto/rand`.
 - The game-server plan can be written against the Task 4 interfaces without reading `rules` internals.
+
+## Later: speed (2026-10-04)
+
+The engine moved to bitboards plus the mailbox, with allocation-free legality checks ([plan](2026-10-04-go-rules-speed.md)). No rule changed: the tests above still pass, and the Rust engine in `server_rs/` agrees on 300 recorded games.
+
+Measured with `go test -bench . -benchmem ./rules` (benchstat, 6 runs each, Apple M4 Pro):
+- one random game: 2.15 ms and 35,700 allocations → 0.45 ms and 2,000 (−79% time, −94% allocations);
+- perft from the start to depth 4: 15.2 ms → 6.8 ms (−56%);
+- `LegalMoves` at the start: 1.59 µs and 36 allocations → 0.91 µs and 1;
+- the 10,000-game test: about 20 s → about 3.6 s.
+
+`LegalMoves()` order changed; nothing depends on it.

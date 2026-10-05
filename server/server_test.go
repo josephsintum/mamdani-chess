@@ -2,8 +2,11 @@ package server
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -14,6 +17,7 @@ import (
 	"time"
 
 	"mamdani-chess/game"
+	"mamdani-chess/rules"
 	"mamdani-chess/store"
 )
 
@@ -24,6 +28,11 @@ func (odd) D8() int { return 1 }
 
 func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
+	return newTestServerWith(t, odd{})
+}
+
+func newTestServerWith(t *testing.T, dice rules.Dice) (*Server, *httptest.Server) {
+	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -33,8 +42,11 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 		"index.html":            {Data: []byte("<!doctype html>app shell")},
 		"_app/immutable/app.js": {Data: []byte("console.log(1)")},
 		"favicon.svg":           {Data: []byte("<svg/>")},
+		"favicon.svg.br":        {Data: []byte("brotli bytes")},
+		"favicon.svg.gz":        {Data: svgGzip},
 	}
-	s := New(st, game.NewHub(odd{}), assets)
+	s := New(st, game.NewHub(dice), assets)
+	s.log = slog.New(slog.DiscardHandler) // tests that check logging swap in their own
 	ts := httptest.NewServer(s)
 	t.Cleanup(ts.Close)
 	return s, ts
@@ -177,6 +189,7 @@ func TestMoveErrors(t *testing.T) {
 		{alice, move, `{"from":"e2","to":"e4","seq":5}`, http.StatusConflict}, // stale
 		{alice, move, `{"from":"e2","to":"e5","seq":0}`, http.StatusConflict}, // illegal
 		{alice, move, `{"from":"e9","to":"e4","seq":0}`, http.StatusBadRequest},
+		{alice, move, `{"from":"e2","to":"e4"}`, http.StatusBadRequest}, // no seq
 		{alice, move, `not json`, http.StatusBadRequest},
 		{alice, move, `{"from":"` + strings.Repeat("x", 5000) + `"}`, http.StatusBadRequest},
 		{alice, "/api/games/NOPE99/move", `{"from":"e2","to":"e4","seq":0}`, http.StatusNotFound},
@@ -235,6 +248,7 @@ func TestStaticAndFallback(t *testing.T) {
 		{"/game/K7F3QZ", "app shell", "no-cache", 200},
 		{"/favicon.svg", "<svg/>", "no-cache", 200},
 		{"/_app/immutable/app.js", "console.log(1)", "public, max-age=31536000, immutable", 200},
+		{"/_app/immutable/gone.js", "404 page not found", "no-cache", 404},
 		{"/api/nope", `{"error":"not found"}`, "", 404},
 		{"/healthz", `{"status":"ok"}`, "", 200},
 	}
@@ -302,5 +316,114 @@ func TestResignOverHTTP(t *testing.T) {
 	}
 	if status, _ := alice.post("/api/games/NOPE99/resign", ""); status != http.StatusNotFound {
 		t.Errorf("unknown game: %d, want 404", status)
+	}
+}
+
+// boom panics on every roll: a stand-in for a bug inside a game.
+type boom struct{}
+
+func (boom) D8() int { panic("dice exploded") }
+
+func TestCrashedGameClosesStreamsAndIsGone(t *testing.T) {
+	_, ts := newTestServerWith(t, boom{})
+	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
+	code := alice.create()
+	a := alice.stream(code)
+	a.state()
+	bob.stream(code).state()
+	a.state() // playing now
+	move := "/api/games/" + code + "/move"
+	if status, body := alice.post(move, `{"from":"e2","to":"e4","seq":0}`); status != http.StatusInternalServerError {
+		t.Fatalf("the crashing move: %d %s, want 500", status, body)
+	}
+	ended := make(chan struct{})
+	go func() {
+		for a.sc.Scan() {
+		}
+		close(ended)
+	}()
+	select {
+	case <-ended:
+	case <-time.After(time.Second):
+		t.Fatal("stream still open 1s after the game crashed")
+	}
+	if status, body := alice.post(move, `{"from":"e2","to":"e4","seq":0}`); status != http.StatusNotFound {
+		t.Errorf("after the crash: %d %s, want 404", status, body)
+	}
+}
+
+func TestConflictCarriesTheCallersState(t *testing.T) {
+	_, ts := newTestServer(t)
+	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
+	code := alice.create()
+	bob.stream(code).state()
+	status, body := bob.post("/api/games/"+code+"/move", `{"from":"e7","to":"e5","seq":0}`)
+	var out struct {
+		Error string
+		State *game.View
+	}
+	if status != http.StatusConflict || json.Unmarshal([]byte(body), &out) != nil {
+		t.Fatalf("got %d %s, want a 409", status, body)
+	}
+	if out.Error != "not your turn" || out.State == nil || out.State.You != "black" || out.State.Seq != 0 {
+		t.Errorf("error %q state %+v", out.Error, out.State)
+	}
+}
+
+// svgGzip is "<svg/>" gzipped, the way `precompress` writes favicon.svg.gz.
+// It must be real gzip: Go's default client asks for gzip and unpacks it.
+var svgGzip = func() []byte {
+	var b bytes.Buffer
+	zw := gzip.NewWriter(&b)
+	zw.Write([]byte("<svg/>"))
+	zw.Close()
+	return b.Bytes()
+}()
+
+func get(t *testing.T, url, acceptEncoding string) *http.Response {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	if acceptEncoding != "" {
+		req.Header.Set("Accept-Encoding", acceptEncoding)
+	}
+	// A bare Transport would add gzip itself and hide the header we sent.
+	resp, err := (&http.Transport{DisableCompression: true}).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
+}
+
+func TestPrecompressedFiles(t *testing.T) {
+	_, ts := newTestServer(t)
+	for _, c := range []struct{ accept, wantEncoding, wantBody string }{
+		{"gzip, deflate, br", "br", "brotli bytes"},
+		{"gzip", "gzip", string(svgGzip)},
+		{"GZIP", "gzip", string(svgGzip)},
+		{"br;q=0, gzip", "gzip", string(svgGzip)},
+		{"", "", "<svg/>"},
+	} {
+		resp := get(t, ts.URL+"/favicon.svg", c.accept)
+		body, _ := io.ReadAll(resp.Body)
+		if got := resp.Header.Get("Content-Encoding"); got != c.wantEncoding || string(body) != c.wantBody {
+			t.Errorf("Accept-Encoding %q: encoding %q body %q", c.accept, got, body)
+		}
+		if ct := resp.Header.Get("Content-Type"); ct != "image/svg+xml" {
+			t.Errorf("Accept-Encoding %q: Content-Type %q", c.accept, ct)
+		}
+		if resp.Header.Get("Vary") != "Accept-Encoding" {
+			t.Errorf("Accept-Encoding %q: missing Vary", c.accept)
+		}
+	}
+}
+
+func TestRequestsAreLogged(t *testing.T) {
+	s, ts := newTestServer(t)
+	var buf bytes.Buffer
+	s.log = slog.New(slog.NewTextHandler(&buf, nil))
+	get(t, ts.URL+"/api/nope", "")
+	if line := buf.String(); !strings.Contains(line, "method=GET path=/api/nope status=404") {
+		t.Errorf("log %q", line)
 	}
 }

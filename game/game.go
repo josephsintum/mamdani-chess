@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"slices"
+	"time"
 
 	"mamdani-chess/rules"
 )
@@ -22,6 +23,9 @@ var (
 	ErrGameOver    = rules.ErrGameOver
 	ErrIllegalMove = rules.ErrIllegalMove
 	ErrInternal    = errors.New("internal error in this game")
+	// ErrGone is returned once a game has stopped: it sat idle and was
+	// evicted, or a panic retired it.
+	ErrGone = errors.New("game not found")
 )
 
 // Resignation is the result reason when a player resigns. The other
@@ -30,9 +34,12 @@ const Resignation rules.Reason = "resignation"
 
 // Game is one live game.
 type Game struct {
-	code  string
-	dice  rules.Dice
-	calls chan func()
+	code   string
+	dice   rules.Dice
+	idle   time.Duration
+	calls  chan call
+	done   chan struct{} // closed when the game stops
+	onExit func()        // tells the hub to forget the game
 
 	// Owned by the loop goroutine.
 	g     *rules.Game
@@ -52,44 +59,94 @@ type Sub struct {
 	guest string
 }
 
-// newGame starts a game with White's seat taken by creator.
-func newGame(code, creator string, dice rules.Dice) *Game {
+// call is one function for the loop to run, and where to send the outcome.
+type call struct {
+	f     func()
+	reply chan error
+}
+
+// newGame starts a game with White's seat taken by creator. After idle with
+// no calls, the game stops if it is over or nobody is watching; onExit runs
+// when it stops.
+func newGame(code, creator string, dice rules.Dice, idle time.Duration, onExit func()) *Game {
 	g := &Game{
-		code:  code,
-		dice:  dice,
-		calls: make(chan func()),
-		g:     rules.NewGame(),
-		seats: [2]string{creator, ""},
-		subs:  map[*Sub]struct{}{},
+		code:   code,
+		dice:   dice,
+		idle:   idle,
+		calls:  make(chan call),
+		done:   make(chan struct{}),
+		onExit: onExit,
+		g:      rules.NewGame(),
+		seats:  [2]string{creator, ""},
+		subs:   map[*Sub]struct{}{},
 	}
 	go g.loop()
 	return g
 }
 
 func (g *Game) loop() {
-	for f := range g.calls {
-		f()
+	idle := time.NewTimer(g.idle)
+	defer idle.Stop()
+	for {
+		select {
+		case c := <-g.calls:
+			if err := g.run(c.f); err != nil {
+				// A panic may have left the game half-updated (the position
+				// moved but the log didn't, say), so the game can't go on.
+				// Stop before replying, so the caller never sees it listed.
+				g.stop()
+				c.reply <- err
+				return
+			}
+			c.reply <- nil
+			idle.Reset(g.idle)
+		case <-idle.C:
+			if g.g.Result.Over || len(g.subs) == 0 {
+				slog.Info("evicting idle game", "code", g.code)
+				g.stop()
+				return
+			}
+			idle.Reset(g.idle)
+		}
 	}
 }
 
-// do runs f on the game's goroutine and waits for it to finish. A panic in
-// f is logged and returned as ErrInternal instead of killing the server, so
-// one bad position can't end every game. rules.Game.Play only updates the
-// game after a turn succeeds, so a panic leaves the position unchanged.
-func (g *Game) do(f func()) (err error) {
-	done := make(chan error, 1)
-	g.calls <- func() {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.Error("panic in game", "code", g.code, "panic", r, "turns", g.g.Turns, "stack", string(debug.Stack()))
-				done <- fmt.Errorf("%w: %v", ErrInternal, r)
-				return
-			}
-			done <- nil
-		}()
-		f()
+// run calls f, turning a panic into ErrInternal so one bad game can't take
+// the whole server down.
+func (g *Game) run(f func()) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in game", "code", g.code, "panic", r, "turns", g.g.Turns, "stack", string(debug.Stack()))
+			err = fmt.Errorf("%w: %v", ErrInternal, r)
+		}
+	}()
+	f()
+	return nil
+}
+
+// stop ends the game: open streams close, later calls get ErrGone, and the
+// hub forgets the game.
+func (g *Game) stop() {
+	close(g.done)
+	for sub := range g.subs {
+		close(sub.ch)
 	}
-	return <-done
+	g.subs = nil
+	if g.onExit != nil {
+		g.onExit()
+	}
+}
+
+// do runs f on the game's goroutine and waits for it to finish. It returns
+// ErrGone if the game has stopped, and ErrInternal if f panicked.
+func (g *Game) do(f func()) error {
+	c := call{f: f, reply: make(chan error, 1)}
+	select {
+	case g.calls <- c:
+		return <-c.reply
+	case <-g.done:
+		return ErrGone
+	}
 }
 
 // Code returns the game's share code.
@@ -97,11 +154,12 @@ func (g *Game) Code() string { return g.code }
 
 // Join opens a stream for guest. The creator plays White, the first other
 // guest takes Black, and everyone after that watches. A guest who reconnects
-// keeps their seat. The current view is already waiting on the Sub.
-func (g *Game) Join(guest string) *Sub {
+// keeps their seat. The current view is already waiting on the Sub. C is
+// closed when the game stops.
+func (g *Game) Join(guest string) (*Sub, error) {
 	ch := make(chan *View, 1)
 	sub := &Sub{C: ch, ch: ch, guest: guest}
-	g.do(func() {
+	err := g.do(func() {
 		if g.seats[rules.Black] == "" && guest != g.seats[rules.White] {
 			g.seats[rules.Black] = guest
 			g.subs[sub] = struct{}{}
@@ -109,9 +167,12 @@ func (g *Game) Join(guest string) *Sub {
 			return
 		}
 		g.subs[sub] = struct{}{}
-		send(sub, g.view(guest))
+		send(sub, g.viewFor(g.roleOf(guest)))
 	})
-	return sub
+	if err != nil {
+		return nil, err
+	}
+	return sub, nil
 }
 
 // Leave closes a stream. Seats are kept, so the player can come back.
@@ -223,10 +284,38 @@ func (g *Game) status() Status {
 	return Playing
 }
 
-func (g *Game) broadcast() {
-	for sub := range g.subs {
-		send(sub, g.view(sub.guest))
+// role is who a view is for: a seated color, or roleSpectator. Everyone in
+// the same role sees the same view, so broadcast builds at most one per
+// role, not one per stream.
+type role int
+
+const roleSpectator = role(2)
+
+func (g *Game) roleOf(guest string) role {
+	if c, ok := g.seatOf(guest); ok {
+		return role(c)
 	}
+	return roleSpectator
+}
+
+// broadcast sends every stream its role's view. Streams in the same role
+// share one *View, so a View must never be changed once sent.
+func (g *Game) broadcast() {
+	var views [3]*View
+	for sub := range g.subs {
+		r := g.roleOf(sub.guest)
+		if views[r] == nil {
+			views[r] = g.viewFor(r)
+		}
+		send(sub, views[r])
+	}
+}
+
+// View returns guest's current view of the game.
+func (g *Game) View(guest string) (*View, error) {
+	var v *View
+	err := g.do(func() { v = g.viewFor(g.roleOf(guest)) })
+	return v, err
 }
 
 // send replaces whatever is waiting on the sub with v. Only the game's
@@ -239,7 +328,7 @@ func send(sub *Sub, v *View) {
 	sub.ch <- v
 }
 
-func (g *Game) view(guest string) *View {
+func (g *Game) viewFor(r role) *View {
 	p := &g.g.Pos
 	v := &View{
 		Code:     g.code,
@@ -256,7 +345,7 @@ func (g *Game) view(guest string) *View {
 		Stats:    g.stats,
 		Seq:      len(g.g.Turns),
 	}
-	color, seated := g.seatOf(guest)
+	color, seated := rules.Color(r), r != roleSpectator
 	if seated {
 		v.You = colorName(color)
 	}

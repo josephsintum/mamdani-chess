@@ -70,7 +70,7 @@ func (g *Game) Play(m Move, dice Dice) ([]Event, error) {
 
 func (g *Game) status() Result {
 	p := &g.Pos
-	if len(p.LegalMoves()) == 0 {
+	if !p.hasLegalMove() {
 		if p.threatened() {
 			return Result{Over: true, Winner: p.Turn.Other(), Reason: Checkmate}
 		}
@@ -93,19 +93,10 @@ func (g *Game) status() Result {
 // Mamdani is on the board it can block escape squares, so a minor piece
 // might mate.) The game server also uses this for timeouts.
 func (p *Position) CannotMate(c Color) bool {
-	minors := 0
-	for _, pc := range p.Board {
-		if pc == NoPiece || pc.Color() != c {
-			continue
-		}
-		switch pc.Kind() {
-		case King:
-		case Knight, Bishop:
-			minors++
-		default:
-			return false
-		}
+	if p.byColor[c]&(p.byKind[Pawn]|p.byKind[Rook]|p.byKind[Queen]) != 0 {
+		return false
 	}
+	minors := (p.byColor[c] & (p.byKind[Knight] | p.byKind[Bishop])).Count()
 	return minors == 0 || (minors == 1 && p.Mamdani == NoSquare)
 }
 

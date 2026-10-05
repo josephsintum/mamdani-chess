@@ -6,7 +6,7 @@ export default defineConfig({
 	plugins: [
 		sveltekit({
 			// SPA: one index.html; the Go server falls back to it for every route.
-			adapter: adapter({ fallback: 'index.html' })
+			adapter: adapter({ fallback: 'index.html', precompress: true })
 		})
 	],
 	server: {

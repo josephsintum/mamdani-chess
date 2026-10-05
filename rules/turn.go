@@ -3,7 +3,6 @@ package rules
 import (
 	"errors"
 	"fmt"
-	"slices"
 )
 
 // Dice rolls eight-sided dice. D8 returns 1..8.
@@ -25,12 +24,13 @@ const maxRerolls = 64
 // A move that checkmates ends the game at once: no pothole roll follows, so
 // the dice can't undo a mate made on the board. p is not modified.
 func Apply(p Position, m Move, dice Dice) (Position, []Event, error) {
-	if !slices.Contains(p.LegalMoves(), m) {
+	if !p.isLegal(m) {
 		return p, nil, ErrIllegalMove
 	}
 	mover := p.Turn
 	next := p
-	ev := next.play(m, nil)
+	var ev []Event
+	next.play(m, &ev)
 	if next.Mated() {
 		return next, ev, nil
 	}
@@ -66,7 +66,7 @@ func (c *checkedDice) D8() int {
 // move closes that pothole, so a check it is only holding off can't be
 // escaped either.
 func (p *Position) Mated() bool {
-	return p.threatened() && len(p.LegalMoves()) == 0
+	return p.threatened() && !p.hasLegalMove()
 }
 
 // threatened reports whether the side to move's king is attacked, ignoring
@@ -136,7 +136,7 @@ func (p *Position) remove(s Square) {
 		p.Mamdani = NoSquare
 		return
 	}
-	p.Board[s] = NoPiece
+	p.take(s)
 }
 
 func (p *Position) resolve(s Square, mover Color, dice Dice, ev []Event) []Event {
@@ -165,7 +165,7 @@ func (p *Position) resolve(s Square, mover Color, dice Dice, ev []Event) []Event
 			}
 		}
 		ev = append(ev, Event{Kind: Fell, Square: s, Piece: pc})
-		p.Board[s] = NoPiece
+		p.take(s)
 		p.Halfmove = 0
 		p.Castling &^= rightsLost(s)
 	}
@@ -177,18 +177,9 @@ func (p *Position) resolve(s Square, mover Color, dice Dice, ev []Event) []Event
 // same rank, file or diagonal, nothing in between. That is all a saving
 // roll needs.
 func (p *Position) mamdaniReaches(s Square) bool {
-	m := p.Mamdani
-	if m == NoSquare || m == s {
+	if p.Mamdani == NoSquare || p.Mamdani == s {
 		return false
 	}
-	df, dr := s.File()-m.File(), s.Rank()-m.Rank()
-	if df != 0 && dr != 0 && abs(df) != abs(dr) {
-		return false
-	}
-	for t := m.Offset(sign(df), sign(dr)); t != s; t = t.Offset(sign(df), sign(dr)) {
-		if p.Blocked(t) {
-			return false
-		}
-	}
-	return true
+	path, aligned := between(p.Mamdani, s)
+	return aligned && path&p.blocked() == 0
 }

@@ -4,6 +4,7 @@ package server
 import (
 	"encoding/json"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ type Server struct {
 	games     *game.Hub
 	assets    fs.FS
 	heartbeat time.Duration
+	log       *slog.Logger
 	mux       *http.ServeMux
 	done      chan struct{} // closed by Close to end SSE streams
 	closeOnce sync.Once
@@ -31,6 +33,7 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 		games:     hub,
 		assets:    assets,
 		heartbeat: 15 * time.Second,
+		log:       slog.Default(),
 		mux:       http.NewServeMux(),
 		done:      make(chan struct{}),
 	}
@@ -48,7 +51,48 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 // Safe to call more than once.
 func (s *Server) Close() { s.closeOnce.Do(func() { close(s.done) }) }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+// ServeHTTP routes the request and logs one line for it: method, path,
+// status and how long it took. Health checks log at debug level.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+	s.mux.ServeHTTP(rec, r)
+	level := slog.LevelInfo
+	if r.URL.Path == "/healthz" {
+		level = slog.LevelDebug
+	}
+	s.log.Log(r.Context(), level, "request",
+		"method", r.Method, "path", r.URL.Path, "status", rec.status, "duration", time.Since(start))
+}
+
+// statusRecorder remembers the status a handler wrote. It passes Flush
+// through, so SSE streams still work behind it.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	wrote  bool
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	if !r.wrote {
+		r.status, r.wrote = code, true
+	}
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	r.wrote = true
+	return r.ResponseWriter.Write(b)
+}
+
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap lets http.ResponseController reach the real writer.
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
