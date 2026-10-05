@@ -164,8 +164,9 @@
 			unsent = true;
 			retryLater();
 		} else if (sent !== 'sent') {
-			error = sent.refused;
 			optimistic = null; // refused: glide back
+			if (sent.state) receive(sent.state); // resync at once (this clears error)
+			error = sent.refused;
 		}
 	}
 
@@ -186,7 +187,11 @@
 		if (sent === 'unsent') {
 			unsent = true;
 			retryLater();
-		} else if (sent !== 'sent' && optimistic === guess) optimistic = null;
+		} else if (sent !== 'sent') {
+			// Usually the server already has the move; its state settles it.
+			if (optimistic === guess) optimistic = null;
+			if (sent.state) receive(sent.state);
+		}
 	}
 
 	async function offerRematch(decline = false) {

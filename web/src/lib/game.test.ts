@@ -44,8 +44,14 @@ describe('trySendMove', () => {
 	});
 
 	it('reports a refusal with the server’s reason', async () => {
-		vi.stubGlobal('fetch', async () => Response.json({ error: 'not your turn' }, { status: 409 }));
+		vi.stubGlobal('fetch', async () => Response.json({ error: 'not your turn' }, { status: 403 }));
 		expect(await trySendMove('ABC123', move, 0)).toEqual({ refused: 'not your turn' });
+	});
+
+	it('hands back the current state a conflict carries, so the page can resync at once', async () => {
+		const state = { seq: 5, code: 'ABC123' };
+		vi.stubGlobal('fetch', async () => Response.json({ error: 'the game has moved on', state }, { status: 409 }));
+		expect(await trySendMove('ABC123', move, 4)).toEqual({ refused: 'the game has moved on', state });
 	});
 
 	// The page decides from this outcome alone, never from an error left on

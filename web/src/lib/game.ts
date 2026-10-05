@@ -64,25 +64,30 @@ export async function createGame(): Promise<string> {
 }
 
 /**
- * Sends a move. Returns null on success, or the server's error message.
- * Throws if the server can't be reached; the move can then be sent again
- * with the same seq, which the server refuses if it already has it.
+ * What became of a move: the server took it, refused it (why, and the
+ * game's current state when it sends one, as a 409 does), or never got it.
+ * A move that never got there can be sent again with the same seq: the
+ * server refuses a copy of a move it already has.
  */
-export async function sendMove(code: string, move: MoveJSON, seq: number): Promise<string | null> {
-	return post(`/api/games/${code}/move`, { ...move, seq });
-}
-
-/** What became of a move: the server took it, refused it (and why), or never got it. */
-export type SendOutcome = 'sent' | 'unsent' | { refused: string };
+export type SendOutcome = 'sent' | 'unsent' | { refused: string; state?: View };
 
 /** Sends a move and says what became of it, without throwing. */
 export async function trySendMove(code: string, move: MoveJSON, seq: number): Promise<SendOutcome> {
+	let res: Response;
 	try {
-		const error = await sendMove(code, move, seq);
-		return error === null ? 'sent' : { refused: error };
+		res = await fetch(`/api/games/${code}/move`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ ...move, seq })
+		});
 	} catch {
 		return 'unsent';
 	}
+	if (res.ok) return 'sent';
+	const body: { error?: string; state?: View } = await res.json().catch(() => ({}));
+	const refused: { refused: string; state?: View } = { refused: body.error ?? res.statusText };
+	if (body.state) refused.state = body.state;
+	return refused;
 }
 
 /**
