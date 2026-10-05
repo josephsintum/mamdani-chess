@@ -356,20 +356,22 @@ func TestUnwatchedGameIsEvictedAfterAQuietDay(t *testing.T) {
 	})
 }
 
-func TestWatchedGameInProgressIsKept(t *testing.T) {
+// A game in progress always ends by itself now (a clock or a first-move
+// deadline is always counting), so the one game that can stay unfinished
+// for days is one still waiting for Black.
+func TestWatchedWaitingGameIsKept(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := NewHub(odd{}, nil)
 		g := create(t, h, "alice")
-		a, b := join(t, g, "alice"), join(t, g, "bob")
+		a := join(t, g, "alice")
 		time.Sleep(3 * DefaultIdle)
 		synctest.Wait()
 		if _, ok := h.Get(g.Code()); !ok {
-			t.Fatal("a game with both players watching was evicted")
+			t.Fatal("a waiting game with White watching was evicted")
 		}
-		// Once both leave it is unwatched, and goes after another quiet
+		// Once White leaves it is unwatched, and goes after another quiet
 		// day. (synctest also needs the game's goroutine gone by the end.)
 		g.Leave(a)
-		g.Leave(b)
 		time.Sleep(DefaultIdle + time.Minute)
 		synctest.Wait()
 		if _, ok := h.Get(g.Code()); ok {
@@ -432,22 +434,27 @@ func TestIllegalMoveChangesNothing(t *testing.T) {
 }
 
 func TestStreamsInOneRoleShareOneEncoding(t *testing.T) {
-	g := create(t, NewHub(odd{}, nil), "alice")
-	join(t, g, "bob")
-	c1, c2 := join(t, g, "carol"), join(t, g, "dave")
-	recv(t, c1)
-	recv(t, c2)
-	if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
-		t.Fatal(err)
-	}
-	e1, e2 := recv(t, c1).JSON(), recv(t, c2).JSON()
-	if len(e1) == 0 || &e1[0] != &e2[0] {
-		t.Error("each spectator's view was encoded separately")
-	}
-	want, err := json.Marshal(recvView(t, g, "carol"))
-	if err != nil || string(e1) != string(want) {
-		t.Errorf("encoded view differs from json.Marshal:\n got %s\nwant %s", e1, want)
-	}
+	// synctest stops the clock, so the view built later for comparison has
+	// the same clock.now as the one sent.
+	synctest.Test(t, func(t *testing.T) {
+		g := create(t, NewHub(odd{}, nil), "alice")
+		join(t, g, "bob")
+		c1, c2 := join(t, g, "carol"), join(t, g, "dave")
+		recv(t, c1)
+		recv(t, c2)
+		if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
+			t.Fatal(err)
+		}
+		e1, e2 := recv(t, c1).JSON(), recv(t, c2).JSON()
+		if len(e1) == 0 || &e1[0] != &e2[0] {
+			t.Error("each spectator's view was encoded separately")
+		}
+		want, err := json.Marshal(recvView(t, g, "carol"))
+		if err != nil || string(e1) != string(want) {
+			t.Errorf("encoded view differs from json.Marshal:\n got %s\nwant %s", e1, want)
+		}
+		finish(t, g) // synctest needs the game's goroutine gone by the end
+	})
 }
 
 // recvView is guest's current view, built fresh (not the shared one).

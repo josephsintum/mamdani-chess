@@ -37,6 +37,7 @@ type View struct {
 	Stats    StatsJSON   `json:"stats"`
 	Result   *ResultJSON `json:"result"`
 	Seq      int         `json:"seq"` // turns played; a move must quote it
+	Clock    ClockJSON   `json:"clock"`
 
 	data []byte // the encoded view, set once before it is shared (see JSON)
 }
@@ -90,7 +91,8 @@ type StatsJSON struct {
 	MamdaniFell bool `json:"mamdaniFell"`
 }
 
-// ResultJSON is how the game ended.
+// ResultJSON is how the game ended. Winner is "" for a draw, and for an
+// aborted or expired game, which nobody wins.
 type ResultJSON struct {
 	Winner string       `json:"winner,omitempty"` // "" for a draw
 	Draw   bool         `json:"draw"`
