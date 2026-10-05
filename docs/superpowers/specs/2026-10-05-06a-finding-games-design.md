@@ -104,7 +104,7 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 - The logo (links home) and the name pill: initials, name, and a die button labelled "New name". There's no Play or Rules link yet: Play is the home page itself, and the Rules page is milestone 07.
 - Pressing the die calls `POST /api/me/name`; the new name flips in (no motion under reduced motion) and is announced to screen readers.
 - A guest without a name sees no pill.
-- On phones (under 640 px): no edition tag or initials; the name stays, cut with an ellipsis after about 13 characters, next to the die.
+- On phones (under 640 px), as on the canvas's phone artboard: a 24 px mark, no edition tag, and the name as its initials next to the die (screen readers still hear the whole name). A full name next to the title didn't fit: it covered the title on phones narrower than about 410 px.
 - Used on `/` and `/play`. The game page keeps its own header.
 
 ### Home `/`
@@ -112,7 +112,7 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 - **Hero:** eyebrow, headline, pitch, demo board with the pothole callout, as on the canvas. The demo board is a `MiniBoard` of the canvas's position; the callout reads "e6 · d8 4 → pothole at f4". Phones leave the board out, as the canvas does.
 - **Play online** → `/play`. Shows "N looking" when `looking > 0`.
 - **Play a friend** → creates a game and goes to it, as today. The button keeps this accessible name: `web/scripts/playtest.js` clicks it.
-- **Have a game code?** The input uppercases as you type and accepts only the code alphabet; Join is enabled at 6 characters and goes to `/game/CODE`. The game page already handles unknown codes. Normalising and checking live in `#lib/lobby.ts` (`normalizeCode`, `isCode`), unit-tested.
+- **Have a game code?** The input uppercases as you type and accepts only the code alphabet; a pasted game link gives its code. Join is enabled at 6 characters and goes to `/game/CODE`. The game page already handles unknown codes. Normalising and checking live in `#lib/lobby.ts` (`normalizeCode`, `isCode`), unit-tested.
 - **Live now:** a card per game: mini board, both names, move number, watching count. The whole card links to `/game/CODE`. Polled every 10 s while the tab is visible (`visibilitychange`). On phones the cards scroll sideways. With no games: "No games right now. Start one: play online or invite a friend."
 - **How it works:** the canvas's three steps, checked against `RULES.md`: d8 throughout, and a saving roll needs a clear line from the Mamdani (the canvas said "could reach next turn").
 - **Footer:** the Pot-Hole Chess credit, as on the canvas.
@@ -121,7 +121,7 @@ The canvas is the visual reference: artboards **Home**, **Home (phone)**, **Quic
 
 ### Quick match `/play`
 
-- Opens `EventSource('/api/match')`, with the elapsed-time ring, the chips (10+5, Standard rules, Random colors), Cancel, and "Keep this tab open".
+- Opens `EventSource('/api/match')` (and opens a new one 2 s after an error answer, such as a proxy's 502 during a deploy), with the elapsed-time ring, the chips (10+5, Standard rules, Random colors), Cancel, and "Keep this tab open".
 - On `matched`: close the EventSource, then `goto('/game/CODE')`.
 - Cancel closes the EventSource and goes home.
 - The elapsed time counts up from when the page opened (`formatElapsed`), across reconnects. `formatClock` counts down and shows tenths, so it doesn't fit.
