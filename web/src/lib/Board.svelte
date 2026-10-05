@@ -730,7 +730,11 @@
 		/* Its layers' z-indexes stay inside the board, under the result card. */
 		isolation: isolate;
 		display: grid;
-		grid-template-columns: repeat(8, 1fr);
+		/* minmax(0, 1fr) both ways: the tracks come only from the board's size.
+		   With 1fr (= minmax(auto, 1fr)) and square aspect-ratio, Safari kept the
+		   old square size when the window shrank, so squares overflowed the board. */
+		grid-template-columns: repeat(8, minmax(0, 1fr));
+		grid-template-rows: repeat(8, minmax(0, 1fr));
 		width: 100%;
 		aspect-ratio: 1;
 		border-radius: 8px;
@@ -773,7 +777,6 @@
 		border: 0;
 		background: var(--board-light);
 		cursor: default;
-		aspect-ratio: 1;
 		font: inherit;
 	}
 	.square.dark {
