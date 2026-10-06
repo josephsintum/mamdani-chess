@@ -19,6 +19,8 @@ export const RANK_MS = 850;
 export const SCAN_MS = RANK_DELAY_MS + RANK_MS;
 /** A saving die lands, then the pill says whether the piece is saved. */
 export const SAVE_MS = THROW_MS;
+/** A re-roll's target blinks twice, one blink each half of its step. */
+export const BLINK_MS = TIMING.playMs.reroll / 2;
 
 /** Index of the pothole roll in a turn's events; the end if none was rolled (as board.ts's firstDiceStep). */
 function firstDiceStep(last: EventJSON[]): number {
@@ -134,8 +136,12 @@ function pillFor(view: View, i: number): Omit<DicePill, 'last'> | null {
 			return (e.roll ?? 1) % 2 === 1
 				? { key, text: `d8 ${e.roll} · no pothole`, tone: 'odd', at: THROW_MS }
 				: { key, text: `d8 ${e.roll} · pothole`, tone: 'pot', at: THROW_MS };
-		case 'target':
-			return { key, text: `d8 ${roll} · pothole`, tone: 'pot', then: { text: e.sq ?? '', tone: 'where', at: SCAN_MS } };
+		case 'target': {
+			// Straight after the roll, the roll's pill stays (same key) and turns
+			// into the square; after a re-roll it is a new pill.
+			const sameKey = view.last[i - 1]?.kind === 'rolled_pothole' ? `${view.seq}:${i - 1}` : key;
+			return { key: sameKey, text: `d8 ${roll} · pothole`, tone: 'pot', then: { text: e.sq ?? '', tone: 'where', at: SCAN_MS } };
+		}
 		case 'reroll':
 			return { key, text: `${e.sq} · re-roll`, tone: 'pot' };
 		case 'saving_roll': {

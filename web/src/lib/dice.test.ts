@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dicePace, dicePill, stepDice, FILE_MS, MOVE_MS, playMs, RANK_DELAY_MS, RANK_MS, scanFrames, SCAN_MS, scanOf, tumbleFaces, turnMs } from './dice.ts';
+import { BLINK_MS, dicePace, dicePill, stepDice, FILE_MS, MOVE_MS, playMs, RANK_DELAY_MS, RANK_MS, scanFrames, SCAN_MS, scanOf, tumbleFaces, turnMs } from './dice.ts';
 import TIMING from './dice-timing.json';
 import type { EventJSON, View } from './game.ts';
 
@@ -26,6 +26,10 @@ describe('the timing table', () => {
 		expect(SCAN_MS).toBe(RANK_DELAY_MS + RANK_MS);
 		expect(FILE_MS).toBeLessThan(SCAN_MS);
 		expect(SCAN_MS).toBeLessThan(TIMING.playMs.target);
+	});
+	it('blinks the target twice within the re-roll step', () => {
+		expect(BLINK_MS).toBeGreaterThan(0);
+		expect(2 * BLINK_MS).toBeLessThanOrEqual(TIMING.playMs.reroll);
 	});
 });
 
@@ -72,9 +76,12 @@ describe('the board during a roll', () => {
 	it('says an even roll, then the square once the file and rank dice land', () => {
 		const v = view([move, { kind: 'rolled_pothole', roll: 6 }, { kind: 'target', sq: 'd5' }, { kind: 'pothole_opened', sq: 'd5' }]);
 		expect(dicePill(v, 2)).toMatchObject({ text: 'd8 6 · pothole', tone: 'pot', last: false });
-		expect(dicePill(v, 3)).toEqual({ key: '7:2', text: 'd8 6 · pothole', tone: 'pot', then: { text: 'd5', tone: 'where', at: SCAN_MS }, last: true });
+		expect(dicePill(v, 3)).toEqual({ key: '7:1', text: 'd8 6 · pothole', tone: 'pot', then: { text: 'd5', tone: 'where', at: SCAN_MS }, last: true });
+		// One pill from the roll to the square: the target step keeps the roll's
+		// pill (by key), so it isn't drawn again and doesn't flicker.
+		expect(dicePill(v, 3)?.key).toBe(dicePill(v, 2)?.key);
 		// The hole opening keeps the target's pill.
-		expect(dicePill(v, 4)?.key).toBe('7:2');
+		expect(dicePill(v, 4)?.key).toBe('7:1');
 		expect(scanOf(v, 3)).toEqual({ sq: 'd5', key: '7:2', seed: 7 * 97 + 2 * 2 });
 		expect(scanOf(v, 4)).toEqual({ sq: 'd5', key: '7:2', seed: 7 * 97 + 2 * 2 });
 	});
@@ -88,6 +95,8 @@ describe('the board during a roll', () => {
 			{ kind: 'saving_roll', sq: 'b4', piece: 'wN', roll: 5, saved: true }
 		]);
 		expect(dicePill(v, 4)).toMatchObject({ text: 'e1 · re-roll', tone: 'pot' });
+		// After a re-roll the target's pill is a new one.
+		expect(dicePill(v, 5)?.key).toBe('7:4');
 		expect(dicePill(v, 6)).toEqual({ key: '7:5', text: 'White knight b4 · saving roll', tone: 'save', then: { text: 'White knight b4 · saved', tone: 'save', at: 450 }, last: true });
 		expect(scanOf(v, 4)).toBeNull(); // the re-roll: no scan while the target blinks
 		expect(scanOf(v, 5)?.sq).toBe('b4');

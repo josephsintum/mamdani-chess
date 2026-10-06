@@ -3,7 +3,7 @@
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
 	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, fitShift, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
 	import { lineParts, spoken } from './catchphrases.ts';
-	import { scanFrames, SCAN_MS, type DicePill } from './dice.ts';
+	import { BLINK_MS, scanFrames, SCAN_MS, type DicePill } from './dice.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { untrack } from 'svelte';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
@@ -503,7 +503,7 @@
      label column and row are the same size, so the frame stays square. -->
 <div class="frame" class:dim {@attach (node) => void (frameEl = node)}>
 <div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span class:on={lit[1] === r}>{r}</span>{/each}</div>
-<div class="board" class:dim class:late={!!mated && !playedBefore.has(mated.key)} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms" {@attach dragArea}>
+<div class="board" class:dim class:late={!!mated && !playedBefore.has(mated.key)} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms; --blink: {BLINK_MS}ms" {@attach dragArea}>
 	{#each order as index (index)}
 		{@const sq = squareName(index)}
 		{@const dark = (Math.floor(index / 8) + (index % 8)) % 2 === 0}
@@ -1529,7 +1529,7 @@
 		opacity: 0;
 	}
 	.target.blink {
-		animation: target-blink 0.4s steps(2, jump-none) 2;
+		animation: target-blink var(--blink) steps(2, jump-none) 2;
 	}
 	@keyframes target-blink {
 		50% {
