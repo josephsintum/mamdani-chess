@@ -72,7 +72,7 @@ When the d8s land on a square:
 - **Already a pothole:** re-roll both d8s.
 - **Would expose the roller's king:** if the piece falling would leave the player who just moved in check once the hole closes, or if the cap closing the oldest pothole would leave them in check, re-roll both d8s.
 - **Too many re-rolls:** after 64 re-rolls without a valid square, no pothole opens this turn.
-- **Empty square:** the pothole opens. Mark it with a checker.
+- **Empty square:** the pothole opens. Mark it with a checker and 3 markers for its rounds.
 - **Any other piece:** the piece falls in and is lost, unless it is saved (see Saving rolls).
 - **The Mamdani:** the Mamdani must make a saving roll (see Saving rolls).
 
