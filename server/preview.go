@@ -21,7 +21,7 @@ type preview struct {
 }
 
 var homePreview = preview{
-	Title:       "Pothole Chess: Mamdani Edition",
+	Title:       "Mamdani Chess",
 	Description: "Chess where potholes open under your pieces. Play a friend or a stranger, no sign-up.",
 }
 
@@ -47,7 +47,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 // published state, so it never waits on the game.
 func (s *Server) preview(path string) preview {
 	if path == "/play" {
-		return preview{Title: "Quick match · Pothole Chess", Description: "Get paired with the next player looking for a game."}
+		return preview{Title: "Quick match · Mamdani Chess", Description: "Get paired with the next player looking for a game."}
 	}
 	code, ok := strings.CutPrefix(path, "/game/")
 	if !ok || strings.Contains(code, "/") {
@@ -64,15 +64,15 @@ func gamePreview(sum game.Summary) preview {
 	white, black := orColor(sum.White, "White"), orColor(sum.Black, "Black")
 	switch sum.Status {
 	case game.Waiting:
-		title := "You're invited to Pothole Chess"
+		title := "You're invited to Mamdani Chess"
 		if sum.White != "" {
-			title = sum.White + " invites you to Pothole Chess"
+			title = sum.White + " invites you to Mamdani Chess"
 		}
 		return preview{Title: title, Description: "Tap to take Black. 10+5, and potholes open under the pieces."}
 	case game.Playing:
-		return preview{Title: white + " vs " + black + " · Pothole Chess", Description: fmt.Sprintf("Watch live, move %d.", sum.Plies/2+1)}
+		return preview{Title: white + " vs " + black + " · Mamdani Chess", Description: fmt.Sprintf("Watch live, move %d.", sum.Plies/2+1)}
 	}
-	return preview{Title: white + " vs " + black + " · Pothole Chess", Description: resultLine(sum, white, black)}
+	return preview{Title: white + " vs " + black + " · Mamdani Chess", Description: resultLine(sum, white, black)}
 }
 
 // resultLine says how a finished game ended, e.g. "uws-bialy won by
@@ -142,14 +142,14 @@ func previewTags(p preview, base, path string) string {
 	}
 	tag("name", "description", p.Description)
 	tag("property", "og:type", "website")
-	tag("property", "og:site_name", "Pothole Chess")
+	tag("property", "og:site_name", "Mamdani Chess")
 	tag("property", "og:title", p.Title)
 	tag("property", "og:description", p.Description)
 	tag("property", "og:url", base+path)
 	tag("property", "og:image", base+"/og.png")
 	tag("property", "og:image:width", "1200")
 	tag("property", "og:image:height", "630")
-	tag("property", "og:image:alt", "Pothole Chess: a corner of the board with an open pothole and traffic cones")
+	tag("property", "og:image:alt", "Mamdani Chess: a corner of the board with an open pothole and traffic cones")
 	tag("name", "twitter:card", "summary_large_image")
 	return b.String()
 }

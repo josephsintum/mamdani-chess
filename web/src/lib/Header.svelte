@@ -143,8 +143,7 @@
 				<polygon points="16.2,13 23.8,13 25.5,17 14.5,17" fill="var(--bg)" />
 				<polygon points="12.4,22 27.6,22 29.3,26 10.7,26" fill="var(--bg)" />
 			</svg>
-			<span class="title">Pothole Chess</span>
-			<span class="edition">Mamdani Edition</span>
+			<span class="title">Mamdani Chess</span>
 		</a>
 		{#if name}
 			<div class="me" bind:this={pill} onfocusout={onFocusOut}>
@@ -257,17 +256,6 @@
 		font-weight: 800;
 		font-size: 26px;
 		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		white-space: nowrap;
-	}
-	.edition {
-		padding: 3px 6px;
-		border: 1px solid var(--accent-line);
-		border-radius: 4px;
-		color: var(--accent);
-		font-family: var(--font-mono);
-		font-size: 11px;
-		letter-spacing: 0.1em;
 		text-transform: uppercase;
 		white-space: nowrap;
 	}
@@ -437,10 +425,10 @@
 		clip-path: inset(50%);
 		white-space: nowrap;
 	}
-	/* Phones and narrow windows (canvas "Home (phone)"): a smaller mark, no
-	   edition tag, and the name as its initials; screen readers still hear the
-	   whole name. Wider than the page's 640 px phone layout, so a long name
-	   never squeezes the logo. */
+	/* Phones and narrow windows (canvas "Home (phone)"): a smaller mark and
+	   the name as its initials; screen readers still hear the whole name.
+	   Wider than the page's 640 px phone layout, so a long name never
+	   squeezes the logo. */
 	@media (max-width: 799px) {
 		.inner {
 			height: 60px;
@@ -456,9 +444,6 @@
 		}
 		.title {
 			font-size: 22px;
-		}
-		.edition {
-			display: none;
 		}
 		.me {
 			flex-shrink: 0;

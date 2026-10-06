@@ -1,4 +1,4 @@
-// Package rules is the Pothole Chess: Mamdani Edition rules engine.
+// Package rules is the Mamdani Chess rules engine.
 // It is pure: no I/O, no clock, and no randomness of its own (dice come in
 // through the Dice interface). RULES.md is the specification.
 package rules
