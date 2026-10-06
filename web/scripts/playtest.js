@@ -82,7 +82,9 @@ async function phoneLayout(page) {
 		if (!document.querySelector('.phone')) return 'not in the phone layout';
 		if (document.documentElement.scrollHeight > innerHeight + 1) return `the page scrolls (${document.documentElement.scrollHeight} > ${innerHeight})`;
 		const board = document.querySelector('.board')?.getBoundingClientRect().width ?? 0;
-		if (board < innerWidth * 0.9) return `the board is ${Math.round(board)}px on a ${innerWidth}px screen`;
+		// Near full width: the coordinates outside the board take 14 px of it
+		// (12 px labels and a 2 px gap), so on a short screen it's about 89%.
+		if (board < innerWidth * 0.88) return `the board is ${Math.round(board)}px on a ${innerWidth}px screen`;
 		return '';
 	});
 }

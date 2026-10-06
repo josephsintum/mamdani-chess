@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
+	import { cellOf, coordinates } from './feel.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
@@ -93,10 +94,9 @@
 
 	/** Column and row on screen for a square, 0..7 from the top left. */
 	function cell(sq: string): { col: number; row: number } {
-		const file = sq.charCodeAt(0) - 97;
-		const rank = Number(sq[1]) - 1;
-		return flipped ? { col: 7 - file, row: rank } : { col: file, row: 7 - rank };
+		return cellOf(sq, flipped);
 	}
+	let labels = $derived(coordinates(flipped));
 
 	function place(sq: string): string {
 		const { col, row } = cell(sq);
@@ -287,8 +287,12 @@
 	<rect class="cone-base" x="4" y="32" width="32" height="5" rx="1.5" />
 {/snippet}
 
+<!-- Coordinates sit outside the board, so the squares stay clean. The
+     label column and row are the same size, so the frame stays square. -->
+<div class="frame" class:dim>
+<div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span>{r}</span>{/each}</div>
 <div class="board" class:dim role="group" aria-label="Chessboard" {@attach dragArea}>
-	{#each order as index, n (index)}
+	{#each order as index (index)}
 		{@const sq = squareName(index)}
 		{@const dark = (Math.floor(index / 8) + (index % 8)) % 2 === 0}
 		<button
@@ -312,8 +316,6 @@
 			{#if saved === sq}
 				<span class="saved"></span>
 			{/if}
-			{#if n % 8 === 0}<span class="rank-label">{sq[1]}</span>{/if}
-			{#if n >= 56}<span class="file-label">{sq[0]}</span>{/if}
 		</button>
 	{/each}
 
@@ -395,8 +397,56 @@
 		</div>
 	{/if}
 </div>
+<div class="files" aria-hidden="true">{#each labels.files as f (f)}<span>{f}</span>{/each}</div>
+</div>
 
 <style>
+	/* The board with its coordinates: a column of ranks on the left and a
+	   row of files underneath, the same size so the whole frame is square. */
+	.frame {
+		--coord: 14px;
+		display: grid;
+		grid-template-columns: var(--coord) minmax(0, 1fr);
+		grid-template-rows: auto var(--coord);
+		gap: 4px;
+		width: 100%;
+	}
+	.ranks,
+	.files {
+		display: grid;
+		font-family: var(--font-mono);
+		font-weight: 500;
+		font-size: 12px;
+		line-height: 1;
+		color: var(--text-muted);
+		text-align: center;
+		user-select: none;
+	}
+	.ranks {
+		grid-template-rows: repeat(8, 1fr);
+		align-items: center;
+	}
+	.files {
+		grid-column: 2;
+		grid-template-columns: repeat(8, 1fr);
+		align-items: end;
+	}
+	.frame.dim .ranks,
+	.frame.dim .files {
+		opacity: 0.55;
+	}
+	/* On a phone the board is as big as fits, so the labels go compact: the
+	   frame then costs the board 14 px each way. */
+	@media (max-width: 640px) {
+		.frame {
+			--coord: 12px;
+			gap: 2px;
+		}
+		.ranks,
+		.files {
+			font-size: 10px;
+		}
+	}
 	.board {
 		position: relative;
 		display: grid;
@@ -489,31 +539,6 @@
 		color: var(--hazard);
 		pointer-events: none;
 		z-index: 1;
-	}
-	.rank-label,
-	.file-label {
-		position: absolute;
-		font-family: var(--font-mono);
-		font-weight: 600;
-		font-size: 12px;
-		color: var(--board-dark);
-		pointer-events: none;
-		/* Above resting pieces (2), so a piece in the corner square doesn't
-		   hide its letter; a dragged piece (3, later in the page) still
-		   passes over. */
-		z-index: 3;
-	}
-	.square.dark .rank-label,
-	.square.dark .file-label {
-		color: var(--board-light);
-	}
-	.rank-label {
-		top: 3px;
-		left: 4px;
-	}
-	.file-label {
-		bottom: 2px;
-		right: 4px;
 	}
 
 	/* Layers over the squares: potholes, the target ring, then pieces. They
