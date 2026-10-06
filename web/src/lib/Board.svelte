@@ -52,9 +52,6 @@
 	// A dragged piece dropped on a square it can't go to settles back with a
 	// squash; n changes each time so the same square can bounce again.
 	let bounce = $state({ sq: '', n: 0 });
-	// The square a piece just settled back on: it stays selected, but without
-	// replaying the pick-up wobble. Cleared on the next press.
-	let settledBack = $state('');
 	let boardEl: HTMLDivElement | undefined = $state();
 
 	// Without moves to make (not your turn, dice still rolling) nothing is selectable.
@@ -215,7 +212,6 @@
 
 	function pointerDown(e: PointerEvent, sq: string) {
 		dropped = null;
-		settledBack = '';
 		if (pending || !movable.has(sq) || e.button !== 0) return;
 		drag = { from: sq, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, pointer: e.pointerId, tilt: 0 };
 	}
@@ -254,7 +250,6 @@
 			dropped = null;
 			selected = from;
 			bounce = { sq: from, n: bounce.n + 1 };
-			settledBack = from;
 		}
 	}
 
@@ -417,7 +412,7 @@
 			<span
 				class="slot piece-slot"
 				class:lifted={movable.has(p.sq) && (hovered === p.sq || current === p.sq) && !drag?.moved}
-				class:picked={current === p.sq && !drag?.moved && settledBack !== p.sq}
+				class:picked={current === p.sq && !drag?.moved}
 				class:dragging={drag?.moved && drag.from === p.sq}
 				style={pieceStyle(p)}
 			>
@@ -693,28 +688,18 @@
 		transform-origin: 50% 85%;
 		transition: transform 0.3s ease;
 	}
-	.lifted .piece,
+	.lifted .piece {
+		transform: scale(1.12);
+	}
+	/* Picked up: it lifts and leans slightly, and stays leaning while
+	   selected (the 0.3 s transition above eases it in and back). */
+	.picked .piece {
+		transform: scale(1.12) rotate(-4deg);
+	}
+	/* Dragged: it leans toward the pull instead. */
 	.dragging .piece {
 		transform: scale(1.12) rotate(var(--tilt, 0deg));
 		transition: transform 0.12s ease-out;
-	}
-	/* Picked up: a quick wobble as it lifts. */
-	.picked .piece {
-		animation: wobble 0.22s ease-out;
-	}
-	@keyframes wobble {
-		0% {
-			transform: scale(1);
-		}
-		30% {
-			transform: scale(1.14) rotate(-6deg);
-		}
-		65% {
-			transform: scale(1.12) rotate(5deg);
-		}
-		100% {
-			transform: scale(1.12) rotate(0);
-		}
 	}
 	/* mpchess pieces fill the square (110% of the old 92%), with a crisp
 	   white outline: their own shape offset 1.5 px four ways, no blur. */
@@ -1026,7 +1011,6 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.picked .piece,
 		.square.legal::after,
 		.trail {
 			animation: none;

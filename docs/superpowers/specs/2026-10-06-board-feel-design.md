@@ -17,7 +17,7 @@
 | 7 | Win screen: result tally and confetti | 7 |
 | 8 | Catchphrase bubbles (milestone 09) | 8 |
 | 9 | Dice: a tray throw echoed on the board, the pothole scan riding on out-of-sync file and rank dice | 9 |
-| 10 | Pick-up jiggle and tilt, legal moves ripple in | 10 |
+| 10 | Pick-up lean and drag tilt, legal moves ripple in | 10 |
 | 11 | Board shake by size | 11 |
 | 12 | +5 on the clock | 12 |
 
@@ -89,9 +89,9 @@ Chosen on 2026-10-06 over rolling the dice along the coordinate rails (mockup 8)
 
 **Timing to check while planning:** the server pauses the next clock with `pauseFor` (`game/clock.go`), computed from one `StepTime` (550 ms) per event after the roll, at least 2 s. The new dice pacing is per kind of step, not uniform, so the plan must make the client's per-step durations and `pauseFor` come from one table (or keep the client within it), and test that a long roll (re-rolls plus a saving roll) never lets the next clock start mid-animation.
 
-## 10. Pick-up jiggle and tilt, legal moves ripple in
+## 10. Pick-up lean and drag tilt, legal moves ripple in
 
-- **Lift:** a selected piece grows 12% with a quick wobble (−6°, +5°, upright over 220 ms).
+- **Lift:** a selected piece grows 12% and leans 4° to the left, easing in over 0.3 s, and stays leaning while selected (no wobble; changed 2026-10-06 after watching the recordings). It stands upright when put down or deselected.
 - **Drag tilt:** while dragged, it tilts toward the pull, up to 10°, from the pointer's sideways speed, easing back on release.
 - **Ripple:** its legal squares pop in (scale 0 to 112% to 100%, 200 ms) in order of distance from the piece, 15 ms per step, instead of all at once.
 - **Land:** a drop lands with a squash (108% × 92%, 140 ms); a drop on an illegal square settles back the same way.
