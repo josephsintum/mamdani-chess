@@ -9,6 +9,7 @@ import {
 	firstDiceStep,
 	markCelebrated,
 	matedByRoll,
+	matedKing,
 	pillFor,
 	repairsShown,
 	squareIndex,
@@ -435,5 +436,17 @@ describe('repair celebrations', () => {
 		expect(seen.has('k69')).toBe(true);
 		expect(seen.has('k5')).toBe(false);
 		expect(seen.size).toBeLessThanOrEqual(64);
+	});
+});
+
+describe('matedKing', () => {
+	it("finds the mated king's square", () => {
+		const v = makeView({ e8: 'bK', e1: 'wK' }, { status: 'over', result: { winner: 'white', draw: false, reason: 'checkmate' } });
+		expect(matedKing(v)).toBe('e8');
+	});
+	it('is empty for any other ending', () => {
+		const v = makeView({ e8: 'bK', e1: 'wK' }, { status: 'over', result: { winner: 'white', draw: false, reason: 'resignation' } });
+		expect(matedKing(v)).toBe('');
+		expect(matedKing(makeView({ e8: 'bK' }))).toBe('');
 	});
 });

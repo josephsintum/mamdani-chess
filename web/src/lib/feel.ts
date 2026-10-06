@@ -126,3 +126,25 @@ export function knockOffset(from: string, to: string, flipped: boolean): { x: nu
 	const r = (v: number) => Math.round(v * 10) / 10 || 0;
 	return { x: r((33 * dx) / d), y: r((33 * dy) / d) };
 }
+
+/**
+ * The shards of a checkmate burst: an angle all the way round (degrees), how
+ * far each flies (squares), its spin, and whether it's orange. Seeded, so the
+ * burst is the same every time.
+ */
+export function burstShards(count = 18, seed = 7): { angle: number; dist: number; spin: number; hazard: boolean }[] {
+	let s = seed;
+	const rand = () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
+	return Array.from({ length: count }, (_, i) => ({
+		angle: Math.round(((i + rand() * 0.6) / count) * 360),
+		dist: Math.round((2 + rand() * 3) * 10) / 10,
+		spin: Math.round(rand() * 540 - 270),
+		hazard: i % 3 === 0
+	}));
+}
+
+/**
+ * How long a checkmate burst holds the board, in ms, before it dims and the
+ * result card shows (with the tally and the winner's confetti).
+ */
+export const BURST_HOLD_MS = 1800;

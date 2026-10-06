@@ -4,7 +4,7 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
-	import { pillFor, repairsShown, stageAt } from '#lib/board.ts';
+	import { matedKing, pillFor, repairsShown, stageAt } from '#lib/board.ts';
 	import { quipper } from '#lib/catchphrases.ts';
 	import type { Color, MoveJSON, View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
@@ -52,6 +52,12 @@
 	// Big moments say something, as in a game.
 	const say = quipper();
 	let quip = $derived(anim.animated && !instant ? say(view.last, view.seq, anim.shown) : null);
+	// The Result card buttons end the game at once: each checkmate bursts once.
+	let endings = $state(0);
+	let mated = $derived.by(() => {
+		const sq = !instant ? matedKing(view) : '';
+		return sq ? { sq, key: `sandbox:${endings}` } : null;
+	});
 	let needsTarget = $derived(rollKinds.find((r) => r.kind === rollKind)?.needsTarget ?? false);
 
 	function d8(): number {
@@ -117,6 +123,7 @@
 	}
 
 	function end(result: NonNullable<View['result']>) {
+		endings += 1;
 		load({ ...JSON.parse(JSON.stringify(view)), status: 'over', result, last: [] });
 	}
 
@@ -215,6 +222,7 @@
 				saved={savedSquare}
 				{repairs}
 				{quip}
+				{mated}
 				onmove={move}
 			/>
 			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={pillFor(view, bottom, anim.animating).text} pillTone={pillFor(view, bottom, anim.animating).tone} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { biggerShake, captureShake, cellOf, coordinates, knockOffset, rippleDelay, SHAKE, shakeFrames, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
+import { biggerShake, burstShards, captureShake, cellOf, coordinates, knockOffset, rippleDelay, SHAKE, shakeFrames, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
 
 describe('coordinates', () => {
 	it('reads 8 to 1 down and a to h across for White', () => {
@@ -111,5 +111,23 @@ describe('knockOffset', () => {
 	});
 	it('follows the board when it is flipped', () => {
 		expect(knockOffset('a1', 'h1', true)).toEqual({ x: -33, y: 0 });
+	});
+});
+
+describe('burstShards', () => {
+	it('throws 18 shards all the way round, one in three orange', () => {
+		const shards = burstShards();
+		expect(shards).toHaveLength(18);
+		expect(shards.filter((s) => s.hazard)).toHaveLength(6);
+		for (const s of shards) {
+			expect(s.dist).toBeGreaterThanOrEqual(2);
+			expect(s.dist).toBeLessThanOrEqual(5);
+		}
+		const angles = shards.map((s) => s.angle).sort((a, b) => a - b);
+		expect(angles[0]).toBeLessThan(40);
+		expect(angles.at(-1)).toBeGreaterThan(320);
+	});
+	it('is the same burst every time, so a test can pin it', () => {
+		expect(burstShards()).toEqual(burstShards());
 	});
 });

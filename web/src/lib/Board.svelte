@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
-	import { biggerShake, captureShake, cellOf, coordinates, FALL_MS, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
+	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
@@ -16,6 +16,7 @@
 		saved = '',
 		repairs = [],
 		quip = null,
+		mated = null,
 		onmove
 	}: {
 		stage: Stage;
@@ -36,6 +37,8 @@
 		repairs?: { sq: string; key: string; hole: boolean }[];
 		/** A speech bubble for a big moment (catchphrases.ts); a new key pops a new one. */
 		quip?: { sq: string; emoji: string; line: string; key: string; delay?: number } | null;
+		/** The mated king's square, burst once per game (by key). */
+		mated?: { sq: string; key: string } | null;
 		onmove: (move: MoveJSON) => void;
 	} = $props();
 
@@ -397,6 +400,7 @@
 		return { delay: 180, duration: 480, css: (_t: number, u: number) => `--p: ${u}; opacity: ${1 - u}` };
 	}
 	const DUST = [190, 215, 240, 265, 290, 315, 340, 355];
+	const SHARDS = burstShards();
 
 	/** A pothole cracks open. */
 	function crack(_node: Element) {
@@ -448,7 +452,7 @@
      label column and row are the same size, so the frame stays square. -->
 <div class="frame" class:dim {@attach (node) => void (frameEl = node)}>
 <div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span>{r}</span>{/each}</div>
-<div class="board" class:dim role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms" {@attach dragArea}>
+<div class="board" class:dim class:late={!!mated && !playedBefore.has(mated.key)} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms" {@attach dragArea}>
 	{#each order as index (index)}
 		{@const sq = squareName(index)}
 		{@const dark = (Math.floor(index / 8) + (index % 8)) % 2 === 0}
@@ -482,6 +486,9 @@
 			{#key saved}
 				<span class="slot" style={place(saved)}><span class="hole briefly"></span></span>
 			{/key}
+		{/if}
+		{#if mated && !playedBefore.has(mated.key)}
+			<span class="slot" style="{place(mated.sq)}; --delay: {impact()}ms"><span class="wash"></span></span>
 		{/if}
 		{#each stage.potholes as h (h.sq)}
 			<span class="slot" style={place(h.sq)}>
@@ -553,6 +560,23 @@
 			{#key quip.key}
 				<span class="slot fix quip" class:top={cell(quip.sq).row < 2} class:left={cell(quip.sq).col === 0} class:right={cell(quip.sq).col === 7} style="{place(quip.sq)}; --quip-delay: {quip.delay ?? 0}ms">
 					<span class="bubble"><em>{quip.emoji}</em> {quip.line}</span>
+				</span>
+			{/key}
+		{/if}
+		{#if mated && !playedBefore.has(mated.key)}
+			{#key mated.key}
+				<span
+					class="slot fix burst"
+					class:bottom={cell(mated.sq).row === 7}
+					style="{place(mated.sq)}; --delay: {impact()}ms"
+					{@attach () => {
+						markCelebrated(mated.key);
+						shake(SHAKE.mate, impact() + 500);
+					}}
+				>
+					{#each SHARDS as s, i (i)}<span class="shard" class:hazard={s.hazard} style="--a: {s.angle}deg; --d: {s.dist}; --s: {s.spin}deg"></span>{/each}
+					{#each [-1, 1] as dir (dir)}<svg class="flycone" style="--dir: {dir}" viewBox="0 0 40 40">{@render coneShape()}</svg>{/each}
+					<span class="badge">#</span>
 				</span>
 			{/key}
 		{/if}
@@ -645,6 +669,10 @@
 	.board.dim {
 		filter: saturate(0.6) brightness(0.55);
 		transition: filter 0.4s ease;
+	}
+	/* A checkmate burst plays first, then the board dims. */
+	.board.dim.late {
+		transition-delay: var(--burst-hold);
 	}
 	.square {
 		position: relative;
@@ -1195,6 +1223,116 @@
 	@media (prefers-reduced-motion: reduce) {
 		.dust {
 			display: none;
+		}
+	}
+	/* Checkmate: the king's square turns red in two steps, under the king. */
+	.wash {
+		position: absolute;
+		inset: 0;
+		background: var(--mate);
+		opacity: 0.85;
+		animation: wash 0.52s var(--delay, 0ms) both;
+	}
+	@keyframes wash {
+		0% {
+			opacity: 0;
+		}
+		40%,
+		60% {
+			opacity: 0.45;
+		}
+		100% {
+			opacity: 0.85;
+		}
+	}
+	/* Then white and orange shards and two cones burst across the board, and
+	   a red badge marks the king. */
+	.shard {
+		position: absolute;
+		left: 44%;
+		top: 37%;
+		width: 12%;
+		height: 26%;
+		border-radius: 2px;
+		background: var(--piece-light);
+		opacity: 0;
+		animation: shard 1s cubic-bezier(0.15, 0.7, 0.3, 1) calc(var(--delay, 0ms) + 500ms) forwards;
+	}
+	.shard.hazard {
+		background: var(--hazard);
+	}
+	@keyframes shard {
+		from {
+			opacity: 1;
+			transform: rotate(var(--a)) translateY(0) rotate(0deg);
+		}
+		to {
+			opacity: 0;
+			transform: rotate(var(--a)) translateY(calc(var(--d) * -385%)) rotate(var(--s));
+		}
+	}
+	.flycone {
+		--up: 1;
+		width: 100%;
+		height: 100%;
+		overflow: visible;
+		opacity: 0;
+		animation: flycone 1.1s ease-out calc(var(--delay, 0ms) + 500ms) forwards;
+	}
+	.bottom .flycone {
+		--up: -1;
+	}
+	@keyframes flycone {
+		0% {
+			opacity: 1;
+			transform: translate(0, 0) rotate(0deg) scale(0.6);
+		}
+		55% {
+			opacity: 1;
+			transform: translate(calc(var(--dir) * 160%), calc(var(--up) * 140%)) rotate(calc(var(--dir) * 200deg)) scale(1);
+		}
+		100% {
+			opacity: 0;
+			transform: translate(calc(var(--dir) * 230%), calc(var(--up) * 320%)) rotate(calc(var(--dir) * 330deg)) scale(1);
+		}
+	}
+	.badge {
+		place-self: start end;
+		display: grid;
+		place-items: center;
+		width: 36%;
+		aspect-ratio: 1;
+		margin: 4%;
+		border-radius: 50%;
+		background: var(--mate);
+		box-shadow: 0 0 0 2px var(--bg);
+		color: var(--piece-light);
+		font-family: var(--font-mono);
+		font-weight: 700;
+		font-size: 22cqh;
+		line-height: 1;
+		animation: badge 0.38s ease-out calc(var(--delay, 0ms) + 800ms) both;
+	}
+	@keyframes badge {
+		0% {
+			transform: scale(0);
+		}
+		60% {
+			transform: scale(1.25);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+	/* Reduced motion: the red square and the badge, nothing flying. */
+	@media (prefers-reduced-motion: reduce) {
+		.shard,
+		.flycone {
+			display: none;
+		}
+		.wash,
+		.badge {
+			animation: none;
 		}
 	}
 	/* A big moment: a speech bubble from the square, for about 2.8 s. */

@@ -1,7 +1,7 @@
 // Pure board logic for the game page: blocked lines, the board while the
 // dice play out, and the dice tray's lines. No DOM, so it is unit-tested.
 
-import { pieceName, type Color, type EventJSON, type View } from './game.ts';
+import { pieceName, squareName, type Color, type EventJSON, type View } from './game.ts';
 
 export function squareIndex(name: string): number {
 	return (Number(name[1]) - 1) * 8 + (name.charCodeAt(0) - 97);
@@ -367,4 +367,13 @@ export function pillFor(view: View, color: Color, animating: boolean): { text: s
 	if (animating || view.turn !== color) return { text: '', tone: 'turn' };
 	if (view.check) return { text: 'In check', tone: 'check' };
 	return { text: view.you === color ? 'Your move' : 'To move', tone: 'turn' };
+}
+
+/** The mated king's square once a game ends in checkmate, else "". */
+export function matedKing(view: View): string {
+	const r = view.result;
+	if (!r || r.reason !== 'checkmate' || r.draw || !r.winner) return '';
+	const king = r.winner === 'white' ? 'bK' : 'wK';
+	const i = view.board.indexOf(king);
+	return i < 0 ? '' : squareName(i);
 }

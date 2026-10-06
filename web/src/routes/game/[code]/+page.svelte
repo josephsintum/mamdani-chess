@@ -13,7 +13,7 @@
 	import MovesSheet from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
-	import { checkSquare, matedByRoll, pillFor, repairsShown, stageAt } from '#lib/board.ts';
+	import { checkSquare, matedByRoll, matedKing, pillFor, repairsShown, stageAt } from '#lib/board.ts';
 	import { quipper } from '#lib/catchphrases.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
@@ -182,6 +182,11 @@
 	// A speech bubble for a big moment: only on a turn that is playing out, like the repairs.
 	const say = quipper();
 	let quip = $derived(view && anim.animated && !instant ? say(view.last, view.seq, shown) : null);
+	// The checkmate burst, once the dice stop, on a turn that played out here.
+	let mated = $derived.by(() => {
+		const sq = view && anim.animated && !instant && !animating ? matedKing(view) : '';
+		return sq ? { sq, key: `${code}:mate` } : null;
+	});
 	let you = $derived(view?.you ?? 'spectator');
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
 	let top = $derived<Color>(bottom === 'white' ? 'black' : 'white');
@@ -408,6 +413,7 @@
 					saved={savedSquare}
 					{repairs}
 					{quip}
+					{mated}
 					onmove={move}
 				/>
 			</div>
@@ -564,6 +570,7 @@
 						saved={savedSquare}
 						{repairs}
 						{quip}
+						{mated}
 						onmove={move}
 					/>
 					{#if resultCard}
