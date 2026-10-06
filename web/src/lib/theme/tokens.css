@@ -13,8 +13,8 @@
 	--hazard: #ff7a3d;
 	--board-light: #d9d3c4;
 	--board-dark: #857e72;
-	--board-last-light: #e9d98b;
-	--board-last-dark: #b5a24f;
+	--board-last-light: #bcd7ea; /* the last move: light blue, so it never reads as a legal move (yellow) */
+	--board-last-dark: #89a9c1;
 	--target-ring: #f2c230;
 	--hole: #08090a; /* inside of a pothole */
 	--accent-wash: #26241b; /* background behind a highlighted row */
