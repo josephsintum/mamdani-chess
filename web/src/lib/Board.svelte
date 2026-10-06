@@ -46,9 +46,12 @@
 	let selected = $state<string | null>(null);
 	let promoting = $state<{ from: string; to: string } | null>(null);
 	let hovered = $state<string | null>(null);
-	// x0, y0: where the press started; x, y: where the pointer is now; tilt:
-	// how far the held piece leans toward the pull, in degrees.
-	let drag = $state<{ from: string; x0: number; y0: number; x: number; y: number; moved: boolean; pointer: number; tilt: number } | null>(null);
+	// x0, y0: where the press started; x, y: where the pointer is now; t: when
+	// it got there; tilt: how far the held piece leans toward the pull, in
+	// degrees.
+	let drag = $state<{ from: string; x0: number; y0: number; x: number; y: number; t: number; moved: boolean; pointer: number; tilt: number } | null>(null);
+	// Brings a dragged piece back upright once the pointer stops moving.
+	let tiltSettle: ReturnType<typeof setTimeout> | undefined;
 	// A dragged piece dropped on a square it can't go to settles back with a
 	// squash; n changes each time so the same square can bounce again.
 	let bounce = $state({ sq: '', n: 0 });
@@ -213,7 +216,7 @@
 	function pointerDown(e: PointerEvent, sq: string) {
 		dropped = null;
 		if (pending || !movable.has(sq) || e.button !== 0) return;
-		drag = { from: sq, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, pointer: e.pointerId, tilt: 0 };
+		drag = { from: sq, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t: e.timeStamp, moved: false, pointer: e.pointerId, tilt: 0 };
 	}
 
 	// The pointer is only captured once it has really moved. Capturing on
@@ -233,13 +236,20 @@
 			boardEl?.setPointerCapture(e.pointerId);
 			selected = drag.from;
 		}
-		// Lean toward the pull, from how fast the pointer moves sideways,
-		// smoothed so a jittery drag doesn't wobble.
-		const tilt = moved && !reducedMotion() ? Math.max(-10, Math.min(10, drag.tilt * 0.6 + (e.clientX - drag.x) * 1.2 * 0.4)) : 0;
-		drag = { ...drag, x: e.clientX, y: e.clientY, moved, tilt };
+		// Lean toward the pull, from how fast the pointer moves sideways (px
+		// per ms, so it reads the same on any device), up to 10 degrees,
+		// smoothed so a jittery drag doesn't wobble. Once the pointer stops,
+		// the piece eases back upright.
+		const speed = (e.clientX - drag.x) / Math.max(1, e.timeStamp - drag.t);
+		const pull = moved && !reducedMotion() ? Math.max(-10, Math.min(10, speed * 12)) : 0;
+		const tilt = drag.tilt * 0.5 + pull * 0.5;
+		drag = { ...drag, x: e.clientX, y: e.clientY, t: e.timeStamp, moved, tilt };
+		clearTimeout(tiltSettle);
+		if (tilt !== 0) tiltSettle = setTimeout(() => drag && (drag = { ...drag, tilt: 0 }), 80);
 	}
 
 	function pointerUp(e: PointerEvent) {
+		clearTimeout(tiltSettle);
 		if (!drag || e.pointerId !== drag.pointer) return;
 		const { from, moved } = drag;
 		drag = null;
