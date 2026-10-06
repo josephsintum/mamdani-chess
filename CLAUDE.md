@@ -24,17 +24,25 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 - Stage only the files you changed (`git add <paths>`), never `git add -A`. `go.mod` and `names/` (guest-name generator) were written separately; don't move or rewrite them without asking.
 - The Mamdani photo on the canvas is a placeholder; the shipped game needs art we have rights to.
 
-## Where things stand (2026-10-05)
+## Where things stand (2026-10-06)
 
 - **Done:** milestones 01–05 (skeleton, rules engine, playable friend game, game screen with dice tray, resign and result card; 10+5 clocks, games saved to SQLite and restored after a restart, rematch), milestone 06a (guest names, re-roll only, from `names/` ([how the words were chosen](docs/guest-names.md)); the home page with join by code and the live games list; quick match on `/play`), the `/dev/board` sandbox, and [Plan 04b](docs/superpowers/plans/2026-10-05-04b-omcb-feel.md): the board feels like One Million Chessboards (gliding pieces, instant moves, cross-fade captures, pothole effects, tumbling dice, cburnett pieces, reduced motion). A pre-05 pass added instant mode, the playtest script, and keeps an instant move through same-turn updates (`settlesGuess`), which milestone 05's clocks rely on.
 - **Done: milestone 06c** ([plan](docs/superpowers/plans/2026-10-05-06c-longer-potholes.md)): potholes last 3 rounds with at most 5 open (the oldest closes), a roll can checkmate, traffic cones count each hole down, the Mamdani's repairs are celebrated (cone, sparks, 👍), and the Mamdani art is on the boards. Games saved under the old rules were retired by migration 5. Checked with whole games: Chromium 8/8, WebKit 8/8, phone 4/4 in instant mode, and 3/3 in each browser with full animations; the playtest now also fails if a closed pothole stays drawn.
 - **Also in the repo, from another session:** two side plans (Go server improvements, Go rules speed).
 - **Checked:** whole games through the UI with the playtest script, 24 in Chromium and 18 in WebKit (Safari's engine), all clean; WebKit at phone size also glides and takes touch taps.
+- **Done: board feel, plans 1 and 2** ([spec](docs/superpowers/specs/2026-10-06-board-feel-design.md), [mockups](https://claude.ai/artifact/E6oCYQhp8xaDTZCVssczXy), PRs #3–#5):
+  - Coordinates outside the board.
+  - mpchess pieces at 90% of the square, with lines 1.2× heavier (the SVGs are edited) and a 2 px cream outline.
+  - Ease-out glide with a trail and a lean; pick-up lean, drag tilt and ripple.
+  - Board shake, capture knock-back, falls and saves.
+  - Speech bubbles: every line, the pairs and the rare lines live in `web/src/lib/catchphrases.ts`, chosen from the [catchphrase shortlist](https://claude.ai/artifact/JVUbAGvZ5NKAyt5bvdTNGp).
+  - Checkmate burst, the win screen's tally and confetti, and "+5" on the clock.
+  - At game over the board darkens under a shade below the bubbles.
 - **Pending:** a playtest with friends, on their phones.
 
 ## Next step
 
-Milestone 07 (launch). Its brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08. Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Board feel plan 3: the dice (spec section 9: tray throw, board pill, out-of-sync file and rank dice with the scan, one timing table shared with `pauseFor`). Then milestone 07 (launch). Its brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08. Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
@@ -54,6 +62,8 @@ Milestone 07 (launch). Its brainstorm has started: audience a few friends, the R
   - transition functions take `(node, params)`;
   - `$state.snapshot` only works in `.svelte`/`.svelte.ts` files;
   - run `npx @sveltejs/mcp svelte-autofixer` on every component and avoid `$effect`.
+- **Dev server and `pnpm check`:** `pnpm --dir web check` regenerates SvelteKit's files and can leave a running `pnpm --dir web dev` hung (pages stop loading). Restart the dev server after it.
+- **PR screenshots:** a PR that changes the UI embeds screenshots, before and after where it fits. They live on the unmerged `pr-screenshots` branch under `pr-<number>/` and are linked from `raw.githubusercontent.com`, so `main` stays free of images.
 - **Notices:** show toasts with `notify.*` from `#lib/toast.ts` (svelte-sonner behind it, themed in `Toaster.svelte`, mounted once in the layout). Never import svelte-sonner in a page.
 - **Board pointer rule:** capture the pointer only once a drag has moved more than 6px from the press (not from the last event, or slow drags never start). Capturing on pointerdown sends the click to the board, and taps stop working.
 - **How plans have been written:** build the code in a scratch copy, check it in tests and a browser, write the plan from those files, dry-run the plan task by task from `main`, then execute it inline on a branch with one final whole-branch review.
