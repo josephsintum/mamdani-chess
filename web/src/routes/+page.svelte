@@ -139,6 +139,50 @@
 		</div>
 	</section>
 
+	<section class="how" aria-labelledby="how-heading">
+		<div class="how-text">
+			<h2 id="how-heading">How it works</h2>
+			<div class="steps">
+				<div>
+					<span class="num hazard">01</span>
+					<h3>Potholes open</h3>
+					<p>
+						After every move, roll a d8. Even, and two more d8s pick a square: whatever stands there falls in. Kings
+						never do. A pothole stays open for three of its roller's moves, and at most five are open at once.
+					</p>
+				</div>
+				<div>
+					<span class="num accent">02</span>
+					<h3>The Mamdani</h3>
+					<p>
+						A neutral piece that moves like a queen. Either player can spend a turn moving it. It never captures, but
+						it blocks lines and repairs any pothole next to it.
+					</p>
+				</div>
+				<div>
+					<span class="num">03</span>
+					<h3>Saving rolls</h3>
+					<p>If the Mamdani has a clear line to a doomed piece, roll a d8. Odd, and the piece is saved.</p>
+				</div>
+			</div>
+		</div>
+		<figure class="reel">
+			<iframe
+				src="https://www.instagram.com/reel/Dd8tV_MxEQL/embed/"
+				title="The Mamdani Patch, a reel by @bardelo_bardalini on Instagram"
+				loading="lazy"
+				allowfullscreen
+			></iframe>
+			<figcaption>
+				Credit: the Mamdani comes from
+				<a href="https://www.instagram.com/reel/Dd8tV_MxEQL/" target="_blank" rel="noopener">The Mamdani Patch</a>
+				by
+				<a href="https://www.instagram.com/bardelo_bardalini/" target="_blank" rel="noopener">@bardelo_bardalini</a>. All
+				credit to the original creator.
+			</figcaption>
+		</figure>
+	</section>
+
 	<section class="live" aria-labelledby="live-heading">
 		<div class="live-head">
 			<h2 id="live-heading">Live now</h2>
@@ -179,33 +223,6 @@
 				{/each}
 			</ul>
 		{/if}
-	</section>
-
-	<section class="how" aria-labelledby="how-heading">
-		<h2 id="how-heading">How it works</h2>
-		<div class="steps">
-			<div>
-				<span class="num hazard">01</span>
-				<h3>Potholes open</h3>
-				<p>
-					After every move, roll a d8. Even, and two more d8s pick a square: whatever stands there falls in. Kings
-					never do.
-				</p>
-			</div>
-			<div>
-				<span class="num accent">02</span>
-				<h3>The Mamdani</h3>
-				<p>
-					A neutral piece that moves like a queen. Either player can spend a turn moving it. It never captures, but
-					it blocks lines and repairs any pothole next to it.
-				</p>
-			</div>
-			<div>
-				<span class="num">03</span>
-				<h3>Saving rolls</h3>
-				<p>If the Mamdani has a clear line to a doomed piece, roll a d8. Odd, and the piece is saved.</p>
-			</div>
-		</div>
 	</section>
 
 	<footer>Based on Pot-Hole Chess by Peter Spicer and Michael Chamberlain (2001).</footer>
@@ -396,7 +413,8 @@
 		background: var(--hazard);
 	}
 	.live {
-		padding: 8px 0 88px;
+		padding: 56px 0 88px;
+		border-top: 1px solid var(--surface-2);
 	}
 	.live-head {
 		display: flex;
@@ -492,7 +510,12 @@
 		font-family: var(--font-mono);
 		font-size: 13px;
 	}
+	/* The steps on the left, the reel the Mamdani comes from on the right. */
 	.how {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 400px;
+		gap: 64px;
+		align-items: start;
 		padding: 56px 0 72px;
 		border-top: 1px solid var(--surface-2);
 	}
@@ -500,9 +523,42 @@
 		margin-bottom: 32px;
 	}
 	.steps {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 40px;
+		display: flex;
+		flex-direction: column;
+		gap: 32px;
+		max-width: 560px;
+	}
+	.reel {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		width: 100%;
+		max-width: 400px;
+		margin: 0;
+	}
+	/* Instagram's embed doesn't size itself without its script: a 4:5 video
+	   plus 210px of header and footer. */
+	.reel iframe {
+		width: 100%;
+		height: calc(min(400px, 100vw - 32px) * 1.25 + 210px);
+		border: 0;
+		border-radius: 12px;
+		background: var(--surface);
+	}
+	figcaption {
+		color: var(--text-muted);
+		font-size: 14px;
+		line-height: 1.5;
+	}
+	figcaption a {
+		color: var(--accent);
+	}
+	/* Too narrow for the reel beside the steps: the reel goes under them. */
+	@media (max-width: 959px) {
+		.how {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 32px;
+		}
 	}
 	.steps div {
 		display: flex;
@@ -608,8 +664,13 @@
 		.meta {
 			font-size: 12px;
 		}
+		.how {
+			padding: 32px 0 40px;
+		}
+		.live {
+			padding-top: 32px;
+		}
 		.steps {
-			grid-template-columns: minmax(0, 1fr);
 			gap: 24px;
 		}
 	}
