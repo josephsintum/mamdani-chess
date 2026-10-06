@@ -22,7 +22,9 @@ type Live struct {
 	Watching int        `json:"watching"` // guests watching who aren't playing
 	status   Status
 	created  time.Time
-	seats    [2]string // guest IDs, for Active
+	seats    [2]string   // guest IDs, for Active
+	plies    int         // turns played, for Summary
+	result   *ResultJSON // how it ended, or nil
 }
 
 // publish replaces the game's Live with its current state.
@@ -39,6 +41,10 @@ func (g *Game) publish() {
 		status:   g.status(),
 		created:  g.created,
 		seats:    g.seats,
+		plies:    len(g.g.Turns),
+	}
+	if r := g.g.Result; r.Over {
+		l.result = &ResultJSON{Winner: winnerName(r), Draw: r.Draw, Reason: r.Reason}
 	}
 	for s, pc := range p.Board {
 		l.Board[s] = pieceCode(pc)
@@ -48,6 +54,24 @@ func (g *Game) publish() {
 		l.Last = &m
 	}
 	g.live.Store(l)
+}
+
+// Summary is a game at a glance, as a shared link's preview describes it.
+type Summary struct {
+	White, Black string // names; "" for an empty seat
+	Status       Status
+	Plies        int         // turns played
+	Result       *ResultJSON // how it ended, once over
+}
+
+// Summary reads the game's last published state, so it never waits on the
+// game.
+func (g *Game) Summary() Summary {
+	l := g.live.Load()
+	if l == nil {
+		return Summary{Status: Waiting}
+	}
+	return Summary{White: l.White, Black: l.Black, Status: l.status, Plies: l.plies, Result: l.result}
 }
 
 // watching counts the guests with the game open who aren't seated: two

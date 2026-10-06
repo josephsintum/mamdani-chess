@@ -30,6 +30,10 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		}
 		name = "index.html"
 	}
+	if name == "index.html" {
+		s.index(w, r) // with the page's link preview tags
+		return
+	}
 	if strings.HasPrefix(name, "_app/immutable/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {

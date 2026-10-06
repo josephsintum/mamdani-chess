@@ -40,7 +40,7 @@ func newTestServerWith(t *testing.T, dice rules.Dice) (*Server, *httptest.Server
 	}
 	t.Cleanup(func() { st.Close() })
 	assets := fstest.MapFS{
-		"index.html":            {Data: []byte("<!doctype html>app shell")},
+		"index.html":            {Data: []byte("<!doctype html><html><head><meta charset=\"utf-8\"></head><body>app shell</body></html>")},
 		"_app/immutable/app.js": {Data: []byte("console.log(1)")},
 		"favicon.svg":           {Data: []byte("<svg/>")},
 		"favicon.svg.br":        {Data: []byte("brotli bytes")},

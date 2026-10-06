@@ -15,7 +15,8 @@
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest run",
-		"playtest": "node scripts/playtest.js"
+		"playtest": "node scripts/playtest.js",
+		"og-image": "node scripts/og-image.js"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^4.0.0",

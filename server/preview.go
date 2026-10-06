@@ -1,0 +1,155 @@
+package server
+
+import (
+	"bytes"
+	"fmt"
+	"html"
+	"io/fs"
+	"net/http"
+	"strings"
+	"time"
+
+	"mamdani-chess/game"
+	"mamdani-chess/rules"
+)
+
+// preview is what a shared link shows in a chat app: iMessage, WhatsApp,
+// Slack and the like read the page's tags without running its script, so
+// the server writes them.
+type preview struct {
+	Title, Description string
+}
+
+var homePreview = preview{
+	Title:       "Pothole Chess: Mamdani Edition",
+	Description: "Chess where potholes open under your pieces. Play a friend or a stranger, no sign-up.",
+}
+
+// index serves the app shell with the preview tags for r's page.
+func (s *Server) index(w http.ResponseWriter, r *http.Request) {
+	b, err := fs.ReadFile(s.assets, "index.html")
+	if err != nil {
+		http.Error(w, "app not built", http.StatusInternalServerError)
+		return
+	}
+	tags := []byte(previewTags(s.preview(r.URL.Path), baseURL(r), r.URL.Path))
+	if i := bytes.Index(b, []byte("</head>")); i >= 0 {
+		b = append(b[:i:i], append(tags, b[i:]...)...)
+	} else {
+		b = append(tags, b...)
+	}
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(b))
+}
+
+// preview describes the page at path. A game link reads the game's last
+// published state, so it never waits on the game.
+func (s *Server) preview(path string) preview {
+	if path == "/play" {
+		return preview{Title: "Quick match · Pothole Chess", Description: "Get paired with the next player looking for a game."}
+	}
+	code, ok := strings.CutPrefix(path, "/game/")
+	if !ok || strings.Contains(code, "/") {
+		return homePreview
+	}
+	g, ok := s.games.Get(code)
+	if !ok {
+		return homePreview
+	}
+	return gamePreview(g.Summary())
+}
+
+func gamePreview(sum game.Summary) preview {
+	white, black := orColor(sum.White, "White"), orColor(sum.Black, "Black")
+	switch sum.Status {
+	case game.Waiting:
+		title := "You're invited to Pothole Chess"
+		if sum.White != "" {
+			title = sum.White + " invites you to Pothole Chess"
+		}
+		return preview{Title: title, Description: "Tap to take Black. 10+5, and potholes open under the pieces."}
+	case game.Playing:
+		return preview{Title: white + " vs " + black + " · Pothole Chess", Description: fmt.Sprintf("Watch live, move %d.", sum.Plies/2+1)}
+	}
+	return preview{Title: white + " vs " + black + " · Pothole Chess", Description: resultLine(sum, white, black)}
+}
+
+// resultLine says how a finished game ended, e.g. "uws-bialy won by
+// checkmate after 31 moves."
+func resultLine(sum game.Summary, white, black string) string {
+	r := sum.Result
+	if r == nil {
+		return "The game is over."
+	}
+	after := "."
+	if moves := (sum.Plies + 1) / 2; moves > 0 {
+		after = fmt.Sprintf(" after %d moves.", moves)
+	}
+	switch {
+	case r.Reason == game.Aborted:
+		return "Aborted: the first move never came."
+	case r.Reason == game.Expired:
+		return "Nobody took the Black seat."
+	case r.Reason == game.TimeoutVsInsufficient:
+		return "Drawn: time ran out, but no mate was possible" + after
+	case r.Winner != "":
+		winner := white
+		if r.Winner == "black" {
+			winner = black
+		}
+		how := map[rules.Reason]string{rules.Checkmate: "checkmate", game.Resignation: "resignation", game.Timeout: "time"}[r.Reason]
+		if how == "" {
+			how = string(r.Reason)
+		}
+		return winner + " won by " + how + after
+	}
+	how := map[rules.Reason]string{
+		rules.Stalemate: "stalemate", rules.Repetition: "repetition",
+		rules.FiftyMoves: "the fifty-move rule", rules.InsufficientMaterial: "insufficient material",
+	}[r.Reason]
+	if how == "" {
+		how = string(r.Reason)
+	}
+	return "Drawn by " + how + after
+}
+
+func orColor(name, color string) string {
+	if name == "" {
+		return color
+	}
+	return name
+}
+
+// baseURL is the site's address as the caller reached it. Behind Railway's
+// proxy the request itself is plain HTTP, so X-Forwarded-Proto says https.
+func baseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+// previewTags is the <title> and Open Graph tags for p, for the page at
+// path on base.
+func previewTags(p preview, base, path string) string {
+	esc := html.EscapeString
+	var b strings.Builder
+	fmt.Fprintf(&b, "<title>%s</title>\n", esc(p.Title))
+	tag := func(attr, key, value string) {
+		fmt.Fprintf(&b, "<meta %s=\"%s\" content=\"%s\" />\n", attr, key, esc(value))
+	}
+	tag("name", "description", p.Description)
+	tag("property", "og:type", "website")
+	tag("property", "og:site_name", "Pothole Chess")
+	tag("property", "og:title", p.Title)
+	tag("property", "og:description", p.Description)
+	tag("property", "og:url", base+path)
+	tag("property", "og:image", base+"/og.png")
+	tag("property", "og:image:width", "1200")
+	tag("property", "og:image:height", "630")
+	tag("property", "og:image:alt", "Pothole Chess: a corner of the board with an open pothole and traffic cones")
+	tag("name", "twitter:card", "summary_large_image")
+	return b.String()
+}
