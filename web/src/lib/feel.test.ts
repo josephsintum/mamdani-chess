@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cellOf, coordinates, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
+import { cellOf, coordinates, rippleDelay, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
 
 describe('coordinates', () => {
 	it('reads 8 to 1 down and a to h across for White', () => {
@@ -64,5 +64,18 @@ describe('trailColor', () => {
 		expect(trailColor('wN')).toBe('var(--trail-white)');
 		expect(trailColor('bB')).toBe('var(--trail-black)');
 		expect(trailColor('M')).toBe('var(--trail-mamdani)');
+	});
+});
+
+describe('rippleDelay', () => {
+	it('waits 15 ms per square of distance from the picked-up piece', () => {
+		expect(rippleDelay('e2', 'e3')).toBe(15);
+		expect(rippleDelay('e2', 'e4')).toBe(30);
+		expect(rippleDelay('a1', 'h8')).toBe(Math.round(15 * 7 * Math.SQRT2));
+	});
+	it('pops the nearer squares first, whichever way the board faces', () => {
+		const near = rippleDelay('d4', 'e5'),
+			far = rippleDelay('d4', 'h8');
+		expect(near).toBeLessThan(far);
 	});
 });

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
-	import { cellOf, coordinates, GLIDE_EASE, trailColor, trailOf, TRAIL_FADE_MS, whipFrames, whiplash, WHIP_TAIL_MS } from './feel.ts';
+	import { cellOf, coordinates, GLIDE_EASE, rippleDelay, trailColor, trailOf, TRAIL_FADE_MS, whipFrames, whiplash, WHIP_TAIL_MS } from './feel.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
@@ -46,8 +46,12 @@
 	let selected = $state<string | null>(null);
 	let promoting = $state<{ from: string; to: string } | null>(null);
 	let hovered = $state<string | null>(null);
-	// x0, y0: where the press started; x, y: where the pointer is now.
-	let drag = $state<{ from: string; x0: number; y0: number; x: number; y: number; moved: boolean; pointer: number } | null>(null);
+	// x0, y0: where the press started; x, y: where the pointer is now; tilt:
+	// how far the held piece leans toward the pull, in degrees.
+	let drag = $state<{ from: string; x0: number; y0: number; x: number; y: number; moved: boolean; pointer: number; tilt: number } | null>(null);
+	// A dragged piece dropped on a square it can't go to settles back with a
+	// squash; n changes each time so the same square can bounce again.
+	let bounce = $state({ sq: '', n: 0 });
 	let boardEl: HTMLDivElement | undefined = $state();
 
 	// Without moves to make (not your turn, dice still rolling) nothing is selectable.
@@ -111,21 +115,32 @@
 	});
 
 	/**
-	 * A piece's one-off animations: the whiplash when it glides. The
-	 * attachment re-runs whenever the board recalculates, so it remembers
-	 * what it last played.
+	 * A piece's one-off animations: the whiplash when it glides, a squash
+	 * when you drop it on a square, or when it settles back from one it
+	 * can't go to. The attachment re-runs whenever the board recalculates,
+	 * so it remembers what it last played.
 	 */
 	function motion(p: { id: number; from?: string; sq: string; dur: number }) {
 		return (node: HTMLElement) => {
+			const settled = bounce.sq === p.sq ? `bounce:${bounce.n}` : '';
 			if (reducedMotion()) return;
+			if (settled && node.dataset.bounce !== settled) {
+				node.dataset.bounce = settled;
+				node.animate(SQUASH, { duration: 140, easing: 'ease-out' });
+				return;
+			}
 			const key = `${p.id}:${p.sq}`;
 			if (!p.from || p.from === p.sq || node.dataset.moved === key) return;
 			node.dataset.moved = key;
-			if (isDropped(p)) return;
+			if (isDropped(p)) {
+				node.animate(SQUASH, { duration: 140, easing: 'ease-out' });
+				return;
+			}
 			const w = whiplash(p.from, p.sq, flipped);
 			if (w !== 0 && p.dur > 0) node.animate(whipFrames(w), { duration: p.dur + WHIP_TAIL_MS, easing: 'ease-in-out' });
 		};
 	}
+	const SQUASH: Keyframe[] = [{ transform: 'scale(1.08, 0.92)' }, { transform: 'scale(1)' }];
 
 	/** Column and row on screen for a square, 0..7 from the top left. */
 	function cell(sq: string): { col: number; row: number } {
@@ -142,7 +157,7 @@
 		if (drag?.moved && drag.from === p.sq && boardEl) {
 			const r = boardEl.getBoundingClientRect();
 			const size = r.width / 8;
-			return `transform: translate(${drag.x - r.left - size / 2}px, ${drag.y - r.top - size / 2}px); transition: none; z-index: 3`;
+			return `transform: translate(${drag.x - r.left - size / 2}px, ${drag.y - r.top - size / 2}px); transition: none; z-index: 3; --tilt: ${drag.tilt.toFixed(1)}deg`;
 		}
 		return `${place(p.sq)}; --dur: ${p.dur}ms`;
 	}
@@ -196,7 +211,7 @@
 	function pointerDown(e: PointerEvent, sq: string) {
 		dropped = null;
 		if (pending || !movable.has(sq) || e.button !== 0) return;
-		drag = { from: sq, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, pointer: e.pointerId };
+		drag = { from: sq, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, pointer: e.pointerId, tilt: 0 };
 	}
 
 	// The pointer is only captured once it has really moved. Capturing on
@@ -216,7 +231,10 @@
 			boardEl?.setPointerCapture(e.pointerId);
 			selected = drag.from;
 		}
-		drag = { ...drag, x: e.clientX, y: e.clientY, moved };
+		// Lean toward the pull, from how fast the pointer moves sideways,
+		// smoothed so a jittery drag doesn't wobble.
+		const tilt = moved ? Math.max(-10, Math.min(10, drag.tilt * 0.6 + (e.clientX - drag.x) * 1.2 * 0.4)) : 0;
+		drag = { ...drag, x: e.clientX, y: e.clientY, moved, tilt };
 	}
 
 	function pointerUp(e: PointerEvent) {
@@ -229,6 +247,7 @@
 		if (!to || to === from || !moveTo(from, to)) {
 			dropped = null;
 			selected = from;
+			bounce = { sq: from, n: bounce.n + 1 };
 		}
 	}
 
@@ -340,6 +359,7 @@
 			class:dark
 			class:last={lastMove?.from === sq || lastMove?.to === sq}
 			class:legal={targets.has(sq)}
+			style={current && targets.has(sq) ? `--ripple: ${rippleDelay(current, sq)}ms` : undefined}
 			class:selected={current === sq}
 			class:movable={movable.has(sq)}
 			class:check={check === sq}
@@ -390,6 +410,7 @@
 			<span
 				class="slot piece-slot"
 				class:lifted={movable.has(p.sq) && (hovered === p.sq || current === p.sq) && !drag?.moved}
+				class:picked={current === p.sq && !drag?.moved}
 				class:dragging={drag?.moved && drag.from === p.sq}
 				style={pieceStyle(p)}
 			>
@@ -545,8 +566,23 @@
 		transition: background-color 0.15s ease;
 		pointer-events: none;
 	}
+	/* Legal squares pop in, nearest the piece first (rippleDelay). */
 	.square.legal::after {
 		background: var(--legal-fill);
+		animation: ripple 0.2s ease-out var(--ripple, 0ms) both;
+	}
+	@keyframes ripple {
+		0% {
+			transform: scale(0);
+			opacity: 0;
+		}
+		70% {
+			transform: scale(1.12);
+			opacity: 1;
+		}
+		100% {
+			transform: scale(1);
+		}
 	}
 	.square.selected::after {
 		background: var(--selected-fill);
@@ -652,7 +688,26 @@
 	}
 	.lifted .piece,
 	.dragging .piece {
-		transform: scale(1.12);
+		transform: scale(1.12) rotate(var(--tilt, 0deg));
+		transition: transform 0.12s ease-out;
+	}
+	/* Picked up: a quick wobble as it lifts. */
+	.picked .piece {
+		animation: wobble 0.22s ease-out;
+	}
+	@keyframes wobble {
+		0% {
+			transform: scale(1);
+		}
+		30% {
+			transform: scale(1.14) rotate(-6deg);
+		}
+		65% {
+			transform: scale(1.12) rotate(5deg);
+		}
+		100% {
+			transform: scale(1.12) rotate(0);
+		}
 	}
 	/* mpchess pieces fill the square (110% of the old 92%), with a crisp
 	   white outline: their own shape offset 1.5 px four ways, no blur. */
@@ -961,6 +1016,16 @@
 				transform: translateY(var(--rise));
 				opacity: 0;
 			}
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.picked .piece,
+		.square.legal::after,
+		.trail {
+			animation: none;
+		}
+		.trail {
+			display: none;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {

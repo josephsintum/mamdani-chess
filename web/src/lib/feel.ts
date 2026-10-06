@@ -68,3 +68,13 @@ export function trailColor(code: string): string {
 	if (code === 'M') return 'var(--trail-mamdani)';
 	return code[0] === 'w' ? 'var(--trail-white)' : 'var(--trail-black)';
 }
+
+/**
+ * How long a legal square waits before popping in when a piece is picked
+ * up: 15 ms per square of distance, so the moves ripple out from the piece.
+ */
+export function rippleDelay(from: string, to: string): number {
+	const df = to.charCodeAt(0) - from.charCodeAt(0);
+	const dr = Number(to[1]) - Number(from[1]);
+	return Math.round(15 * Math.hypot(df, dr));
+}
