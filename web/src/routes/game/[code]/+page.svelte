@@ -14,6 +14,7 @@
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
 	import { checkSquare, matedByRoll, pillFor, repairsShown, stageAt } from '#lib/board.ts';
+	import { quipper } from '#lib/catchphrases.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
 	import { notify } from '#lib/toast.ts';
@@ -178,6 +179,9 @@
 	let savedSquare = $derived(view?.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '');
 	// The Mamdani's repairs, celebrated only on a turn that is playing out (never after a reload).
 	let repairs = $derived(view && anim.animated && !instant ? repairsShown(view, shown) : []);
+	// A speech bubble for a big moment: only on a turn that is playing out, like the repairs.
+	const say = quipper();
+	let quip = $derived(view && anim.animated && !instant ? say(view.last, view.seq, shown) : null);
 	let you = $derived(view?.you ?? 'spectator');
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
 	let top = $derived<Color>(bottom === 'white' ? 'black' : 'white');
@@ -403,6 +407,7 @@
 					check={checked}
 					saved={savedSquare}
 					{repairs}
+					{quip}
 					onmove={move}
 				/>
 			</div>
@@ -558,6 +563,7 @@
 						check={checked}
 						saved={savedSquare}
 						{repairs}
+						{quip}
 						onmove={move}
 					/>
 					{#if resultCard}

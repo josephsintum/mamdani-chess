@@ -15,6 +15,7 @@
 		check = '',
 		saved = '',
 		repairs = [],
+		quip = null,
 		onmove
 	}: {
 		stage: Stage;
@@ -33,6 +34,8 @@
 		 * dice land next to it and the pothole never opens. Each key plays once.
 		 */
 		repairs?: { sq: string; key: string; hole: boolean }[];
+		/** A speech bubble for a big moment (catchphrases.ts); a new key pops a new one. */
+		quip?: { sq: string; emoji: string; line: string; key: string; delay?: number } | null;
 		onmove: (move: MoveJSON) => void;
 	} = $props();
 
@@ -546,12 +549,22 @@
 				{#each sparks as a, i (a)}<span class="spark" class:far={i % 2 === 0} style="--a: {a}deg"></span>{/each}
 			</span>
 		{/each}
+		{#if quip}
+			{#key quip.key}
+				<span class="slot fix quip" class:top={cell(quip.sq).row < 2} class:left={cell(quip.sq).col === 0} class:right={cell(quip.sq).col === 7} style="{place(quip.sq)}; --quip-delay: {quip.delay ?? 0}ms">
+					<span class="bubble"><em>{quip.emoji}</em> {quip.line}</span>
+				</span>
+			{/key}
+		{/if}
 		{#if fresh.length > 0 && stage.mamdani}
 			{#key fresh[0].key}
 				<span class="slot fix" class:top={cell(stage.mamdani).row === 0} style="{place(stage.mamdani)}; --delay: {fresh[0].hole ? glide : 0}ms" {@attach born} out:linger|global><span class="thumb">👍</span></span>
 			{/key}
 		{/if}
 	</div>
+
+	<!-- Screen readers hear the bubble's line; the bubble itself is drawn above. -->
+	<p class="sr-only" aria-live="polite">{quip?.line ?? ''}</p>
 
 	{#if pending}
 		<div class="promote" role="dialog" aria-label="Promote to" tabindex="-1" onkeydown={promoKey} {@attach focusFirst}>
@@ -1182,6 +1195,108 @@
 	@media (prefers-reduced-motion: reduce) {
 		.dust {
 			display: none;
+		}
+	}
+	/* A big moment: a speech bubble from the square, for about 2.8 s. */
+	.quip {
+		z-index: 6;
+		overflow: visible;
+	}
+	.bubble {
+		position: absolute;
+		left: 50%;
+		bottom: 88%;
+		translate: -50% 0;
+		width: max-content;
+		max-width: min(280px, 72vw);
+		padding: 7px 11px;
+		border-radius: 12px;
+		background: var(--piece-light);
+		color: var(--piece-dark);
+		font: 600 14px/1.25 var(--font-body);
+		box-shadow: 0 4px 14px var(--hole);
+		transform-origin: 50% 100%;
+		animation:
+			bubble-in 0.26s ease-out var(--quip-delay, 0ms) both,
+			bubble-out 0.25s ease-in calc(var(--quip-delay, 0ms) + 2.8s) forwards;
+	}
+	.bubble em {
+		font-style: normal;
+		font-size: 17px;
+	}
+	/* Its tail points at the square's centre (50cqw: half the square). */
+	.bubble::after {
+		content: '';
+		position: absolute;
+		top: 100%;
+		left: 50%;
+		translate: -50% 0;
+		border: 7px solid transparent;
+		border-top-color: var(--piece-light);
+		border-bottom: 0;
+	}
+	.left .bubble {
+		left: 0;
+		translate: 0 0;
+		transform-origin: 0 100%;
+	}
+	.left .bubble::after {
+		left: 50cqw;
+	}
+	.right .bubble {
+		left: auto;
+		right: 0;
+		translate: 0 0;
+		transform-origin: 100% 100%;
+	}
+	.right .bubble::after {
+		left: auto;
+		right: 50cqw;
+		translate: 50% 0;
+	}
+	.top .bubble {
+		bottom: auto;
+		top: 88%;
+		transform-origin: 50% 0;
+	}
+	.top .bubble::after {
+		top: auto;
+		bottom: 100%;
+		border: 7px solid transparent;
+		border-bottom-color: var(--piece-light);
+		border-top: 0;
+	}
+	@keyframes bubble-in {
+		0% {
+			scale: 0.6;
+			opacity: 0;
+		}
+		70% {
+			scale: 1.06;
+			opacity: 1;
+		}
+		100% {
+			scale: 1;
+		}
+	}
+	@keyframes bubble-out {
+		to {
+			opacity: 0;
+			visibility: hidden;
+		}
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+	/* Reduced motion: the bubble just shows, then goes. */
+	@media (prefers-reduced-motion: reduce) {
+		.bubble {
+			animation: bubble-out 0.25s ease-in calc(var(--quip-delay, 0ms) + 2.8s) forwards;
 		}
 	}
 </style>

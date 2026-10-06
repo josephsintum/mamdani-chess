@@ -5,6 +5,7 @@
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
 	import { pillFor, repairsShown, stageAt } from '#lib/board.ts';
+	import { quipper } from '#lib/catchphrases.ts';
 	import type { Color, MoveJSON, View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
@@ -48,6 +49,9 @@
 	let savedSquare = $derived(view.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < anim.shown)?.sq ?? '');
 	// The Mamdani's repairs, celebrated only on a turn that is playing out.
 	let repairs = $derived(anim.animated && !instant ? repairsShown(view, anim.shown) : []);
+	// Big moments say something, as in a game.
+	const say = quipper();
+	let quip = $derived(anim.animated && !instant ? say(view.last, view.seq, anim.shown) : null);
 	let needsTarget = $derived(rollKinds.find((r) => r.kind === rollKind)?.needsTarget ?? false);
 
 	function d8(): number {
@@ -210,6 +214,7 @@
 				dim={!!view.result && !anim.animating}
 				saved={savedSquare}
 				{repairs}
+				{quip}
 				onmove={move}
 			/>
 			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={pillFor(view, bottom, anim.animating).text} pillTone={pillFor(view, bottom, anim.animating).tone} />
