@@ -50,7 +50,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
   - a reload or reconnect re-throws the last turn's dice (and plays a save's hop and a bubble again);
   - coming back to a hidden tab mid-roll can replay the scan;
   - opening the phone's moves sheet re-throws the dice.
-- **Done, on local `main` only (not pushed; merge `origin/main`, which now has board feel 3, before pushing):**
+- **Done: the home page reel and the remembered name** (live since 2026-10-06):
   - Home page: "How it works" is the second section, beside the [Mamdani Patch reel](https://www.instagram.com/reel/Dd8tV_MxEQL/) with a credit to its creator, @bardelo_bardalini (canvas rows "Home" and "Home (phone)"). Step 01 covers three-round potholes.
   - Instagram won't play this reel inside the embed (no video loads; a click opens Instagram), even with its own script. Playing it on the page means hosting the clip, which needs the creator's OK.
   - The embed is a bare iframe without Instagram's script, so its height is measured (a 4:5 video plus 210 px). Recheck it if Instagram changes its layout.
@@ -59,7 +59,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Next step
 
-Milestone 07 (launch). Its brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08. Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Milestone 07 (launch). Its brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08 ([brainstorm](docs/superpowers/specs/2026-10-06-08-leaderboards-brainstorm.md)). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
