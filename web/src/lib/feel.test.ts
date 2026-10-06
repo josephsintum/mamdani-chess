@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cellOf, coordinates, rippleDelay, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
+import { biggerShake, captureShake, cellOf, coordinates, knockOffset, rippleDelay, SHAKE, shakeFrames, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
 
 describe('coordinates', () => {
 	it('reads 8 to 1 down and a to h across for White', () => {
@@ -77,5 +77,39 @@ describe('rippleDelay', () => {
 		const near = rippleDelay('d4', 'e5'),
 			far = rippleDelay('d4', 'h8');
 		expect(near).toBeLessThan(far);
+	});
+});
+
+describe('shakes', () => {
+	it('shakes harder for a queen or rook than for a minor piece', () => {
+		expect(captureShake('bP')).toEqual(SHAKE.minor);
+		expect(captureShake('wN')).toEqual(SHAKE.minor);
+		expect(captureShake('bQ')).toEqual(SHAKE.major);
+		expect(captureShake('wR')).toEqual(SHAKE.major);
+	});
+	it('lets the bigger shake win', () => {
+		expect(biggerShake(SHAKE.minor, SHAKE.fall)).toEqual(SHAKE.fall);
+		expect(biggerShake(SHAKE.mate, SHAKE.minor)).toEqual(SHAKE.mate);
+		expect(biggerShake(null, SHAKE.major)).toEqual(SHAKE.major);
+	});
+	it('zigzags, dies away and ends still', () => {
+		const frames = shakeFrames(4);
+		const xs = frames.map((k) => Number(/translate\((-?[\d.]+)px/.exec(String(k.transform))![1]));
+		expect(Math.abs(xs[0])).toBe(4);
+		expect(xs.at(-1)).toBe(0);
+		for (let i = 1; i < xs.length - 1; i++) expect(Math.sign(xs[i])).toBe(-Math.sign(xs[i - 1]));
+		for (let i = 1; i < xs.length; i++) expect(Math.abs(xs[i])).toBeLessThanOrEqual(Math.abs(xs[i - 1]));
+	});
+});
+
+describe('knockOffset', () => {
+	it('knocks the taken piece a third of a square along the move', () => {
+		expect(knockOffset('a1', 'h1', false)).toEqual({ x: 33, y: 0 });
+		expect(knockOffset('e2', 'e4', false)).toEqual({ x: 0, y: -33 });
+		const k = knockOffset('g1', 'f3', false);
+		expect(Math.hypot(k.x, k.y)).toBeCloseTo(33, 0);
+	});
+	it('follows the board when it is flipped', () => {
+		expect(knockOffset('a1', 'h1', true)).toEqual({ x: -33, y: 0 });
 	});
 });

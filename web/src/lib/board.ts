@@ -121,7 +121,11 @@ export function stageAt(view: View, shown: number): Stage {
 				if (at >= 0) list.splice(at, 1);
 			}
 		}
-		if (e.kind === 'pothole_opened' && !revealed) potholes = potholes.filter((p) => p.sq !== e.sq);
+		// A fall's hole opens in the same step as the fall, so the piece drops
+		// into it (the server sends the fall, then the hole).
+		const prev = view.last[i - 1];
+		const withFall = prev?.kind === 'fell' && prev.sq === e.sq && i - 1 < shown;
+		if (e.kind === 'pothole_opened' && !revealed && !withFall) potholes = potholes.filter((p) => p.sq !== e.sq);
 		// The cap closes the oldest hole as a new one opens: until then it stays.
 		if (e.kind === 'pothole_closed' && !revealed && i > roll && e.sq && e.color) potholes = [...potholes, { sq: e.sq, by: e.color, left: 1 }];
 	});

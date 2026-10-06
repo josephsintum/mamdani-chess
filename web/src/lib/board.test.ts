@@ -116,6 +116,12 @@ describe('stageAt', () => {
 		expect(s.target).toBe('');
 	});
 
+	it("opens a fall's hole in the same step the piece falls, so it drops into it", () => {
+		const s = stageAt(final, 6);
+		expect(s.board[squareIndex('g8')]).toBe('');
+		expect(s.potholes).toEqual([{ sq: 'g8', by: 'white', left: 1 }]);
+	});
+
 	it('rings the latest target while the dice play out', () => {
 		expect(stageAt(final, 3).target).toBe('e1');
 		expect(stageAt(final, 5).target).toBe('g8');

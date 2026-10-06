@@ -78,3 +78,51 @@ export function rippleDelay(from: string, to: string): number {
 	const dr = Number(to[1]) - Number(from[1]);
 	return Math.round(15 * Math.hypot(df, dr));
 }
+
+/** How long a fall into a pothole plays: a teeter, then the drop. It fits one dice step (STEP_MS). */
+export const FALL_MS = 550;
+
+/** A board shake: how far it moves and for how long. */
+export type Shake = { px: number; ms: number };
+
+/** The shakes by size of moment: the bigger the moment, the bigger the shake. */
+export const SHAKE = {
+	minor: { px: 1.5, ms: 140 }, // a pawn, knight or bishop taken
+	major: { px: 3, ms: 200 }, // a queen or rook taken
+	fall: { px: 4.5, ms: 280 }, // a piece falls into a hole
+	mate: { px: 7, ms: 420 } // checkmate
+} as const satisfies Record<string, Shake>;
+
+/** The shake for taking the piece `code` ("bQ", "wP"). */
+export function captureShake(code: string): Shake {
+	return code[1] === 'Q' || code[1] === 'R' ? SHAKE.major : SHAKE.minor;
+}
+
+/** One shake at a time: the bigger wins. */
+export function biggerShake(current: Shake | null, next: Shake): Shake {
+	return current && current.px >= next.px ? current : next;
+}
+
+/** A decaying zigzag of `px`, ending still. */
+export function shakeFrames(px: number): Keyframe[] {
+	const frames: Keyframe[] = [];
+	for (let i = 0; i < 8; i++) {
+		const f = 1 - i / 8;
+		const x = Math.round((i % 2 ? -1 : 1) * px * f * 100) / 100;
+		const y = Math.round((i % 3 === 1 ? 1 : i % 3 === 2 ? -1 : 0) * px * 0.5 * f * 100) / 100;
+		frames.push({ transform: `translate(${x}px, ${y}px)` });
+	}
+	frames.push({ transform: 'translate(0px, 0px)' });
+	return frames;
+}
+
+/** Where a taken piece is knocked: a third of a square along the move, in % of a square. */
+export function knockOffset(from: string, to: string, flipped: boolean): { x: number; y: number } {
+	const a = cellOf(from, flipped);
+	const b = cellOf(to, flipped);
+	const dx = b.col - a.col;
+	const dy = b.row - a.row;
+	const d = Math.hypot(dx, dy) || 1;
+	const r = (v: number) => Math.round(v * 10) / 10 || 0;
+	return { x: r((33 * dx) / d), y: r((33 * dy) / d) };
+}

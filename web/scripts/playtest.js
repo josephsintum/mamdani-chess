@@ -128,7 +128,8 @@ let pairing = Promise.resolve();
 async function holesMatch(page) {
 	const count = () =>
 		page.evaluate(() => [
-			document.querySelectorAll('.layer .slot > .hole:not(.patched)').length,
+			// Not counted: a repaired hole, or the one a saving roll flashes open.
+			document.querySelectorAll('.layer .slot > .hole:not(.patched):not(.briefly)').length,
 			document.querySelectorAll('.square[aria-label*="pothole"]').length
 		]);
 	let [drawn, model] = await count();

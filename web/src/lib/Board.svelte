@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
-	import { cellOf, coordinates, GLIDE_EASE, rippleDelay, trailColor, trailOf, TRAIL_FADE_MS, whipFrames, whiplash, WHIP_TAIL_MS } from './feel.ts';
+	import { biggerShake, captureShake, cellOf, coordinates, FALL_MS, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
@@ -126,7 +126,16 @@
 	function motion(p: { id: number; from?: string; sq: string; dur: number }) {
 		return (node: HTMLElement) => {
 			const settled = bounce.sq === p.sq ? `bounce:${bounce.n}` : '';
+			const savedHere = saved === p.sq;
+			if (!saved) delete node.dataset.saved;
 			if (reducedMotion()) return;
+			// Saved by an odd saving roll: it teeters hard, then hops out as
+			// the hole closes under it.
+			if (savedHere && node.dataset.saved !== saved) {
+				node.dataset.saved = saved;
+				node.animate(SAVE_HOP, { duration: 640, easing: 'ease-out' });
+				return;
+			}
 			if (settled && node.dataset.bounce !== settled) {
 				node.dataset.bounce = settled;
 				node.animate(SQUASH, { duration: 140, easing: 'ease-out', composite: 'add' });
@@ -146,6 +155,14 @@
 	// Added on top of the piece's resting transform (composite: 'add'), so a
 	// piece that stays picked up at 112% squashes from there, not from 100%.
 	const SQUASH: Keyframe[] = [{ transform: 'scale(1.08, 0.92)' }, { transform: 'scale(1)' }];
+	const SAVE_HOP: Keyframe[] = [
+		{ transform: 'rotate(0)' },
+		{ transform: 'rotate(-14deg)', offset: 0.16 },
+		{ transform: 'rotate(14deg)', offset: 0.32 },
+		{ transform: 'rotate(0)', offset: 0.41 },
+		{ transform: 'translateY(-22%) scale(1.08)', offset: 0.7 },
+		{ transform: 'translateY(0) scale(1)' }
+	];
 
 	/** Column and row on screen for a square, 0..7 from the top left. */
 	function cell(sq: string): { col: number; row: number } {
@@ -305,12 +322,78 @@
 	// Transitions. Each one collapses to nothing under reduced motion.
 	const ms = (n: number) => (reducedMotion() ? 0 : n);
 
-	/** A piece leaving the board: a fall shrinks into the hole, a capture fades. */
-	function leave(_node: Element, { fell }: { fell: boolean }) {
-		return fell
-			? { duration: ms(450), css: (t: number) => `opacity: ${t}; transform-origin: 50% 50%; transform: scale(${0.25 + 0.75 * t}) rotate(${(1 - t) * 25}deg)` }
-			: { duration: ms(300), css: (t: number) => `opacity: ${1 - (1 - t) ** 3}` };
+	// One shake at a time on the whole frame: a bigger one replaces a smaller
+	// one still running, a smaller one waits its turn out.
+	let frameEl: HTMLDivElement | undefined;
+	let shaking: { shake: Shake; anim: Animation } | null = null;
+	function shake(s: Shake, delay = 0) {
+		if (reducedMotion() || !frameEl) return;
+		const running = shaking?.anim.playState === 'running' ? shaking.shake : null;
+		if (biggerShake(running, s) !== s) return;
+		shaking?.anim.cancel();
+		shaking = { shake: s, anim: frameEl.animate(shakeFrames(s.px), { duration: s.ms, delay, easing: 'linear' }) };
 	}
+
+	/**
+	 * When the move's mover reaches its square, so a taken piece is hit then:
+	 * half its glide, since the ease-out glide has covered 94% of the way by
+	 * then. A dropped piece is already there.
+	 */
+	function impact(): number {
+		if (!lastMove || reducedMotion() || (dropped && dropped.from === lastMove.from && dropped.to === lastMove.to)) return 0;
+		return Math.round(moveDuration(lastMove.from, lastMove.to) / 2);
+	}
+
+	/**
+	 * A fall, `u` from 0 to 1 over 550 ms: two wobbles at the edge (180 ms),
+	 * then a drop into the hole, shrinking, tipping and darkening.
+	 */
+	function fallFrame(u: number): string {
+		const teeter = 180 / 550;
+		if (u < teeter) return `transform-origin: 50% 50%; transform: rotate(${(9 * Math.sin((u / teeter) * 2 * Math.PI)).toFixed(2)}deg)`;
+		const q = ((u - teeter) / (1 - teeter)) ** 2;
+		return `transform-origin: 50% 50%; transform: translateY(${10 * q}%) scale(${1 - 0.85 * q}) rotate(${40 * q}deg); filter: brightness(${1 - 0.75 * q}); opacity: ${1 - q}`;
+	}
+
+	/**
+	 * A piece leaving the board. A fall teeters, then drops into the hole and
+	 * the board shakes. A capture waits for the mover to arrive, then is
+	 * knocked a third of a square along the move, spins and fades, and the
+	 * board shakes by the taken piece's size.
+	 */
+	function leave(node: Element, { fell, code }: { fell: boolean; code: string }) {
+		// A taken piece waits under the mover, which lands on top of it.
+		if (!fell && node.parentElement) node.parentElement.style.zIndex = '1';
+		if (fell) {
+			shake(SHAKE.fall, ms(180));
+			return { duration: ms(FALL_MS), css: (_t: number, u: number) => fallFrame(u) };
+		}
+		const hit = impact();
+		const k = lastMove ? knockOffset(lastMove.from, lastMove.to, flipped) : { x: 0, y: 0 };
+		const spin = k.x < 0 ? -22 : 22;
+		shake(captureShake(code), hit);
+		return {
+			delay: hit,
+			duration: ms(320),
+			css: (t: number, u: number) => {
+				const e = 1 - (1 - u) ** 3;
+				return `transform: translate(${k.x * e}%, ${k.y * e}%) rotate(${spin * e}deg) scale(${1 - 0.15 * e}); opacity: ${t}`;
+			}
+		};
+	}
+
+	/** The orange ring on a capture's square, as the taken piece is hit. */
+	function ringOut(_node: Element, { fell }: { fell: boolean }) {
+		if (fell || reducedMotion()) return { duration: 1, css: () => 'opacity: 0' };
+		return { delay: impact(), duration: 360, css: (_t: number, u: number) => `opacity: ${1 - u}; transform: scale(${0.4 + 0.75 * u})` };
+	}
+
+	/** Dust puffing off the rim as a piece drops in. */
+	function puff(_node: Element, { fell }: { fell: boolean }) {
+		if (!fell || reducedMotion()) return { duration: 1, css: () => 'opacity: 0' };
+		return { delay: 180, duration: 480, css: (_t: number, u: number) => `--p: ${u}; opacity: ${1 - u}` };
+	}
+	const DUST = [190, 215, 240, 265, 290, 315, 340, 355];
 
 	/** A pothole cracks open. */
 	function crack(_node: Element) {
@@ -360,7 +443,7 @@
 
 <!-- Coordinates sit outside the board, so the squares stay clean. The
      label column and row are the same size, so the frame stays square. -->
-<div class="frame" class:dim>
+<div class="frame" class:dim {@attach (node) => void (frameEl = node)}>
 <div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span>{r}</span>{/each}</div>
 <div class="board" class:dim role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms" {@attach dragArea}>
 	{#each order as index (index)}
@@ -392,6 +475,11 @@
 	{/each}
 
 	<div class="layer" aria-hidden="true">
+		{#if saved && !reducedMotion()}
+			{#key saved}
+				<span class="slot" style={place(saved)}><span class="hole briefly"></span></span>
+			{/key}
+		{/if}
 		{#each stage.potholes as h (h.sq)}
 			<span class="slot" style={place(h.sq)}>
 				<span class="hole" in:crack out:closeUp={{ sq: h.sq }}>
@@ -426,7 +514,9 @@
 				class:dragging={drag?.moved && drag.from === p.sq}
 				style={pieceStyle(p)}
 			>
-				<span class="piece" out:leave={{ fell: stage.target === p.sq }} {@attach motion(p)}>
+				<span class="ring" out:ringOut={{ fell: stage.target === p.sq }}></span>
+				<span class="dust" out:puff={{ fell: stage.target === p.sq }}>{#each DUST as a (a)}<i style="--a: {a}deg"></i>{/each}</span>
+				<span class="piece" out:leave={{ fell: stage.target === p.sq, code: p.code }} {@attach motion(p)}>
 					{#if p.code === 'M'}
 						<img class="mamdani" src="/mamdani/piece.webp" alt="" draggable="false" />
 					{:else}
@@ -1038,6 +1128,60 @@
 		}
 		.saved {
 			animation: none;
+		}
+	}
+	/* A capture: an orange ring on the square as the taken piece is hit. */
+	.ring {
+		position: absolute;
+		inset: 0;
+		border: 3px solid var(--hazard);
+		border-radius: 50%;
+		opacity: 0;
+		pointer-events: none;
+	}
+	/* A fall: dust puffing off the hole's rim (--p runs 0 to 1). */
+	.dust {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.dust i {
+		position: absolute;
+		left: 50%;
+		top: 62%;
+		width: 11%;
+		aspect-ratio: 1;
+		border-radius: 50%;
+		background: var(--text-body);
+		transform: translate(-50%, -50%) rotate(var(--a)) translateX(calc(var(--p, 0) * 300%)) scale(calc(1 + var(--p, 0) * 0.8));
+	}
+	/* A save: the hole cracks open under the piece, then closes as it hops out. */
+	.hole.briefly {
+		animation: briefly 0.75s ease-in-out both;
+	}
+	@keyframes briefly {
+		0% {
+			transform: scale(0);
+			opacity: 0;
+		}
+		20% {
+			transform: scale(1.1);
+			opacity: 1;
+		}
+		35%,
+		55% {
+			transform: scale(1);
+			opacity: 1;
+		}
+		100% {
+			transform: scale(0);
+			opacity: 0;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.dust {
+			display: none;
 		}
 	}
 </style>
