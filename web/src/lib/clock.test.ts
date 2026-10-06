@@ -57,18 +57,20 @@ describe('formatClock', () => {
 });
 
 describe('bonusOf', () => {
-	it("finds the mover's increment when their clock jumps up and stops", () => {
-		expect(bonusOf(41_300, 46_100, false)).toBe(4_800);
-		expect(bonusOf(41_300, 46_300, false)).toBe(5_000);
+	it("finds the mover's increment when their move lands and their clock jumps up", () => {
+		expect(bonusOf(41_300, 46_100, { ticking: false, moved: true })).toBe(4_800);
+		expect(bonusOf(41_300, 46_300, { ticking: false, moved: true })).toBe(5_000);
 	});
 	it('ignores ticking down, the first reading, and a running clock', () => {
-		expect(bonusOf(41_300, 41_200, false)).toBe(0);
-		expect(bonusOf(undefined, 46_300, false)).toBe(0);
-		// A deploy restores the side to move's clock, which then runs.
-		expect(bonusOf(41_300, 46_300, true)).toBe(0);
+		expect(bonusOf(41_300, 41_200, { ticking: false, moved: true })).toBe(0);
+		expect(bonusOf(undefined, 46_300, { ticking: false, moved: true })).toBe(0);
+		expect(bonusOf(41_300, 46_300, { ticking: true, moved: true })).toBe(0);
+	});
+	it('ignores a deploy restoring a clock: the turn is the same, and the clock waits paused', () => {
+		expect(bonusOf(41_300, 46_300, { ticking: false, moved: false })).toBe(0);
 	});
 	it('ignores jumps that are not an increment', () => {
-		expect(bonusOf(41_300, 42_300, false)).toBe(0);
-		expect(bonusOf(41_300, 101_300, false)).toBe(0); // a new game's clock
+		expect(bonusOf(41_300, 42_300, { ticking: false, moved: true })).toBe(0);
+		expect(bonusOf(41_300, 101_300, { ticking: false, moved: true })).toBe(0); // a new game's clock
 	});
 });

@@ -122,14 +122,29 @@ export function stageAt(view: View, shown: number): Stage {
 			}
 		}
 		// A fall's hole opens in the same step as the fall, so the piece drops
-		// into it (the server sends the fall, then the hole).
-		const prev = view.last[i - 1];
-		const withFall = prev?.kind === 'fell' && prev.sq === e.sq && i - 1 < shown;
+		// into it, and so does the cap's close of the oldest hole: the server
+		// sends the fall, the cap's close (with 5 open), then the new hole.
+		const withFall = fallsWith(view.last, i) < shown;
 		if (e.kind === 'pothole_opened' && !revealed && !withFall) potholes = potholes.filter((p) => p.sq !== e.sq);
 		// The cap closes the oldest hole as a new one opens: until then it stays.
-		if (e.kind === 'pothole_closed' && !revealed && i > roll && e.sq && e.color) potholes = [...potholes, { sq: e.sq, by: e.color, left: 1 }];
+		if (e.kind === 'pothole_closed' && !revealed && !withFall && i > roll && e.sq && e.color) potholes = [...potholes, { sq: e.sq, by: e.color, left: 1 }];
 	});
 	return { board, potholes, mamdani, target: shown < view.last.length ? target : '', lost };
+}
+
+/**
+ * The index of the fall that event `i` comes with, or Infinity: a hole
+ * opening on the fallen piece's square, or the cap closing the oldest hole
+ * between the two.
+ */
+function fallsWith(last: EventJSON[], i: number): number {
+	let open = i;
+	while (last[open]?.kind === 'pothole_closed') open++;
+	let fall = i - 1;
+	while (last[fall]?.kind === 'pothole_closed') fall--;
+	const e = last[open];
+	const f = last[fall];
+	return e?.kind === 'pothole_opened' && f?.kind === 'fell' && f.sq === e.sq ? fall : Infinity;
 }
 
 export interface DiceStep {

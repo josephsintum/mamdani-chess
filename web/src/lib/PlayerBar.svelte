@@ -14,6 +14,7 @@
 		clockMs,
 		toMove = false,
 		ticking = false,
+		seq,
 		pausedForDice = false,
 		offline = false
 	}: {
@@ -33,6 +34,8 @@
 		toMove?: boolean;
 		/** The clock is counting down right now. */
 		ticking?: boolean;
+		/** The game's move count (view.seq): "+5" shows only when a move lands. */
+		seq?: number;
 		/** It's this side's turn, but the clock waits for the dice. */
 		pausedForDice?: boolean;
 		/** The player has no tab open on the game. */
@@ -47,10 +50,13 @@
 	// is plain bookkeeping between the clock's readings, not state.
 	const TICK_UP_MS = 300;
 	let lastClock: number | undefined;
+	let lastSeq: number | undefined;
 	let bonus: { ms: number; key: number } | null = null;
 	let gained = $derived.by(() => {
-		const ms = clockMs === undefined ? 0 : bonusOf(lastClock, clockMs, ticking);
+		const moved = lastSeq !== undefined && seq !== lastSeq;
+		const ms = clockMs === undefined ? 0 : bonusOf(lastClock, clockMs, { ticking, moved });
 		lastClock = clockMs;
+		lastSeq = seq;
 		if (ms && !reducedMotion()) bonus = { ms, key: (bonus?.key ?? 0) + 1 };
 		return bonus;
 	});

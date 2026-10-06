@@ -454,6 +454,7 @@
 				pillTone={topPill.tone}
 				toMove={playing && view.turn === top && !animating}
 				clockMs={clockFor(top)}
+				seq={view.seq}
 				ticking={view.clock.running === top && !pausedForDice}
 				offline={showsOffline(view, top)}
 			/>
@@ -483,6 +484,7 @@
 				pillTone={bottomPill.tone}
 				toMove={playing && view.turn === bottom && !animating}
 				clockMs={clockFor(bottom)}
+				seq={view.seq}
 				ticking={view.clock.running === bottom && !pausedForDice}
 				offline={showsOffline(view, bottom)}
 			/>
@@ -613,6 +615,7 @@
 					pillTone={topPill.tone}
 					toMove={playing && view.turn === top && !animating}
 					clockMs={clockFor(top)}
+					seq={view.seq}
 					ticking={view.clock.running === top && !pausedForDice}
 					pausedForDice={playing && view.turn === top && pausedForDice}
 					offline={showsOffline(view, top)}
@@ -649,6 +652,7 @@
 					pillTone={bottomPill.tone}
 					toMove={playing && view.turn === bottom && !animating}
 					clockMs={clockFor(bottom)}
+					seq={view.seq}
 					ticking={view.clock.running === bottom && !pausedForDice}
 					pausedForDice={playing && view.turn === bottom && pausedForDice}
 					offline={showsOffline(view, bottom)}

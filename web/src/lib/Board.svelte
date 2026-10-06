@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
-	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
+	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, fitShift, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
@@ -388,6 +388,14 @@
 		};
 	}
 
+	/** Slides a bubble inside the board's edges; its tail stays on the square. */
+	function fit(node: HTMLElement) {
+		const slot = node.parentElement?.getBoundingClientRect();
+		const edge = boardEl?.getBoundingClientRect();
+		if (!slot || !edge) return;
+		node.style.setProperty('--shift', `${fitShift(slot.left + slot.width / 2, node.offsetWidth, edge.left, edge.right)}px`);
+	}
+
 	/** The orange ring on a capture's square, as the taken piece is hit. */
 	function ringOut(_node: Element, { fell }: { fell: boolean }) {
 		if (fell || reducedMotion()) return { duration: 1, css: () => 'opacity: 0' };
@@ -558,8 +566,8 @@
 		{/each}
 		{#if quip}
 			{#key quip.key}
-				<span class="slot fix quip" class:top={cell(quip.sq).row < 2} class:left={cell(quip.sq).col === 0} class:right={cell(quip.sq).col === 7} style="{place(quip.sq)}; --quip-delay: {quip.delay ?? 0}ms">
-					<span class="bubble"><em>{quip.emoji}</em> {quip.line}</span>
+				<span class="slot fix quip" class:top={cell(quip.sq).row < 2} style="{place(quip.sq)}; --quip-delay: {quip.delay ?? 0}ms">
+					<span class="bubble" {@attach fit}><em>{quip.emoji}</em> {quip.line}</span>
 				</span>
 			{/key}
 		{/if}
@@ -569,7 +577,11 @@
 					class="slot fix burst"
 					class:bottom={cell(mated.sq).row === 7}
 					style="{place(mated.sq)}; --delay: {impact()}ms"
-					{@attach () => {
+					{@attach (node) => {
+						// Once: a later update to the finished game (a rematch
+						// offer, say) re-runs this, and must not shake again.
+						if (node.dataset.burst) return;
+						node.dataset.burst = '1';
 						markCelebrated(mated.key);
 						shake(SHAKE.mate, impact() + 500);
 					}}
@@ -1344,7 +1356,8 @@
 		position: absolute;
 		left: 50%;
 		bottom: 88%;
-		translate: -50% 0;
+		/* Centred on the square, slid inside the board by fit() (--shift). */
+		translate: calc(-50% + var(--shift, 0px)) 0;
 		width: max-content;
 		max-width: min(280px, 72vw);
 		padding: 7px 11px;
@@ -1353,7 +1366,7 @@
 		color: var(--piece-dark);
 		font: 600 14px/1.25 var(--font-body);
 		box-shadow: 0 4px 14px var(--hole);
-		transform-origin: 50% 100%;
+		transform-origin: calc(50% - var(--shift, 0px)) 100%;
 		animation:
 			bubble-in 0.26s ease-out var(--quip-delay, 0ms) both,
 			bubble-out 0.25s ease-in calc(var(--quip-delay, 0ms) + 2.8s) forwards;
@@ -1362,40 +1375,21 @@
 		font-style: normal;
 		font-size: 17px;
 	}
-	/* Its tail points at the square's centre (50cqw: half the square). */
+	/* Its tail points at the square's centre, wherever the bubble slid. */
 	.bubble::after {
 		content: '';
 		position: absolute;
 		top: 100%;
-		left: 50%;
+		left: calc(50% - var(--shift, 0px));
 		translate: -50% 0;
 		border: 7px solid transparent;
 		border-top-color: var(--piece-light);
 		border-bottom: 0;
 	}
-	.left .bubble {
-		left: 0;
-		translate: 0 0;
-		transform-origin: 0 100%;
-	}
-	.left .bubble::after {
-		left: 50cqw;
-	}
-	.right .bubble {
-		left: auto;
-		right: 0;
-		translate: 0 0;
-		transform-origin: 100% 100%;
-	}
-	.right .bubble::after {
-		left: auto;
-		right: 50cqw;
-		translate: 50% 0;
-	}
 	.top .bubble {
 		bottom: auto;
 		top: 88%;
-		transform-origin: 50% 0;
+		transform-origin: calc(50% - var(--shift, 0px)) 0;
 	}
 	.top .bubble::after {
 		top: auto;

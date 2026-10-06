@@ -199,3 +199,13 @@ export function countAt(value: number, t: number): number {
 	const p = Math.min(1, Math.max(0, t));
 	return Math.round(value * (1 - (1 - p) ** 3));
 }
+
+/**
+ * How far to slide a bubble centred at `center`, `width` wide, so it stays
+ * 4 px inside the board's edges `lo` and `hi` (all in px). A bubble wider
+ * than the board keeps its left edge in.
+ */
+export function fitShift(center: number, width: number, lo: number, hi: number): number {
+	const left = center - width / 2;
+	return Math.max(lo + 4 - left, Math.min(0, hi - 4 - (left + width)));
+}

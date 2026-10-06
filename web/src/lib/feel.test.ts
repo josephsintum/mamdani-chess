@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { biggerShake, burstShards, captureShake, cellOf, confetti, CONFETTI_MS, countAt, coordinates, knockOffset, rippleDelay, SHAKE, shakeFrames, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
+import { biggerShake, burstShards, captureShake, cellOf, confetti, CONFETTI_MS, countAt, fitShift, coordinates, knockOffset, rippleDelay, SHAKE, shakeFrames, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
 
 describe('coordinates', () => {
 	it('reads 8 to 1 down and a to h across for White', () => {
@@ -157,5 +157,19 @@ describe('countAt', () => {
 		const steps = [0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => countAt(7, t));
 		expect(steps).toEqual([...steps].sort((a, b) => a - b));
 		expect(countAt(0, 0.5)).toBe(0);
+	});
+});
+
+describe('fitShift', () => {
+	it('leaves a bubble that fits where it is', () => {
+		expect(fitShift(180, 100, 0, 360)).toBe(0);
+	});
+	it('slides a bubble back inside the board, 4 px from the edge', () => {
+		// Centred on b-file's square (x = 67) a 240 px bubble would start at -53.
+		expect(fitShift(67, 240, 0, 360)).toBe(57);
+		expect(fitShift(293, 240, 0, 360)).toBe(-57);
+	});
+	it('keeps the left edge in when the bubble is wider than the board', () => {
+		expect(fitShift(180, 400, 0, 360)).toBe(24);
 	});
 });

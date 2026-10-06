@@ -120,6 +120,16 @@ describe('stageAt', () => {
 		expect(s.target).toBe('');
 	});
 
+	it('with five holes open, closes the oldest and opens the new one as the piece falls', () => {
+		// The server sends the fall, then the cap's close, then the new hole.
+		const capped: EventJSON[] = [...fellOnG8.slice(0, 6), { kind: 'pothole_closed', sq: 'a3', color: 'black' }, { kind: 'pothole_opened', sq: 'g8', color: 'white' }];
+		const v = makeView({ e4: 'wP', e1: 'wK' }, { last: capped, potholes: [{ sq: 'g8', by: 'white', left: 3 }] });
+		const before = stageAt(v, 5);
+		expect(before.potholes.map((h) => h.sq)).toEqual(['a3']);
+		const falling = stageAt(v, 6);
+		expect(falling.board[squareIndex('g8')]).toBe('');
+		expect(falling.potholes.map((h) => h.sq)).toEqual(['g8']);
+	});
 	it("opens a fall's hole in the same step the piece falls, so it drops into it", () => {
 		const s = stageAt(final, 6);
 		expect(s.board[squareIndex('g8')]).toBe('');
