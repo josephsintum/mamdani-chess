@@ -63,8 +63,16 @@ func (g *Game) Play(m Move, dice Dice) ([]Event, error) {
 	}
 	g.Pos = next
 	g.Turns = append(g.Turns, Turn{Move: m, Dice: rec.rolls})
+	if next.Halfmove == 0 {
+		// A pawn move, capture or fall can't be undone, so no earlier
+		// position can come back: only count the ones from here on.
+		clear(g.seen)
+	}
 	g.seen[next.Key()]++
 	g.Result = g.status()
+	if g.Result.Over {
+		g.seen = nil // nothing left to repeat
+	}
 	return ev, nil
 }
 

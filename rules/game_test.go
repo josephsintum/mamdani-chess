@@ -59,6 +59,31 @@ func TestThreefoldRepetition(t *testing.T) {
 	}
 }
 
+func TestRepetitionForgetsPositionsThatCantComeBack(t *testing.T) {
+	g := NewGame()
+	play(t, g, "g1f3", "g8f6", "f3g1", "f6g8")
+	if len(g.seen) != 4 {
+		t.Fatalf("seen %d positions, want 4", len(g.seen))
+	}
+	// A pawn move can't be undone: no earlier position can repeat.
+	play(t, g, "e2e3")
+	if len(g.seen) != 1 {
+		t.Errorf("after a pawn move seen holds %d positions, want 1", len(g.seen))
+	}
+	// Repetition still counts the positions since then.
+	play(t, g, "g8f6", "g1f3", "f6g8", "f3g1", "g8f6", "g1f3", "f6g8")
+	if g.Result.Over {
+		t.Fatal("only two repetitions so far")
+	}
+	play(t, g, "f3g1")
+	if g.Result.Reason != Repetition {
+		t.Errorf("want repetition, got %+v", g.Result)
+	}
+	if g.seen != nil {
+		t.Error("a finished game should drop its repetition table")
+	}
+}
+
 func TestRepetitionKeyCountsRoundsLeft(t *testing.T) {
 	const fen = "4k3/8/8/8/8/8/8/4K3 w - - 0 1"
 	base := setup(t, fen, NoSquare, hole(C4, White, 2), hole(F5, Black, 3))
