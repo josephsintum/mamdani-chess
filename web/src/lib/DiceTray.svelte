@@ -40,11 +40,11 @@
 					{#if step.dice.length}
 						<span class="dice">
 							{#each step.dice as d, j (j)}
-								<Die value={d} highlight={step.tone === 'good'} />
+								<Die die={d} />
 							{/each}
 						</span>
 					{/if}
-					<span class="text">
+					<span class="text" class:late={step.revealAt} style="--late: {step.revealAt ?? 0}ms">
 						<span class="title">{step.title}</span>
 						<span class="detail">{step.detail}</span>
 					</span>
@@ -146,5 +146,19 @@
 	}
 	li.hazard .title {
 		color: var(--hazard-text);
+	}
+	/* What the dice decide shows once they land. */
+	.late {
+		animation: text-in 0.2s ease-out var(--late) both;
+	}
+	@keyframes text-in {
+		from {
+			opacity: 0;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.late {
+			animation: none;
+		}
 	}
 </style>
