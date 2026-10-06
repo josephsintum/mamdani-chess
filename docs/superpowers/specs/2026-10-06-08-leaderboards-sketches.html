@@ -1,0 +1,684 @@
+<title>Pothole Chess Leaderboards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: three directions for the weekly leaderboard, stacked. Each shows
+   the page twice, a desktop frame and a 390 px phone beside it; the page
+   inside adapts with container queries, so both frames run the same markup.
+   Road-works look, dark only, as the game. */
+:root {
+	--bg: #141518; --surface: #1e2024; --surface-2: #26282d; --raised: #2a2d32; --line: #3a3e44; --line-soft: #2a2d32;
+	--text: #f1eee6; --body: #c9c5bb; --muted: #a8a49b;
+	--accent: #f2c230; --accent-deep: #8a6d12; --accent-wash: #26241b; --hazard: #ff7a3d; --hole: #08090a; --cream: #fbf8f0; --lip: #0b0c0e; --device: #0c0d0f;
+	--display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+	--sans: 'IBM Plex Sans', system-ui, sans-serif;
+	--mono: 'IBM Plex Mono', ui-monospace, monospace;
+	color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--body); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1560px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 96px; display: grid; gap: 72px; }
+h1, h2, h3, h4 { font-family: var(--display); color: var(--text); text-transform: uppercase; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+p { margin: 0; }
+.mono { font-family: var(--mono); }
+.eyebrow { font: 600 .78rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+button { font: inherit; color: inherit; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The intro. */
+.intro { display: grid; gap: 14px; max-width: 780px; }
+.intro h1 { font-size: clamp(2.6rem, 7vw, 4.4rem); font-weight: 800; line-height: .92; }
+.intro p { color: var(--muted); font-size: 1.05rem; max-width: 66ch; }
+.decided { display: flex; flex-wrap: wrap; gap: 6px; }
+.decided span { font: 500 .74rem/1 var(--mono); color: var(--body); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+
+/* One direction: label and why, then desktop and phone side by side. */
+.dir { display: grid; gap: 18px; }
+.dir > header { display: grid; gap: 8px; }
+.tag { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.letter { font: 800 1.3rem/1 var(--display); color: var(--bg); background: var(--accent); width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; box-shadow: 0 3px 0 var(--accent-deep); }
+.dir > header h2 { font-size: 2.1rem; font-weight: 800; }
+.dir > header p { max-width: 74ch; }
+.from { font: 500 .78rem/1 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.views { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+.view { display: grid; gap: 8px; min-width: 0; }
+.view.desk { flex: 999 1 680px; }
+.view.phone { flex: 0 1 390px; max-width: 100%; }
+.caption { font: 500 .74rem/1 var(--mono); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+.frame { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+.phone .frame { border: 10px solid var(--device); outline: 1px solid var(--line); border-radius: 40px; height: 820px; display: flex; flex-direction: column; }
+.phone .scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.chrome { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #101114; border-bottom: 1px solid var(--line-soft); }
+.chrome i { width: 10px; height: 10px; border-radius: 50%; background: var(--raised); }
+.chrome span { margin-left: 8px; font: 500 .75rem/1 var(--mono); color: var(--muted); background: var(--surface); border-radius: 6px; padding: 6px 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phone .chrome { justify-content: center; padding: 12px 14px 10px; }
+.phone .chrome i { display: none; }
+.phone .chrome span { margin: 0; border-radius: 999px; padding: 7px 14px; }
+
+/* The site inside a frame. Everything below sizes from the frame, not the window. */
+.site-host { container: page / inline-size; }
+.site { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px; border-bottom: 1px solid var(--line-soft); }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); font: 800 1.3rem/1 var(--display); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.nav { display: flex; gap: 2px; }
+.nav span { font-size: .9rem; padding: 8px 12px; border-radius: 8px; color: var(--muted); white-space: nowrap; }
+.nav span.on { color: var(--text); background: #24272c; }
+.page { padding: 40px clamp(16px, 4cqi, 48px) 56px; display: grid; gap: 44px; }
+@container page (max-width: 560px) {
+	.site { padding: 12px 16px; }
+	.brand { font-size: 1.1rem; }
+	.nav span { padding: 8px 8px; font-size: .85rem; }
+	.page { padding: 24px 16px 40px; gap: 32px; }
+}
+
+/* Icons for the five titles. */
+.ico { display: grid; place-items: center; flex-shrink: 0; }
+.ico-m { border-radius: 22%; background: var(--surface); border: 3px solid var(--accent); color: var(--accent); font: 800 1rem/1 var(--display); }
+.ico-hole { border-radius: 46% 54% 42% 58% / 55% 45% 55% 45%; background: var(--hole); box-shadow: 0 0 0 3px var(--hazard), inset 0 4px 10px #000; }
+.ico-die { transform: rotate(45deg); border-radius: 18%; background: var(--cream); }
+.ico-die b { transform: rotate(-45deg); font: 700 .8rem/1 var(--mono); color: var(--bg); }
+
+/* Page head and countdown. */
+.pagehead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.pagehead > div:first-child { display: grid; gap: 12px; min-width: 0; }
+.pagehead h3 { font-size: clamp(2.4rem, 8cqi, 4.6rem); font-weight: 800; line-height: .9; }
+.pagehead p { color: var(--body); font-size: 1.05rem; max-width: 52ch; }
+.countdown { display: grid; justify-items: end; gap: 6px; }
+.countdown .lbl { font: 500 .75rem/1 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.countdown .clock { font: 600 2.2rem/1 var(--mono); color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 16px; box-shadow: 0 5px 0 var(--lip); font-variant-numeric: tabular-nums; }
+.countdown small { font-size: .8rem; color: var(--muted); }
+.section-h { font-size: 2rem; font-weight: 800; }
+@container page (max-width: 560px) {
+	.pagehead p { font-size: .95rem; }
+	.countdown { justify-items: start; grid-template-columns: auto auto; align-items: center; column-gap: 10px; }
+	.countdown .lbl { grid-column: 1 / -1; }
+	.countdown .clock { font-size: 1.4rem; padding: 6px 12px; box-shadow: 0 4px 0 var(--lip); }
+	.section-h { font-size: 1.6rem; }
+}
+
+/* Tabs with a lip, like Balatro's chunky buttons. On a phone they scroll sideways. */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tab { height: 44px; padding: 0 18px; border-radius: 999px; font-weight: 600; font-size: .95rem; cursor: pointer; background: var(--surface); color: var(--text); border: 1px solid var(--line); box-shadow: 0 4px 0 var(--lip); white-space: nowrap; flex-shrink: 0; }
+.tab:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--lip); }
+.tab[aria-selected="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); box-shadow: 0 4px 0 var(--accent-deep); }
+@container page (max-width: 560px) {
+	.tabs { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding: 0 16px 8px; scrollbar-width: none; }
+}
+
+/* Standings table, shared by A and B. */
+.table { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px; overflow: hidden; }
+.row { display: grid; grid-template-columns: 56px minmax(0, 1fr) 120px 120px; gap: 14px; align-items: center; padding: 13px 20px; border-bottom: 1px solid var(--surface-2); }
+.row.head { font: 500 .72rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-block: 12px; border-bottom-color: var(--line-soft); }
+.row .rk { font: 600 1rem/1 var(--mono); color: var(--muted); }
+.row .nm { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .v { text-align: right; font: 600 1.1rem/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.row .d { text-align: right; font: 500 .85rem/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.row.you { background: var(--accent-wash); border-top: 2px solid var(--accent); border-bottom: 0; }
+.row.you .rk { color: var(--accent); }
+.row.you .gap { display: block; font-weight: 500; font-size: .82rem; color: var(--accent); }
+.row.you .nm { white-space: normal; }
+.trend { display: inline-flex; align-items: center; gap: 2px; font: 600 .75rem/1 var(--mono); margin-left: 8px; }
+.trend.up { color: var(--accent); } .trend.down { color: var(--hazard); }
+@container page (max-width: 560px) {
+	.row { grid-template-columns: 30px minmax(0, 1fr) 72px; gap: 10px; padding: 12px 14px; }
+	.row .d { display: none; }
+	.row .nm { font-size: .95rem; }
+}
+
+/* A: the weekly list. A title switcher that fits four across on a phone,
+   the holder and the clock, a Strava-style chart of where everyone stands,
+   then a Duolingo-style list with a title line under 1st and your row in place. */
+.seg { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 5px; }
+.seg button { display: grid; justify-items: center; align-content: center; gap: 7px; min-height: 68px; padding: 8px 4px; border-radius: 12px; background: transparent; border: 0; cursor: pointer; min-width: 0; }
+.seg button span { font: 800 1rem/1 var(--display); text-transform: uppercase; letter-spacing: .02em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.seg button[aria-selected="true"] { background: var(--raised); box-shadow: inset 0 -3px 0 var(--accent); }
+.seg button[aria-selected="true"] span { color: var(--text); }
+.seg .long { display: inline; } .seg .short { display: none; }
+.league { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+.league-side { flex: 1 1 320px; display: grid; gap: 20px; min-width: 0; }
+.league-list { flex: 999 1 440px; min-width: 0; display: grid; gap: 6px; }
+.holdcard { display: grid; gap: 10px; padding: 18px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 16px; }
+.holdcard .hc-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.holdcard h4 { font-size: 2.6rem; font-weight: 800; line-height: .95; }
+.holdcard .left { font: 600 .8rem/1 var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; white-space: nowrap; }
+.holdcard p { color: var(--body); font-size: .95rem; }
+.holdcard p b { color: var(--text); }
+.hist { display: grid; gap: 10px; padding: 18px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 16px; }
+.hist .hh { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.hist .hh b { font: 800 1.2rem/1 var(--display); text-transform: uppercase; color: var(--text); }
+.hist .hh span { font: 500 .78rem/1 var(--mono); color: var(--muted); }
+.bars { display: flex; align-items: flex-end; gap: 5px; height: 112px; padding-top: 22px; }
+.bars div { position: relative; flex: 1; min-width: 0; background: var(--surface-2); border-radius: 5px 5px 0 0; }
+.bars div.mine { background: var(--accent); }
+.bars div.lead { background: var(--text); }
+.bars div em { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); font: 600 .68rem/1 var(--mono); font-style: normal; white-space: nowrap; }
+.bars div.mine em { color: var(--accent); } .bars div.lead em { color: var(--text); }
+.axis { display: flex; gap: 5px; } .axis span { flex: 1; min-width: 0; text-align: center; font: 500 .66rem/1 var(--mono); color: var(--muted); }
+.hist p { font-size: .9rem; color: var(--body); } .hist p strong { color: var(--accent); font-weight: 600; }
+.lrow { display: grid; grid-template-columns: 30px 40px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 12px; }
+.lrow .rk { font: 600 .95rem/1 var(--mono); color: var(--muted); text-align: center; }
+.lrow .av { width: 40px; height: 40px; border-radius: 50%; background: var(--raised); display: grid; place-items: center; font: 600 .78rem/1 var(--mono); color: var(--body); }
+.lrow .nm { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lrow .v { font: 600 1.05rem/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.lrow .v small { font-size: .75rem; color: var(--muted); font-weight: 500; }
+.lrow.first { background: var(--surface); }
+.lrow.first .rk { color: var(--accent); }
+.lrow.first .av { background: var(--accent); color: var(--bg); }
+.lrow.me { background: var(--accent-wash); box-shadow: inset 0 0 0 2px var(--accent); }
+.lrow.me .rk { color: var(--accent); }
+.lrow.me .av { background: var(--bg); color: var(--accent); border: 2px solid var(--accent); }
+.lrow.me .gap { display: block; font-weight: 500; font-size: .8rem; color: var(--accent); white-space: normal; }
+.zone { display: flex; align-items: center; gap: 10px; padding: 4px 4px; font: 600 .7rem/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.zone::before, .zone::after { content: ""; flex: 1; border-top: 2px dashed var(--accent-deep); }
+.skip { text-align: center; font: 600 1rem/1 var(--mono); color: var(--line); letter-spacing: .3em; padding: 2px 0; }
+.listfoot { font-size: .85rem; color: var(--muted); padding: 8px 4px 0; }
+@container page (max-width: 560px) {
+	.seg .long { display: none; } .seg .short { display: inline; }
+	.seg button { min-height: 60px; padding-inline: 2px; }
+	.seg button span { font-size: .82rem; }
+	.holdcard { padding: 14px; }
+	.holdcard h4 { font-size: 2rem; }
+	.hist { padding: 14px; }
+	.bars { height: 84px; }
+	.lrow { grid-template-columns: 24px 34px minmax(0, 1fr) auto; gap: 10px; padding: 9px 10px; }
+	.lrow .av { width: 34px; height: 34px; font-size: .7rem; }
+	.lrow .nm { font-size: .92rem; }
+}
+
+/* B: ranked lists with a side menu and a podium. On a phone the menu is a row of chips. */
+.split { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; }
+.side { flex: 1 1 240px; max-width: 300px; display: grid; gap: 6px; }
+.side button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 10px 12px; border-radius: 12px; background: transparent; border: 1px solid transparent; text-align: left; cursor: pointer; }
+.side button:hover { background: var(--surface); }
+.side button[aria-current="true"] { background: var(--surface); border-color: var(--line); box-shadow: inset 3px 0 0 var(--accent); }
+.side button span { display: grid; gap: 2px; min-width: 0; }
+.side button b { font: 800 1.25rem/1 var(--display); text-transform: uppercase; color: var(--text); white-space: nowrap; }
+.side button small { font-size: .8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.main { flex: 999 1 520px; min-width: 0; display: grid; gap: 24px; }
+.main-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 12px; }
+.main-head h4 { font-size: 2.4rem; font-weight: 800; line-height: 1; }
+.main-head p { color: var(--muted); }
+.podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: end; }
+.step { display: grid; justify-items: center; gap: 8px; text-align: center; min-width: 0; }
+.avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--raised); display: grid; place-items: center; font: 600 .95rem/1 var(--mono); color: var(--accent); border: 2px solid var(--line); flex-shrink: 0; }
+.step.first .avatar { width: 72px; height: 72px; border-color: var(--accent); font-size: 1.1rem; }
+.step .pname { font-weight: 600; color: var(--text); font-size: .95rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step .pval { font: 600 1.4rem/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.block { width: 100%; border-radius: 10px 10px 0 0; background: var(--surface); border: 1px solid var(--line); border-bottom: 0; display: grid; place-items: center; font: 800 2.2rem/1 var(--display); color: var(--muted); }
+.step.first .block { height: 120px; background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.step.second .block { height: 88px; }
+.step.third .block { height: 64px; color: var(--hazard); }
+.rules { display: grid; gap: 6px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 12px; font-size: .9rem; color: var(--muted); }
+.rules b { color: var(--text); font-weight: 600; }
+@container page (max-width: 560px) {
+	.split { gap: 20px; }
+	.side { flex: 1 1 100%; max-width: none; display: flex; gap: 8px; overflow-x: auto; margin-inline: -16px; padding: 0 16px 6px; scrollbar-width: none; }
+	.side button { width: auto; flex-shrink: 0; min-height: 48px; padding: 6px 14px 6px 8px; border-radius: 999px; border-color: var(--line); }
+	.side button small { display: none; }
+	.side button[aria-current="true"] { box-shadow: none; border-color: var(--accent); background: var(--accent-wash); }
+	.main-head h4 { font-size: 2rem; }
+	.main-head p { font-size: .88rem; }
+	.avatar { width: 44px; height: 44px; font-size: .8rem; }
+	.step.first .avatar { width: 56px; height: 56px; }
+	.step .pname { font-size: .8rem; }
+	.step .pval { font-size: 1.15rem; }
+	.step.first .block { height: 84px; } .step.second .block { height: 60px; } .step.third .block { height: 44px; }
+	.block { font-size: 1.6rem; }
+}
+
+/* C: your week first. */
+.you-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.you-name { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.you-name .avatar { width: 64px; height: 64px; border-color: var(--accent); }
+.you-name b { display: block; font: 800 2.4rem/1 var(--display); text-transform: uppercase; color: var(--text); overflow-wrap: anywhere; }
+.you-name small { color: var(--muted); }
+.races { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 18px; }
+.race { display: grid; gap: 14px; padding: 18px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 16px; min-width: 0; }
+.race .rh { display: flex; align-items: center; gap: 12px; }
+.race .rh b { font: 800 1.6rem/1 var(--display); text-transform: uppercase; color: var(--text); }
+.race .rh span { margin-left: auto; font: 600 .78rem/1 var(--mono); color: var(--muted); white-space: nowrap; }
+.score { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.score div { display: grid; gap: 6px; justify-items: center; padding: 12px 8px; border-radius: 12px; box-shadow: 0 5px 0 var(--lip); min-width: 0; }
+.score .mine { background: var(--accent); color: var(--bg); }
+.score .theirs { background: var(--raised); color: var(--text); }
+.score div b { font: 700 2rem/1 var(--mono); font-variant-numeric: tabular-nums; }
+.score div small { font: 600 .7rem/1.2 var(--mono); text-transform: uppercase; letter-spacing: .04em; text-align: center; overflow-wrap: anywhere; }
+.score .vs { align-self: center; font: 800 1.4rem/1 var(--display); color: var(--muted); }
+.track { position: relative; height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.track i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--accent); }
+.race p { font-size: .92rem; color: var(--body); }
+.race p strong { color: var(--accent); font-weight: 600; }
+.holders { display: flex; flex-wrap: wrap; gap: 10px; }
+.holders div { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line-soft); border-radius: 999px; min-width: 0; max-width: 100%; }
+.holders b { font: 800 1rem/1 var(--display); text-transform: uppercase; color: var(--text); white-space: nowrap; }
+.holders span { font-size: .9rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container page (max-width: 560px) {
+	.you-name .avatar { width: 48px; height: 48px; }
+	.you-name b { font-size: 1.7rem; }
+	.races { gap: 14px; }
+	.race { padding: 14px; gap: 12px; }
+	.score div b { font-size: 1.6rem; }
+}
+
+/* D: the player page. Who they are, this week, then achievements:
+   milestone ladders, single-game feats (locked ones show what they take),
+   titles won, and recent games. */
+.chosen { font: 600 .7rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--bg); background: var(--accent); border-radius: 999px; padding: 6px 10px; }
+.letter.new { background: var(--hazard); box-shadow: 0 3px 0 #8a3d1c; }
+.who { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; }
+.who .avatar { width: 76px; height: 76px; font-size: 1.2rem; border-color: var(--accent); }
+.who-name { display: grid; gap: 6px; min-width: 0; flex: 1 1 260px; }
+.who-name h4 { font-size: clamp(2rem, 7cqi, 3.4rem); font-weight: 800; line-height: .95; overflow-wrap: anywhere; }
+.who-name small { color: var(--muted); font-size: .9rem; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.badge { display: inline-flex; align-items: center; gap: 6px; font: 700 .8rem/1 var(--display); letter-spacing: .06em; text-transform: uppercase; border-radius: 999px; padding: 6px 10px 6px 6px; border: 1px solid var(--line); color: var(--text); }
+.badge.live { border-color: var(--accent); background: var(--accent-wash); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.stat { display: grid; gap: 6px; padding: 14px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px; min-width: 0; }
+.stat b { font: 600 1.7rem/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.stat span { font-size: .8rem; color: var(--muted); }
+.week { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.week div { display: grid; justify-items: center; gap: 6px; padding: 12px 6px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line-soft); text-align: center; min-width: 0; }
+.week b { font: 600 1.2rem/1 var(--mono); color: var(--text); }
+.week span { font: 800 .85rem/1 var(--display); text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.prof { display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; }
+.prof-main { flex: 999 1 480px; min-width: 0; display: grid; gap: 36px; }
+.prof-side { flex: 1 1 280px; min-width: 0; display: grid; gap: 28px; }
+.blockh { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.blockh h4 { font-size: 1.6rem; font-weight: 800; }
+.blockh span { font: 500 .78rem/1 var(--mono); color: var(--muted); white-space: nowrap; }
+.blk { display: grid; gap: 14px; }
+.ladder { display: grid; gap: 4px; }
+.lad { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 12px; background: var(--surface); }
+.lad .nm { display: grid; gap: 6px; min-width: 0; }
+.lad .nm b { font: 800 1.1rem/1 var(--display); text-transform: uppercase; color: var(--text); }
+.lad .nm small { font-size: .78rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pips { display: flex; gap: 4px; }
+.pips i { width: 22px; height: 6px; border-radius: 3px; background: var(--surface-2); }
+.pips i.on { background: var(--accent); }
+.lad .cnt { text-align: right; font: 600 .95rem/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lad .cnt small { display: block; margin-top: 5px; font-size: .72rem; color: var(--muted); font-weight: 500; }
+.feats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.feat { display: grid; gap: 8px; align-content: start; padding: 14px; border-radius: 14px; background: var(--surface); border: 2px solid var(--accent); box-shadow: 0 4px 0 var(--lip); min-width: 0; }
+.feat b { font: 800 1.05rem/1.05 var(--display); text-transform: uppercase; color: var(--text); }
+.feat small { font-size: .78rem; color: var(--body); line-height: 1.35; }
+.feat .when { font: 500 .7rem/1 var(--mono); color: var(--accent); }
+.feat.locked { border: 1px dashed var(--line); background: transparent; box-shadow: none; }
+.feat.locked b { color: var(--muted); }
+.feat.locked small { color: var(--muted); }
+.feat.locked .ico { filter: grayscale(1); opacity: .45; }
+.feat.secret b { letter-spacing: .2em; }
+.won { display: grid; gap: 8px; }
+.won div { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 12px; }
+.won b { font: 800 1.05rem/1 var(--display); text-transform: uppercase; color: var(--text); }
+.won small { margin-left: auto; font: 500 .75rem/1 var(--mono); color: var(--muted); white-space: nowrap; }
+.games { display: grid; gap: 4px; }
+.grow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 12px; background: var(--surface); }
+.res { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; font: 800 1.05rem/1 var(--display); }
+.res.w { background: var(--accent); color: var(--bg); } .res.l { background: var(--raised); color: var(--muted); } .res.dr { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+.grow .g { display: grid; gap: 4px; min-width: 0; }
+.grow .g b { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grow .g small { font-size: .78rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grow .ago { font: 500 .75rem/1 var(--mono); color: var(--muted); white-space: nowrap; }
+@container page (max-width: 560px) {
+	.who .avatar { width: 56px; height: 56px; font-size: .95rem; }
+	.stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.stat b { font-size: 1.4rem; }
+	.week span { font-size: .68rem; }
+	.week div { padding-inline: 2px; }
+	.feats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.prof { gap: 32px; }
+	.lad { grid-template-columns: 32px minmax(0, 1fr) auto; padding: 10px; }
+	.pips i { width: 16px; }
+}
+
+.facts { display: grid; gap: 8px; }
+.fact { display: grid; gap: 6px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px; }
+.fact b { font: 600 1.7rem/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.fact b.hz { color: var(--hazard); }
+.fact span { font-size: .88rem; color: var(--body); line-height: 1.4; }
+.fact small { font: 500 .7rem/1.3 var(--mono); color: var(--muted); }
+.foot { display: grid; gap: 10px; padding-top: 24px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: .92rem; max-width: 80ch; }
+.foot b { color: var(--text); }
+</style>
+
+<div class="wrap">
+	<header class="intro">
+		<span class="eyebrow">Milestone 08 · sketches · 6 Oct 2026</span>
+		<h1>Leaderboards and the player page</h1>
+		<p>The same week of data, drawn three ways, each on a desktop and a phone. A is a weekly list built for a phone, after Duolingo's leagues and Strava's Local Legends. B is a chess.com-style leaderboard: pick a title, see the podium and the list. C opens on your own week and the races you could win, after chess.com's weekly Leagues. The names and numbers are made up. The phones scroll.</p>
+		<div class="decided"><span>Titles: GOAT · Mayor · Capitalist · Pothole Magnet · Luckiest</span><span>Reset Monday 00:00 New York time</span><span>Quick-match games only (assumed)</span><span>Road works look, dark only</span></div>
+	</header>
+
+	<section class="dir" aria-labelledby="a-h">
+		<header>
+			<div class="tag"><span class="letter">A</span><h2 id="a-h">Weekly list</h2><span class="from">From Duolingo and Strava</span><span class="chosen">Chosen</span></div>
+			<p>Built for a thumb. All five title tabs fit across a phone. Each title shows who holds it and a chart of where every player stands, after Strava’s Local Legend, with you and the holder marked. Then a Duolingo-style list: a title line under 1st, the top five, and your own row in place among your neighbours, so you see who to pass next.</p>
+		</header>
+		<div class="views" data-tpl="tpl-a"></div>
+	</section>
+
+	<section class="dir" aria-labelledby="b-h">
+		<header>
+			<div class="tag"><span class="letter">B</span><h2 id="b-h">Ranked lists</h2><span class="from">From chess.com</span></div>
+			<p>A plain leaderboard. The titles are a side menu with each holder's name, which becomes a row of chips on a phone. The chosen title gets a podium for the top three, the list below with arrows for who moved since yesterday, and your row pinned at the bottom.</p>
+		</header>
+		<div class="views" data-tpl="tpl-b"></div>
+	</section>
+
+	<section class="dir" aria-labelledby="c-h">
+		<header>
+			<div class="tag"><span class="letter">C</span><h2 id="c-h">Your week first</h2><span class="from">From chess.com Leagues</span></div>
+			<p>Most players will never top a board, so this opens on you. Each title is a race against the person just ahead, scored like a Balatro hand: your number against theirs, and what it takes to pass them. On a phone the races stack, so your best chance is the first thing you see.</p>
+		</header>
+		<div class="views" data-tpl="tpl-c"></div>
+	</section>
+
+	<section class="dir" aria-labelledby="d-h">
+		<header>
+			<div class="tag"><span class="letter new">P</span><h2 id="d-h">Player page</h2><span class="from">From chess.com profiles and Xbox achievement lists</span></div>
+			<p>Tap any name on the leaderboard, or your own in the header. It opens on who the player is and how their week is going, then their achievements: milestone ladders with the next tier in view, single-game feats where locked ones show what they take (and secret ones don't), titles they've won, real NYC numbers (what their potholes would cost drivers, their repairs next to the city's), and recent games. History ships in 08a, titles in 08b, achievements in 09.</p>
+		</header>
+		<div class="views" data-tpl="tpl-d"></div>
+	</section>
+
+	<footer class="foot">
+		<p><b>Still open for milestone 08:</b> which games count (quick match only, or friend games too), and whether a guest who clears cookies starts over.</p>
+	</footer>
+</div>
+
+<template id="tpl-a">
+	<div class="seg" role="tablist" aria-label="Title" data-seg></div>
+	<div class="league">
+		<div class="league-side">
+			<div class="holdcard">
+				<div class="hc-top"><h4 data-name>Mayor</h4><span class="left" data-countdown-short>5d 3h</span></div>
+				<p data-holder></p>
+			</div>
+			<div class="hist">
+				<div class="hh"><b>Where everyone is</b><span data-players></span></div>
+				<div class="bars" data-bars></div>
+				<div class="axis" data-axis></div>
+				<p data-catch></p>
+			</div>
+		</div>
+		<div class="league-list" data-list></div>
+	</div>
+</template>
+
+<template id="tpl-b">
+	<div class="split">
+		<div class="side" data-side aria-label="Titles"></div>
+		<div class="main">
+			<div class="main-head"><h4 data-title>GOAT</h4><p data-what>Most wins this week</p></div>
+			<div class="podium" data-podium></div>
+			<div class="table" data-table></div>
+			<div class="rules" data-rules></div>
+		</div>
+	</div>
+</template>
+
+<template id="tpl-d">
+	<div class="who">
+		<span class="avatar">HS</span>
+		<div class="who-name">
+			<small>Playing since Oct 2 · 41 games</small>
+			<h4>huntington-scaffold</h4>
+			<div class="badges" data-badges></div>
+		</div>
+	</div>
+	<div class="stats" data-stats></div>
+	<div class="blk">
+		<div class="blockh"><h4>This week</h4><span data-countdown-short>5d 3h</span></div>
+		<div class="week" data-week></div>
+	</div>
+	<div class="prof">
+		<div class="prof-main">
+			<div class="blk">
+				<div class="blockh"><h4>Milestones</h4><span>Tiers at 1 · 10 · 100 · 1000</span></div>
+				<div class="ladder" data-ladder></div>
+			</div>
+			<div class="blk">
+				<div class="blockh"><h4>Feats</h4><span data-featcount></span></div>
+				<div class="feats" data-feats></div>
+			</div>
+		</div>
+		<div class="prof-side">
+			<div class="blk">
+				<div class="blockh"><h4>By the numbers</h4><span>Real NYC figures</span></div>
+				<div class="facts" data-facts></div>
+			</div>
+			<div class="blk">
+				<div class="blockh"><h4>Titles won</h4><span>Led at a reset</span></div>
+				<div class="won" data-won></div>
+			</div>
+			<div class="blk">
+				<div class="blockh"><h4>Recent games</h4></div>
+				<div class="games" data-games></div>
+			</div>
+		</div>
+	</div>
+</template>
+
+<template id="tpl-c">
+	<div class="you-head">
+		<div class="you-name"><span class="avatar">HS</span><div><small>Your week · 7 games</small><b>huntington-scaffold</b></div></div>
+		<div class="countdown"><span class="lbl">Week ends in</span><span class="clock" data-countdown>5d 03:41:12</span></div>
+	</div>
+	<div class="races" data-races></div>
+	<div style="display: grid; gap: 14px">
+		<h4 class="section-h" style="font-size: 1.5rem">Holding the titles</h4>
+		<div class="holders" data-holders></div>
+	</div>
+</template>
+
+<script>
+// The example week ends 5d 03:41:12 after the page loads.
+const end = Date.now() + ((5 * 24 + 3) * 3600 + 41 * 60 + 12) * 1000;
+const pad = (n) => String(n).padStart(2, '0');
+function short() { const s = Math.max(0, (end - Date.now()) / 1000); return `${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h`; }
+
+// One week of example data, shared by all three directions.
+const TITLES = [
+	{ key: 'goat', name: 'GOAT', edge: 'var(--accent)', tilt: '-2deg', what: 'Most wins', unit: 'wins', unitHead: 'Wins', detailHead: 'Games', sticker: ['held', 'Held 2 wks'],
+		rows: [['harlem-hydrant', 14, '19', 1], ['bushwick-bodega-cat', 12, '15', 1], ['astoria-pizza-rat', 11, '20', -2], ['flatbush-knish', 9, '11', 0], ['rockaway-busker', 8, '14', 2], ['yonkers-cabbie', 8, '9', -1], ['dumbo-stoop', 7, '13', 0], ['montauk-unc', 6, '10', 3]],
+		you: { rank: 23, value: 3, detail: '7', ahead: ['tribeca-yapper', 4], need: 'Win 2 more to pass tribeca-yapper' },
+		near: [[22, 'tribeca-yapper', 4], [23, 'you'], [24, 'nassau-npc', 3]],
+		hist: { labels: ['0', '1', '2', '3', '4', '5–7', '8–10', '11+'], counts: [38, 21, 15, 12, 8, 9, 4, 3], you: 3, toTop: 'harlem-hydrant is 11 wins clear of you.' },
+		last: ['harlem-hydrant', '22 wins'], rule: 'A win counts once, however it ends: checkmate, resignation or time.' },
+	{ key: 'mayor', name: 'Mayor', edge: 'var(--text)', tilt: '1.5deg', what: 'Most potholes fixed with the Mamdani', unit: 'repairs', unitHead: 'Repairs', detailHead: 'Games', sticker: ['new', 'New'],
+		rows: [['astoria-pizza-rat', 31, '20', 2], ['soho-comptroller', 26, '12', -1], ['dumbo-stoop', 19, '13', 0], ['harlem-hydrant', 17, '19', 1], ['ithaca-super', 15, '8', 0], ['flatbush-knish', 12, '11', -2], ['bronx-night-mayor', 11, '9', 0], ['yonkers-cabbie', 9, '9', 1]],
+		you: { rank: 14, value: 6, detail: '7', ahead: ['woodstock-busker', 8], need: 'Fix 3 more potholes to pass woodstock-busker' },
+		near: [[13, 'woodstock-busker', 8], [14, 'you'], [15, 'kips-bay-super', 5]],
+		hist: { labels: ['0', '1–4', '5–9', '10–14', '15–19', '20–24', '25+'], counts: [41, 30, 22, 9, 4, 1, 2], you: 2, toTop: 'You are 25 repairs short of the Mayor.' },
+		last: ['soho-comptroller', '40 repairs'], rule: 'Only repairs you make by moving the Mamdani. A pothole that opens next to it is luck and doesn’t count.' },
+	{ key: 'capitalist', name: 'Capitalist', edge: 'var(--text)', tilt: '0deg', what: 'Most pieces taken per game, 5 games or more', unit: 'a game', unitHead: 'Per game', detailHead: 'Games', sticker: null,
+		rows: [['bushwick-bodega-cat', '6.4', '15', 1], ['harlem-hydrant', '6.1', '19', 0], ['flatbush-knish', '5.8', '11', -1], ['soho-comptroller', '5.5', '12', 2], ['astoria-pizza-rat', '5.2', '20', 0], ['montauk-unc', '5.0', '10', -1], ['yonkers-cabbie', '4.9', '9', 0], ['ithaca-super', '4.6', '8', 1]],
+		you: { rank: 9, value: '4.4', detail: '7', ahead: ['ithaca-super', '4.6'], need: 'Take 2 more pieces next game to pass ithaca-super' },
+		near: [[8, 'ithaca-super', '4.6'], [9, 'you'], [10, 'rockaway-busker', '4.1']],
+		hist: { labels: ['<2', '2s', '3s', '4s', '5s', '6+'], counts: [12, 25, 31, 22, 9, 2], you: 3, toTop: 'bushwick-bodega-cat takes 2 more a game than you.' },
+		last: ['harlem-hydrant', '5.9 a game'], rule: 'Pieces you capture with your own moves, averaged over this week\u2019s games. Pieces a pothole swallows don\u2019t count: the road took them, not you. The Mamdani never captures, so he\u2019ll never hold this one.' },
+	{ key: 'magnet', name: 'Pothole Magnet', edge: 'var(--hazard)', tilt: '-1deg', what: 'Most pieces lost to potholes', unit: 'pieces', unitHead: 'Lost', detailHead: 'Games', sticker: null,
+		rows: [['rockaway-busker', 47, '14', 0], ['flatbush-knish', 39, '11', 1], ['astoria-pizza-rat', 36, '20', -1], ['yonkers-cabbie', 33, '9', 2], ['harlem-hydrant', 30, '19', 0], ['montauk-unc', 28, '10', -2], ['bushwick-bodega-cat', 24, '15', 0], ['ithaca-super', 21, '8', 1]],
+		you: { rank: 18, value: 15, detail: '7', ahead: ['bayside-knish', 17], need: 'Lose 3 more pieces to pass bayside-knish (sorry)' },
+		near: [[17, 'bayside-knish', 17], [18, 'you'], [19, 'ridgewood-unc', 14]],
+		hist: { labels: ['0–4', '5–9', '10–14', '15–19', '20–29', '30–39', '40+'], counts: [26, 31, 24, 14, 7, 4, 1], you: 3, toTop: 'rockaway-busker has lost 32 more than you.' },
+		last: ['yonkers-cabbie', '52 pieces'], rule: 'Every piece a pothole swallows, kings excepted (they never fall). The Mamdani doesn’t count; it isn’t yours.' },
+	{ key: 'lucky', name: 'Luckiest', edge: 'var(--text)', tilt: '2deg', what: 'Best saving-roll rate, 20 rolls or more', unit: '', unitHead: 'Saved', detailHead: 'Rolls', sticker: null,
+		rows: [['dumbo-stoop', '71%', '24 of 34', 0], ['montauk-unc', '66%', '19 of 29', 1], ['soho-comptroller', '61%', '14 of 23', -1], ['harlem-hydrant', '58%', '22 of 38', 0], ['bushwick-bodega-cat', '55%', '12 of 22', 2], ['astoria-pizza-rat', '52%', '17 of 33', 0], ['flatbush-knish', '50%', '10 of 20', -1], ['rockaway-busker', '45%', '13 of 29', 0]],
+		you: { rank: '–', value: '64%', detail: '9 of 14', ahead: ['Rolls to be ranked', 20], need: 'Make 6 more saving rolls to be ranked' },
+		near: [['–', 'you']],
+		hist: { labels: ['<30%', '30s', '40s', '50s', '60s', '70%+'], counts: [9, 14, 21, 17, 6, 1], you: 4, toTop: 'Your 64% would put you 2nd.' },
+		last: ['dumbo-stoop', '68% · 30 of 44'], rule: 'Saving rolls you made for your own pieces. You need 20 this week to be ranked, so one lucky roll can’t win it.' }
+];
+const initials = (name) => name.split('-').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return s[(v - 20) % 10] || s[v] || s[0]; };
+function icon(key, size) {
+	const s = `width:${size}px;height:${size}px`;
+	if (key === 'goat') return `<span class="ico" style="${s}"><svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 18h18l-1.6-10-4.9 4.2L12 5l-2.5 7.2L4.6 8z"/><path d="M4 21h16"/></svg></span>`;
+	if (key === 'mayor') return `<span class="ico ico-m" style="${s};font-size:${size * .6}px">M</span>`;
+	if (key === 'capitalist') return `<span class="ico" style="${s}"><svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="var(--text)" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 18.5c3 1.6 16 1.6 19 0"/><path d="M6.5 18V5.5h11V18"/><path d="M6.5 14h11" stroke="var(--accent)" stroke-width="2.4"/></svg></span>`;
+	if (key === 'magnet') return `<span class="ico ico-hole" style="width:${size}px;height:${size * .88}px"></span>`;
+	return `<span class="ico ico-die" style="width:${size * .72}px;height:${size * .72}px"><b style="font-size:${size * .3}px">7</b></span>`;
+}
+const trend = (t) => t > 0 ? `<span class="trend up" aria-label="up ${t}"><svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M5 1l4 6H1z" fill="currentColor"/></svg>${t}</span>`
+	: t < 0 ? `<span class="trend down" aria-label="down ${-t}"><svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M5 9L1 3h8z" fill="currentColor"/></svg>${-t}</span>` : '';
+function table(host, T, { trends = false, from = 0 } = {}) {
+	const rankColor = ['var(--accent)', 'var(--text)', 'var(--hazard)'];
+	host.innerHTML = `<div class="row head"><span>#</span><span>Player</span><span style="text-align:right">${T.unitHead}</span><span class="d">${T.detailHead}</span></div>`
+		+ T.rows.slice(from).map(([n, v, d, t], i) => `<div class="row"><span class="rk" style="color:${rankColor[i + from] || 'var(--muted)'}">${i + 1 + from}</span><span class="nm">${n}${trends ? trend(t) : ''}</span><span class="v">${v}</span><span class="d">${d}</span></div>`).join('')
+		+ `<div class="row you"><span class="rk">${T.you.rank}</span><span class="nm">huntington-scaffold <span style="font-weight:400;color:var(--muted)">(you)</span><span class="gap">${T.you.need}</span></span><span class="v">${T.you.value}</span><span class="d">${T.you.detail}</span></div>`;
+}
+const $ = (root, name) => root.querySelector(`[data-${name}]`);
+
+// A: switcher, holder, chart of where everyone stands, the list with your neighbours.
+function buildA(root) {
+	const seg = $(root, 'seg');
+	const SHORT = { goat: 'GOAT', mayor: 'Mayor', capitalist: 'Capitalist', magnet: 'Magnet', lucky: 'Lucky' };
+	const pick = (key) => {
+		const T = TITLES.find((t) => t.key === key), [hn, hv] = T.rows[0];
+		seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.key === key)));
+		$(root, 'name').textContent = T.name;
+		$(root, 'holder').innerHTML = `<b>${hn}</b> holds it with ${hv}${T.unit ? ' ' + T.unit : ''}. ${T.what}. Whoever leads at Monday 00:00 keeps it for the week.`;
+		const H = T.hist, max = Math.max(...H.counts);
+		$(root, 'players').textContent = `${H.counts.reduce((a, b) => a + b, 0)} players`;
+		$(root, 'bars').innerHTML = H.counts.map((c, i) => {
+			const cls = i === H.you ? 'mine' : i === H.counts.length - 1 ? 'lead' : '';
+			const tag = i === H.you ? '<em>You</em>' : i === H.counts.length - 1 ? `<em>${SHORT[T.key]}</em>` : '';
+			return `<div class="${cls}" style="height:${Math.max(6, Math.round(c / max * 100))}%" title="${c} players">${tag}</div>`;
+		}).join('');
+		$(root, 'axis').innerHTML = H.labels.map((l) => `<span>${l}</span>`).join('');
+		$(root, 'catch').innerHTML = `<strong>${T.you.need}.</strong> ${H.toTop}`;
+		const row = (r, cls = '') => `<div class="lrow ${cls}"><span class="rk">${r.rank}</span><span class="av">${initials(r.name)}</span><span class="nm">${r.name}${r.gap ? `<span class="gap">${r.gap}</span>` : ''}</span><span class="v">${r.value}${r.small ? ` <small>${r.small}</small>` : ''}</span></div>`;
+		const top = T.rows.slice(0, 5).map(([name, value, d], i) => row({ rank: i + 1, name, value, small: T.key === 'lucky' ? d : '' }, i === 0 ? 'first' : ''));
+		const near = T.near.map(([rank, name, value]) => name === 'you'
+			? row({ rank, name: 'huntington-scaffold (you)', value: T.you.value, gap: T.you.need }, 'me')
+			: row({ rank, name, value }));
+		$(root, 'list').innerHTML = top[0] + '<div class="zone">Title line</div>' + top.slice(1).join('') + '<div class="skip" aria-hidden="true">···</div>' + near.join('')
+			+ `<p class="listfoot">${T.rule}</p>`;
+	};
+	for (const T of TITLES) {
+		const b = document.createElement('button');
+		b.type = 'button'; b.dataset.key = T.key; b.setAttribute('role', 'tab');
+		b.innerHTML = `${icon(T.key, 26)}<span><span class="long">${T.name === 'Pothole Magnet' ? 'Magnet' : T.name}</span><span class="short">${SHORT[T.key]}</span></span>`;
+		b.addEventListener('click', () => pick(T.key)); seg.appendChild(b);
+	}
+	pick('mayor');
+}
+
+// B: side menu, podium, list from 4th, how it's counted.
+function buildB(root) {
+	const side = $(root, 'side');
+	const pick = (key) => {
+		const T = TITLES.find((t) => t.key === key), p = T.rows;
+		side.querySelectorAll('button').forEach((b) => b.setAttribute('aria-current', String(b.dataset.key === key)));
+		$(root, 'title').textContent = T.name;
+		$(root, 'what').innerHTML = `${T.what} · resets in <span class="mono" data-countdown-short>${short()}</span>`;
+		const step = (cls, r, place) => `<div class="step ${cls}"><span class="avatar">${initials(r[0])}</span><span class="pname">${r[0]}</span><span class="pval">${r[1]}</span><div class="block">${place}</div></div>`;
+		$(root, 'podium').innerHTML = step('second', p[1], 2) + step('first', p[0], 1) + step('third', p[2], 3);
+		table($(root, 'table'), T, { trends: true, from: 3 });
+		$(root, 'rules').innerHTML = `<b>How it's counted</b><span>${T.rule}</span><span>Last week: ${T.last[0]}, ${T.last[1]}.</span>`;
+	};
+	for (const T of TITLES) {
+		const b = document.createElement('button');
+		b.type = 'button'; b.dataset.key = T.key;
+		b.innerHTML = `${icon(T.key, 30)}<span><b>${T.name}</b><small>${T.rows[0][0]} · ${T.rows[0][1]}</small></span>`;
+		b.addEventListener('click', () => pick(T.key)); side.appendChild(b);
+	}
+	pick('goat');
+}
+
+// C: a race per title against the person just ahead, closest race first, then the holders.
+function buildC(root) {
+	const races = TITLES.map((T) => {
+		const [aheadName, aheadVal] = T.you.ahead;
+		const mine = T.key === 'lucky' ? 14 : T.you.value;
+		return { T, aheadName, aheadVal, mine, pct: Math.round(Math.min(mine / aheadVal, 1) * 100) };
+	}).sort((a, b) => b.pct - a.pct);
+	$(root, 'races').innerHTML = races.map(({ T, aheadName, aheadVal, mine, pct }) => `<article class="race">
+		<div class="rh">${icon(T.key, 30)}<b>${T.name}</b><span>${T.key === 'lucky' ? 'Not ranked yet' : 'You’re ' + T.you.rank + ordinal(T.you.rank)}</span></div>
+		<div class="score"><div class="mine"><b>${mine}</b><small>You</small></div><span class="vs">vs</span><div class="theirs"><b>${aheadVal}</b><small>${aheadName}</small></div></div>
+		<div class="track" role="img" aria-label="${pct}% of the way"><i style="width:${pct}%"></i></div>
+		<p><strong>${T.you.need}.</strong> Held by ${T.rows[0][0]} with ${T.rows[0][1]}${T.unit ? ' ' + T.unit : ''}.</p></article>`).join('');
+	$(root, 'holders').innerHTML = TITLES.map((T) => `<div>${icon(T.key, 24)}<b>${T.name}</b><span>${T.rows[0][0]}</span></div>`).join('');
+}
+
+// P: the player page, with example data for one guest.
+function buildD(root) {
+	$(root, 'badges').innerHTML = `<span class="badge">${icon('magnet', 18)}Pothole Magnet · week of Sep 28</span><span class="badge">${icon('mayor', 18)}Road Crew II</span>`;
+	$(root, 'stats').innerHTML = [['19–18–4', 'Won, lost, drawn'], ['38', 'Potholes repaired'], ['23', 'Saved by the Mamdani'], ['112', 'Lost to potholes']]
+		.map(([b, s]) => `<div class="stat"><b>${b}</b><span>${s}</span></div>`).join('');
+	$(root, 'week').innerHTML = TITLES.map((T) => `<div>${icon(T.key, 22)}<b>${T.key === 'lucky' ? '–' : T.you.rank + ordinal(T.you.rank)}</b><span>${T.key === 'magnet' ? 'Magnet' : T.name}</span></div>`).join('');
+	const LADDER = [
+		['mayor', 'Road Crew', 'Potholes repaired with your Mamdani moves', 38, 2],
+		['mayor', 'Lobbyist', 'Checks blocked with the Mamdani', 4, 1],
+		['lucky', 'Bailout', 'Your pieces saved by a saving roll', 23, 2],
+		['capitalist', 'Capitalist', 'Pieces you captured', 214, 3],
+		['magnet', 'Unlucky', 'Your pieces lost to potholes', 112, 3],
+		['magnet', 'Con Ed', 'Potholes your rolls opened', 87, 2],
+		['goat', 'Hustler', 'Games won', 19, 2],
+		['goat', 'Straphanger', 'Games played', 41, 2]
+	];
+	const TIERS = [1, 10, 100, 1000];
+	$(root, 'ladder').innerHTML = LADDER.map(([k, name, what, n, tier]) => `<div class="lad">${icon(k, 30)}
+		<span class="nm"><b>${name}</b><small>${what}</small><span class="pips">${TIERS.map((_, i) => `<i class="${i < tier ? 'on' : ''}"></i>`).join('')}</span></span>
+		<span class="cnt">${n}<small>next ${TIERS[tier]}</small></span></div>`).join('');
+	const FEATS = [
+		['magnet', 'Smooth Ride', 'Won without losing a piece to a pothole', 'Oct 4'],
+		['magnet', 'Dug Your Own Hole', 'Your own roll swallowed your own piece', 'Oct 2'],
+		['magnet', 'I’m Walkin’ Here!', 'A piece fell in on the square it just moved to', 'Oct 3'],
+		['mayor', 'Lost the Mayor', 'The Mamdani fell in on your roll', 'Oct 5'],
+		['goat', 'NYC Marathon', 'Finished a game of 100 or more moves', 'Oct 3'],
+		['goat', 'Lucky Leprechaun', 'Win after a pothole swallows their queen', null],
+		['mayor', 'Don’t Block the Box', 'Mate that only works because of the Mamdani', null],
+		['mayor', 'Pothole Blitz', 'Repair 3 potholes in one game', null],
+		['goat', 'Stand Clear of the Closing Doors', 'Win with under 1 s on your clock', null],
+		['goat', 'New York Minute', 'A minute under 10 s, then win', null],
+		['goat', 'Express Train', 'Checkmate in under 10 moves', null],
+		['lucky', 'secret', 'Keep playing to find this one', null]
+	];
+	const got = FEATS.filter((f) => f[3]).length;
+	$(root, 'featcount').textContent = `${got} of ${FEATS.length}`;
+	$(root, 'feats').innerHTML = FEATS.map(([k, name, what, when]) => name === 'secret'
+		? `<div class="feat locked secret">${icon(k, 26)}<b>???</b><small>${what}</small></div>`
+		: `<div class="feat ${when ? '' : 'locked'}">${icon(k, 26)}<b>${name}</b><small>${what}</small>${when ? `<span class="when">${when}</span>` : ''}</div>`).join('');
+	const AAA = 600, FIXED_FY26 = 229000, BLITZ = 7191;
+	const opened = 87, fell = 112, fixed = 38;
+	const usd = (n) => '$' + n.toLocaleString('en-US');
+	$(root, 'facts').innerHTML = [
+		[usd(opened * AAA), 'hz', `in car repairs. Your rolls opened ${opened} potholes, and the average pothole repair bill is about $600.`, 'AAA, New York drivers, 2021'],
+		[usd(fell * AAA), 'hz', `at the body shop. ${fell} of your pieces hit a pothole.`, 'AAA, New York drivers, 2021'],
+		[(fixed / FIXED_FY26 * 100).toFixed(3) + '%', '', `of the city\u2019s work. You fixed ${fixed} potholes; NYC fixed ${FIXED_FY26.toLocaleString('en-US')} in fiscal 2026.`, 'Mayor\u2019s Management Report, Sept 2026'],
+		[Math.ceil(BLITZ / (fixed / 5)) + ' weeks', '', `to match one Pothole Blitz weekend (${BLITZ.toLocaleString('en-US')} potholes) at your pace.`, 'NYC DOT, March 2026']
+	].map(([big, cls, what, src]) => `<div class="fact"><b class="${cls}">${big}</b><span>${what}</span><small>${src}</small></div>`).join('');
+	$(root, 'won').innerHTML = `<div>${icon('magnet', 26)}<b>Pothole Magnet</b><small>Sep 28 – Oct 4</small></div>`;
+	const GAMES = [['w', 'W', 'astoria-pizza-rat', 'Checkmate · 34 moves · 6 swallowed', '2h'], ['l', 'L', 'harlem-hydrant', 'Time · 51 moves · 9 swallowed', '5h'], ['dr', 'D', 'dumbo-stoop', 'Repetition · 62 moves · 4 swallowed', '1d'], ['w', 'W', 'flatbush-knish', 'Resigned · 27 moves · 7 swallowed', '1d']];
+	$(root, 'games').innerHTML = GAMES.map(([c, r, opp, how, ago]) => `<div class="grow"><span class="res ${c}">${r}</span><span class="g"><b>vs ${opp}</b><small>${how}</small></span><span class="ago">${ago}</span></div>`).join('');
+}
+
+// Draw each direction twice: a desktop frame and a phone frame.
+const BUILD = { 'tpl-a': buildA, 'tpl-b': buildB, 'tpl-c': buildC, 'tpl-d': buildD };
+const siteBar = `<div class="site"><span class="brand">Pothole Chess</span><nav class="nav" aria-label="Main (mockup)"><span>Play</span><span class="on">Leaders</span><span>Rules</span></nav></div>`;
+for (const views of document.querySelectorAll('.views')) {
+	const tpl = document.getElementById(views.dataset.tpl);
+	for (const kind of ['desk', 'phone']) {
+		const view = document.createElement('div');
+		view.className = 'view ' + kind;
+		view.innerHTML = `<span class="caption">${kind === 'desk' ? 'Desktop' : 'Phone · 390 px'}</span>
+			<div class="frame">${kind === 'desk' ? '<div class="chrome"><i></i><i></i><i></i><span>mamdani-chess.up.railway.app/leaders</span></div>' : '<div class="chrome"><span>mamdani-chess.up.railway.app</span></div>'}
+			<div class="${kind === 'phone' ? 'scroll ' : ''}site-host">${siteBar}<div class="page"></div></div></div>`;
+		const page = view.querySelector('.page');
+		page.appendChild(tpl.content.cloneNode(true));
+		views.appendChild(view);
+		BUILD[views.dataset.tpl](page);
+	}
+}
+
+// A live countdown to the example Monday reset (end is set at the top).
+function tick() {
+	const s = Math.max(0, Math.floor((end - Date.now()) / 1000));
+	const text = `${Math.floor(s / 86400)}d ${pad(Math.floor(s % 86400 / 3600))}:${pad(Math.floor(s % 3600 / 60))}:${pad(s % 60)}`;
+	document.querySelectorAll('[data-countdown]').forEach((e) => { e.textContent = text; });
+	document.querySelectorAll('[data-countdown-short]').forEach((e) => { e.textContent = short(); });
+}
+tick(); setInterval(tick, 1000);
+</script>
