@@ -13,7 +13,7 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import MovesSheet from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
-	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
+	import { Animator } from '#lib/animator.svelte.ts';
 	import { checkSquare, endedHere, matedByRoll, matedKing, pillFor, repairsShown, stageAt, tallyOf, wonHere } from '#lib/board.ts';
 	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import { BURST_HOLD_MS, countAt } from '#lib/feel.ts';
@@ -45,7 +45,7 @@
 	// Dev only: /game/CODE?instant turns every animation off, for fast play-testing.
 	const instant = dev && page.url.searchParams.has('instant');
 	setInstant(instant);
-	const anim = new Animator(instant ? 0 : STEP_MS);
+	const anim = new Animator(instant ? 0 : undefined);
 	// Phones in portrait get their own layout (canvas row "Phone game: playtest build").
 	const phone = new MediaQuery('max-width: 639px');
 	let sheet: MovesSheet | undefined = $state();

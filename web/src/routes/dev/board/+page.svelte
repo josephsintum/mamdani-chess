@@ -3,7 +3,8 @@
 	import DiceTray from '#lib/DiceTray.svelte';
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
-	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
+	import { Animator } from '#lib/animator.svelte.ts';
+	import { dicePace } from '#lib/dice.ts';
 	import { matedKing, pillFor, repairsShown, stageAt } from '#lib/board.ts';
 	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import type { Color, MoveJSON, View } from '#lib/game.ts';
@@ -118,7 +119,7 @@
 	function move(m: MoveJSON) {
 		const next = playTurn(view, m, script(view));
 		next.you = you;
-		anim.stepMs = instant ? 0 : slow ? STEP_MS * 3 : STEP_MS;
+		anim.pace = instant ? 0 : slow ? (e) => dicePace(e) * 3 : dicePace;
 		anim.receive(next);
 	}
 

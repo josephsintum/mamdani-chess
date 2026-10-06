@@ -103,11 +103,34 @@ describe('Animator', () => {
 	it('takes a new step time for the next turn', () => {
 		const a = new Animator(100);
 		a.receive(view(0));
-		a.stepMs = 1000;
+		a.pace = 1000;
 		a.receive(view(1, roll));
 		vi.advanceTimersByTime(999);
 		expect(a.shown).toBe(1);
 		vi.advanceTimersByTime(1);
 		expect(a.shown).toBe(2);
+	});
+});
+
+describe('Animator with the dice table', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it('waits for the move, then for each step as long as it plays', async () => {
+		const { MOVE_MS, playMs } = await import('./dice.ts');
+		const a = new Animator();
+		a.receive(view(0));
+		a.receive(view(1, roll));
+		expect(a.shown).toBe(1);
+		vi.advanceTimersByTime(MOVE_MS - 1);
+		expect(a.shown).toBe(1);
+		vi.advanceTimersByTime(1);
+		expect(a.shown).toBe(2); // the roll
+		vi.advanceTimersByTime(playMs(roll[1]));
+		expect(a.shown).toBe(3); // the target
+		vi.advanceTimersByTime(playMs(roll[2]) - 1);
+		expect(a.shown).toBe(3); // the scan still runs
+		vi.advanceTimersByTime(1);
+		expect(a.shown).toBe(4);
 	});
 });
