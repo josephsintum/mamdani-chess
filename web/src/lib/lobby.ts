@@ -48,10 +48,34 @@ export class ApiError extends Error {
 /** Name changes a guest gets in any 24 hours (store.NameChanges on the server). */
 export const NAME_CHANGES = 3;
 
+// The name the server last gave this browser, kept so the header can show it
+// before /api/me answers. The server stays the truth: every answer replaces it.
+const NAME_KEY = 'name';
+
+/** This browser's name from its last visit, or null (none yet, or storage blocked). */
+export function rememberedName(): string | null {
+	try {
+		return localStorage.getItem(NAME_KEY);
+	} catch {
+		return null;
+	}
+}
+
+function remember(name: string | null) {
+	try {
+		if (name) localStorage.setItem(NAME_KEY, name);
+		else localStorage.removeItem(NAME_KEY);
+	} catch {
+		// Private mode or blocked storage: the header waits for the server.
+	}
+}
+
 export async function me(): Promise<Me> {
 	const res = await fetch('/api/me');
 	if (!res.ok) throw new Error(`could not load your name (${res.status})`);
-	return res.json();
+	const m: Me = await res.json();
+	remember(m.name);
+	return m;
 }
 
 /** The names on offer, or none left today (with when they come back). */
@@ -75,6 +99,7 @@ export async function chooseName(name: string): Promise<Me> {
 	});
 	const body = await res.json().catch(() => ({}));
 	if (!res.ok) throw new ApiError(body.error ?? `could not change your name (${res.status})`, res.status);
+	remember(body.name);
 	return body;
 }
 

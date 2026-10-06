@@ -1,13 +1,25 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { ApiError, chooseName, initials, me as fetchMe, NAME_CHANGES, nameOffers, untilText, type Me } from './lobby.ts';
+	import {
+		ApiError,
+		chooseName,
+		initials,
+		me as fetchMe,
+		NAME_CHANGES,
+		nameOffers,
+		rememberedName,
+		untilText,
+		type Me
+	} from './lobby.ts';
 	import { reducedMotion } from './motion.ts';
 
 	// The site header on the home and quick-match pages: the logo, and the
 	// guest's name with a die that offers three new names to pick from (3
 	// changes in any 24 hours). A guest who hasn't played yet has no name,
-	// so no name shows.
+	// so no name shows. Until the page's /api/me answers, the name from this
+	// browser's last visit shows, so it doesn't pop in a moment later.
 	let { me = $bindable(null) }: { me?: Me | null } = $props();
+	const remembered = rememberedName();
 
 	let open = $state(false);
 	let offers = $state<string[] | null>(null);
@@ -21,10 +33,16 @@
 	let pill: HTMLDivElement | undefined = $state();
 	let die: HTMLButtonElement | undefined = $state();
 
-	let name = $derived(me?.name ?? null);
+	let name = $derived(me ? me.name : remembered);
 	let left = $derived(me?.changesLeft ?? 0);
 	let wait = $derived(me?.changesResetAt ? untilText(me.changesResetAt, now) : 'a moment');
-	let dieLabel = $derived(left > 0 ? `New name (${left} ${left === 1 ? 'change' : 'changes'} left today)` : `New names again in ${wait}`);
+	let dieLabel = $derived(
+		!me
+			? 'New name'
+			: left > 0
+				? `New name (${left} ${left === 1 ? 'change' : 'changes'} left today)`
+				: `New names again in ${wait}`
+	);
 
 	// What the server says now: another tab may have changed the name, or
 	// the 24 hours may be up.
@@ -137,7 +155,8 @@
 				<button
 					type="button"
 					class="reroll"
-					class:spent={left === 0}
+					class:spent={me !== null && left === 0}
+					disabled={me === null}
 					onclick={toggle}
 					bind:this={die}
 					aria-expanded={open}
@@ -304,6 +323,9 @@
 	}
 	.reroll.spent {
 		opacity: 0.45;
+	}
+	.reroll:disabled {
+		cursor: default;
 	}
 	.me {
 		position: relative;
