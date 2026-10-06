@@ -24,7 +24,7 @@
 - "Illegal, out-of-turn, or stale-`seq` moves → `409` with the current `state`".
 - "Unknown game code → `404`".
 
-The Rust version these changes copy from is `docs/superpowers/specs/2026-10-04-rust-server-design.md`, with code in `server_rs/server/src/game/actor.rs` and `server_rs/server/src/http/`.
+The Rust version these changes copy from is `docs/superpowers/specs/2026-10-04-rust-server-design.md`, with code in `server_rs/server/src/game/actor.rs` and `server_rs/server/src/http/`. The Rust server has since been removed; both are in git at `7c24ef6`.
 
 **Prototyped:** every code block here was run in a throwaway worktree before the plan was written. `go vet ./...` and `go test -race ./...` passed. The Rust parity test (`server_rs/server/tests/parity.rs`) still matched 100 games recorded from the changed Go server.
 

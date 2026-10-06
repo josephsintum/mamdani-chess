@@ -25,7 +25,6 @@ Milestone 06 is split. This spec is **06a**. **06b** (a live watcher count over 
 | Quick match | First come, first served; random colors; no rating. The queue is an SSE stream: open means queued, closed means gone. A mutex guards the queue. | A small pool makes waits the real problem, so any skill filter would only lengthen them. A closed tab can't leave a ghost in the queue. |
 | Empty queue | Wait with no limit and a Cancel button. Home shows how many are looking; after 60 s the searching screen also offers "Play a friend instead". | Someone arriving later can see there's a person to match. |
 | Live games | Games being played (both seated, not over), most watched first, then newest, at most 12. Polled every 10 s. | Friend games still waiting for their friend aren't for strangers. |
-| Rust server | `server_rs/` stays at the 05 API. Its README notes the gap. | Keeping parity would double the server work for an experiment. |
 | History | None in 06. Player history, ratings and leaderboards are milestone 08. | See the roadmap's milestone 08 section. 06 keeps everything 08 needs: `turns` and the name snapshots on seats. |
 
 ## Identity

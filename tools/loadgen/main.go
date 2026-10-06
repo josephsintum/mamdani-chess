@@ -1,8 +1,7 @@
-// Command loadgen plays many games at once against a running server, Go or
-// Rust (server_rs), through the public API, and reports throughput and
-// latency. Each game has two players and some spectators, all on SSE
-// streams. Players pick a random legal move as soon as it is their turn,
-// or after a random thinking time.
+// Command loadgen plays many games at once against a running server through
+// the public API, and reports throughput and latency. Each game has two
+// players and some spectators, all on SSE streams. Players pick a random
+// legal move as soon as it is their turn, or after a random thinking time.
 //
 // Burst (how fast can it go):
 //

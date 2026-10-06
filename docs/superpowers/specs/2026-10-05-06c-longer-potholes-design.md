@@ -101,7 +101,6 @@ Tests:
 - `LoadForRestore` loads only `rules = 2`. A link to an old game gets the existing "Game not found" page.
 - `retired` joins the result reasons the server knows; nothing displays it, since retired games are never loaded.
 - JSON: every pothole (game view and live games list) gains `"left": 1|2|3`; `pothole_closed` gains `color`. No other protocol change.
-- The `server_rs/` experiment is not updated (as in 06a).
 - **Deploy:** one push to `main`. It ends any game in progress under the old rules, so not during a playtest.
 
 ## Board and text (`web/`)
@@ -152,4 +151,3 @@ The same working tree also holds the Mamdani art on both boards (`/mamdani/piece
 - A custom page for retired games.
 - Cones on the small boards.
 - Sound.
-- Updating `server_rs/`.
