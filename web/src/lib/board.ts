@@ -1,6 +1,7 @@
 // Pure board logic for the game page: blocked lines, the board while the
 // dice play out, and the dice tray's lines. No DOM, so it is unit-tested.
 
+import { HOLE_CAP, HOLE_ROUNDS } from './wire.gen.ts';
 import { SAVE_MS, SCAN_MS, stepDice, THROW_MS, type DieSpec } from './dice.ts';
 import { pieceName, squareName, type Color, type EventJSON, type View } from './game.ts';
 
@@ -67,9 +68,8 @@ export function blockedSquares(view: Pick<View, 'board' | 'potholes' | 'mamdani'
 	return blocked;
 }
 
-/** How many of its roller's moves a pothole lasts, and the most open at once (rules/position.go). */
-export const HOLE_ROUNDS = 3;
-export const HOLE_CAP = 5;
+/** How many of its roller's moves a pothole lasts, and the most open at once: the rules engine's own numbers (wire.gen.ts). */
+export { HOLE_CAP, HOLE_ROUNDS };
 
 /** Index of the first dice event (the pothole roll); the end if none was rolled. */
 export function firstDiceStep(last: EventJSON[]): number {

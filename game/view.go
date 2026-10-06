@@ -26,11 +26,11 @@ const (
 type View struct {
 	Code     string      `json:"code"`
 	Status   Status      `json:"status"`
-	You      string      `json:"you"`     // "white", "black" or "spectator"
-	Board    [64]string  `json:"board"`   // index 0 = a1; "" or color+kind: "wP", "bQ"
-	Mamdani  string      `json:"mamdani"` // its square, "" once it has fallen
+	You      string      `json:"you" ts:"Color | 'spectator'"` // "white", "black" or "spectator"
+	Board    [64]string  `json:"board"`                        // index 0 = a1; "" or color+kind: "wP", "bQ"
+	Mamdani  string      `json:"mamdani"`                      // its square, "" once it has fallen
 	Potholes []Pothole   `json:"potholes"`
-	Turn     string      `json:"turn"` // "white" or "black"
+	Turn     string      `json:"turn" ts:"Color"` // "white" or "black"
 	Check    bool        `json:"check"`
 	Legal    []MoveJSON  `json:"legal"` // only for the player to move
 	Last     []EventJSON `json:"last"`  // what happened on the latest turn, in order
@@ -51,7 +51,7 @@ type View struct {
 // how many more of By's moves it stays open for (1 to rules.HoleRounds).
 type Pothole struct {
 	Sq   string `json:"sq"`
-	By   string `json:"by"`
+	By   string `json:"by" ts:"Color"`
 	Left int    `json:"left"`
 }
 
@@ -87,7 +87,7 @@ type EventJSON struct {
 	To     string             `json:"to,omitempty"`
 	Promo  string             `json:"promo,omitempty"`
 	Piece  string             `json:"piece,omitempty"`
-	Color  string             `json:"color,omitempty"`
+	Color  string             `json:"color,omitempty" ts:"Color"`
 	Roll   int                `json:"roll,omitempty"`
 	Saved  *bool              `json:"saved,omitempty"`
 	Reason rules.RerollReason `json:"reason,omitempty"`
@@ -97,7 +97,7 @@ type EventJSON struct {
 // what the dice did, e.g. {"e4", "white", "d8 4 → c3"}.
 type LogEntry struct {
 	SAN   string `json:"san"`
-	Color string `json:"color"`
+	Color string `json:"color" ts:"Color"`
 	Dice  string `json:"dice"`
 }
 
@@ -130,7 +130,7 @@ type OnlineJSON struct {
 // ResultJSON is how the game ended. Winner is "" for a draw, and for an
 // aborted or expired game, which nobody wins.
 type ResultJSON struct {
-	Winner string       `json:"winner,omitempty"` // "" for a draw
+	Winner string       `json:"winner,omitempty" ts:"Color"` // "" for a draw
 	Draw   bool         `json:"draw"`
 	Reason rules.Reason `json:"reason"`
 }

@@ -69,10 +69,10 @@ func TestPlayingGivesANameThatShowsInTheGame(t *testing.T) {
 	}
 }
 
-func (p *player) me() meJSON {
+func (p *player) me() MeJSON {
 	p.t.Helper()
 	status, body := p.get("/api/me")
-	var out meJSON
+	var out MeJSON
 	if status != http.StatusOK || json.Unmarshal([]byte(body), &out) != nil {
 		p.t.Fatalf("GET /api/me: %d %s", status, body)
 	}
@@ -107,7 +107,7 @@ func TestChangeNameFromOffers(t *testing.T) {
 		t.Fatalf("choosing an unoffered name: %d %s, want 409", status, body)
 	}
 	status, body := alice.post("/api/me/name", `{"name":"`+offers[1]+`"}`)
-	var out meJSON
+	var out MeJSON
 	if status != http.StatusOK || json.Unmarshal([]byte(body), &out) != nil || *out.Name != offers[1] || out.ChangesLeft != 2 || out.ChangesResetAt == nil {
 		t.Fatalf("choosing: %d %s", status, body)
 	}
