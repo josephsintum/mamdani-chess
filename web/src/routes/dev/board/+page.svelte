@@ -4,7 +4,7 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
-	import { dicePace } from '#lib/dice.ts';
+	import { dicePace, dicePill, scanOf } from '#lib/dice.ts';
 	import { matedKing, pillFor, repairsShown, stageAt } from '#lib/board.ts';
 	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import type { Color, MoveJSON, View } from '#lib/game.ts';
@@ -50,6 +50,10 @@
 	let savedSquare = $derived(view.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < anim.shown)?.sq ?? '');
 	// The Mamdani's repairs, celebrated only on a turn that is playing out.
 	let repairs = $derived(anim.animated && !instant ? repairsShown(view, anim.shown) : []);
+	// The dice on the board, as in a game.
+	let pill = $derived(anim.animated && !instant ? dicePill(view, anim.shown) : null);
+	let scan = $derived(anim.animated && !instant ? scanOf(view, anim.shown) : null);
+	let reroll = $derived(anim.animating && view.last[anim.shown - 1]?.kind === 'reroll');
 	// Big moments say something, as in a game.
 	const say = quipper();
 	let quip = $derived.by(() => {
@@ -231,6 +235,9 @@
 				{repairs}
 				{quip}
 				{mated}
+				{pill}
+				{scan}
+				{reroll}
 				onmove={move}
 			/>
 			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={pillFor(view, bottom, anim.animating).text} pillTone={pillFor(view, bottom, anim.animating).tone} />
