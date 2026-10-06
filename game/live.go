@@ -53,13 +53,13 @@ func (g *Game) publish() {
 // watching counts the guests with the game open who aren't seated: two
 // tabs are one guest.
 func (g *Game) watching() int {
-	seen := map[string]bool{}
-	for sub := range g.subs {
-		if _, seated := g.seatOf(sub.guest); !seated {
-			seen[sub.guest] = true
+	n := len(g.streams)
+	for c := range g.seats {
+		if g.connected(rules.Color(c)) {
+			n--
 		}
 	}
-	return len(seen)
+	return n
 }
 
 // Active returns the code of the newest game being played with guest in a

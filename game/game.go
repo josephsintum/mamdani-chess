@@ -65,6 +65,12 @@ type Game struct {
 	// failed is set when a save fails. The loop then retires the game
 	// before anyone sees the change that wasn't saved.
 	failed error
+	// streams counts each guest's open streams, so who is online and
+	// how many are watching never means looking through every stream.
+	streams map[string]int
+	// views is the latest encoded view for each role, which streams that
+	// join soon after reuse (see sharedView).
+	views [3]builtView
 }
 
 // Sub is one open stream. C always holds the newest View: a reader that
@@ -100,6 +106,7 @@ func newGame(h *Hub, sg store.Game, onExit func()) *Game {
 		seats:   [2]string{sg.White, sg.Black},
 		names:   [2]string{sg.WhiteName, sg.BlackName},
 		subs:    map[*Sub]struct{}{},
+		streams: map[string]int{},
 		clock:   newClock(),
 	}
 }
@@ -213,7 +220,7 @@ func (g *Game) stop() {
 	for sub := range g.subs {
 		close(sub.ch)
 	}
-	g.subs = nil
+	g.subs, g.streams, g.views = nil, nil, [3]builtView{}
 	if g.onExit != nil {
 		g.onExit()
 	}
@@ -258,18 +265,18 @@ func (g *Game) Join(guest string) (*Sub, error) {
 			g.names[rules.Black] = name
 			g.startCounting(time.Now()) // White's first-move deadline
 			slog.Info("black joined", "code", g.code, "black", guestTag(guest))
-			g.subs[sub] = struct{}{}
+			g.addSub(sub)
 			g.broadcast() // White's view changes from waiting to playing
 			return
 		}
 		c, seated := g.seatOf(guest)
 		returning := seated && !g.connected(c)
-		g.subs[sub] = struct{}{}
+		g.addSub(sub)
 		if returning {
 			g.broadcast() // the opponent sees them connected again
 			return
 		}
-		send(sub, sealed(g.viewFor(g.roleOf(guest))))
+		send(sub, g.sharedView(g.roleOf(guest)))
 	})
 	if err != nil {
 		return nil, err
@@ -281,7 +288,7 @@ func (g *Game) Join(guest string) (*Sub, error) {
 // player's rematch offer lasts until their last stream closes.
 func (g *Game) Leave(sub *Sub) {
 	g.do(func() {
-		delete(g.subs, sub)
+		g.removeSub(sub)
 		c, seated := g.seatOf(sub.guest)
 		if !seated || g.connected(c) {
 			return
@@ -293,14 +300,31 @@ func (g *Game) Leave(sub *Sub) {
 	})
 }
 
+// addSub and removeSub keep subs and the streams count in step.
+func (g *Game) addSub(sub *Sub) {
+	g.subs[sub] = struct{}{}
+	g.streams[sub.guest]++
+}
+
+func (g *Game) removeSub(sub *Sub) {
+	if _, ok := g.subs[sub]; !ok {
+		return
+	}
+	delete(g.subs, sub)
+	if n := g.streams[sub.guest] - 1; n > 0 {
+		g.streams[sub.guest] = n
+	} else {
+		delete(g.streams, sub.guest)
+	}
+	if len(g.subs) == 0 {
+		g.views = [3]builtView{} // nobody left to share them with
+	}
+}
+
 // connected reports whether c's player has a stream open.
 func (g *Game) connected(c rules.Color) bool {
-	for sub := range g.subs {
-		if sub.guest == g.seats[c] {
-			return true
-		}
-	}
-	return false
+	id := g.seats[c]
+	return id != "" && g.streams[id] > 0
 }
 
 // Move plays guest's move. seq must equal the number of turns played so far,
@@ -455,14 +479,34 @@ func (g *Game) roleOf(guest string) role {
 // broadcast sends every stream its role's view. Streams in the same role
 // share one *View, so a View must never be changed once sent.
 func (g *Game) broadcast() {
-	var views [3]*View
+	g.views = [3]builtView{} // the game changed: no view built before is current
 	for sub := range g.subs {
-		r := g.roleOf(sub.guest)
-		if views[r] == nil {
-			views[r] = sealed(g.viewFor(r))
-		}
-		send(sub, views[r])
+		send(sub, g.sharedView(g.roleOf(sub.guest)))
 	}
+}
+
+// viewReuse is how long a built view is handed to streams that join. A
+// view carries the server's time (clock.now), which the browser sets its
+// clocks by, so it can't be reused for long; but a crowd arriving at once
+// costs a few dozen views a second instead of one each.
+const viewReuse = 25 * time.Millisecond
+
+// builtView is an encoded view and when it was built.
+type builtView struct {
+	v  *View
+	at time.Time
+}
+
+// sharedView returns r's encoded view, reusing the latest if it was built
+// within viewReuse. broadcast clears them, so a change is never hidden.
+func (g *Game) sharedView(r role) *View {
+	now := time.Now()
+	if b := g.views[r]; b.v != nil && now.Sub(b.at) < viewReuse {
+		return b.v
+	}
+	v := sealed(g.viewFor(r))
+	g.views[r] = builtView{v: v, at: now}
+	return v
 }
 
 // sealed encodes v for the streams it is about to be shared with.

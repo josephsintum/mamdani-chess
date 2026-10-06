@@ -75,6 +75,31 @@ func TestLiveShowsTheGame(t *testing.T) {
 	}
 }
 
+func TestWatchingFollowsStreamsClosing(t *testing.T) {
+	h := NewHub(odd{}, nil)
+	g := playing(t, h, "alice", "bob")
+	c1, c2 := join(t, g, "carol"), join(t, g, "carol") // two tabs
+	d := join(t, g, "dave")
+	a := join(t, g, "alice")
+	watching := func() int { return h.List(12)[0].Watching }
+	if n := watching(); n != 2 {
+		t.Fatalf("watching %d, want 2", n)
+	}
+	g.Leave(c1)
+	if n := watching(); n != 2 {
+		t.Errorf("carol still has a tab open: watching %d, want 2", n)
+	}
+	g.Leave(a)
+	if n := watching(); n != 2 {
+		t.Errorf("a player leaving isn't a watcher leaving: watching %d, want 2", n)
+	}
+	g.Leave(c2)
+	g.Leave(d)
+	if n := watching(); n != 0 {
+		t.Errorf("everyone left: watching %d, want 0", n)
+	}
+}
+
 func TestActiveIsYourGameBeingPlayed(t *testing.T) {
 	h := NewHub(odd{}, nil)
 	waiting := create(t, h, "alice")

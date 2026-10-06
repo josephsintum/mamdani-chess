@@ -479,6 +479,48 @@ func TestStreamsInOneRoleShareOneEncoding(t *testing.T) {
 	})
 }
 
+func TestACrowdJoiningSharesOneView(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		h := NewHub(odd{}, nil)
+		g := playing(t, h, "alice", "bob")
+		first := recv(t, join(t, g, "carol"))
+		if again := recv(t, join(t, g, "dave")); again != first {
+			t.Error("two spectators joining at once got separately built views")
+		}
+		// A view carries the server's time (clock.now), so it is reused
+		// only briefly.
+		time.Sleep(viewReuse + time.Millisecond)
+		later := recv(t, join(t, g, "erin"))
+		if later == first || later.Clock.Now <= first.Clock.Now {
+			t.Errorf("a later joiner got a stale view: now %d, first %d", later.Clock.Now, first.Clock.Now)
+		}
+		// A change is never hidden by a reused view.
+		if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
+			t.Fatal(err)
+		}
+		if v := recv(t, join(t, g, "frank")); v.Seq != 1 {
+			t.Errorf("joined after a move: seq %d, want 1", v.Seq)
+		}
+		finish(t, g)
+	})
+}
+
+func TestSharedViewsAreFreedWhenEveryoneLeaves(t *testing.T) {
+	g := playing(t, NewHub(odd{}, nil), "alice", "bob")
+	sub := join(t, g, "carol")
+	recv(t, sub)
+	g.Leave(sub)
+	var kept bool
+	g.do(func() {
+		for _, b := range g.views {
+			kept = kept || b.v != nil
+		}
+	})
+	if kept {
+		t.Error("a game nobody watches still holds encoded views")
+	}
+}
+
 // recvView is guest's current view, built fresh (not the shared one).
 func recvView(t *testing.T, g *Game, guest string) *View {
 	t.Helper()
