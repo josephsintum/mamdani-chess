@@ -1,4 +1,4 @@
-# Pothole Chess: Mamdani Edition
+# Mamdani Chess
 
 A browser chess variant to play with friends: the original Pot-Hole Chess (Spicer and Chamberlain, 2001) plus one neutral piece, the Mamdani.
 
@@ -59,7 +59,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Next step
 
-Milestone 07 (launch). Its brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08 ([brainstorm](docs/superpowers/specs/2026-10-06-08-leaderboards-brainstorm.md)). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Milestone 07 (launch). Its brainstorm has started ([notes](docs/superpowers/specs/2026-10-06-07-launch-brainstorm.md)): the app is renamed Mamdani Chess, audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08 ([brainstorm](docs/superpowers/specs/2026-10-06-08-leaderboards-brainstorm.md)). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
@@ -80,7 +80,7 @@ Milestone 07 (launch). Its brainstorm has started: audience a few friends, the R
   - transition functions take `(node, params)`;
   - `$state.snapshot` only works in `.svelte`/`.svelte.ts` files;
   - run `npx @sveltejs/mcp svelte-autofixer` on every component and avoid `$effect`.
-- **Dev server and `pnpm check`:** `pnpm --dir web check` regenerates SvelteKit's files and can leave a running `pnpm --dir web dev` hung (pages stop loading). Restart the dev server after it.
+- **Dev server and `pnpm check`:** `pnpm --dir web check` regenerates SvelteKit's files and can leave a running `pnpm --dir web dev` hung (pages stop loading). Restart the dev server after it. Opening a page while the dev server is still starting can make it log `failed to load virtual css module` and serve that component's raw `.svelte` file as its CSS, so the page loses rules (e.g. the home page runs edge to edge); restart it and wait for "ready".
 - **PR screenshots:** a PR that changes the UI embeds screenshots, before and after where it fits. They live on the unmerged `pr-screenshots` branch under `pr-<number>/` and are linked from `raw.githubusercontent.com`, so `main` stays free of images.
 - **Notices:** show toasts with `notify.*` from `#lib/toast.ts` (svelte-sonner behind it, themed in `Toaster.svelte`, mounted once in the layout). Never import svelte-sonner in a page.
 - **Board pointer rule:** capture the pointer only once a drag has moved more than 6px from the press (not from the last event, or slow drags never start). Capturing on pointerdown sends the click to the board, and taps stop working.
