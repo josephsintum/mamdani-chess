@@ -52,6 +52,9 @@
 	// A dragged piece dropped on a square it can't go to settles back with a
 	// squash; n changes each time so the same square can bounce again.
 	let bounce = $state({ sq: '', n: 0 });
+	// The square a piece just settled back on: it stays selected, but without
+	// replaying the pick-up wobble. Cleared on the next press.
+	let settledBack = $state('');
 	let boardEl: HTMLDivElement | undefined = $state();
 
 	// Without moves to make (not your turn, dice still rolling) nothing is selectable.
@@ -126,20 +129,22 @@
 			if (reducedMotion()) return;
 			if (settled && node.dataset.bounce !== settled) {
 				node.dataset.bounce = settled;
-				node.animate(SQUASH, { duration: 140, easing: 'ease-out' });
+				node.animate(SQUASH, { duration: 140, easing: 'ease-out', composite: 'add' });
 				return;
 			}
 			const key = `${p.id}:${p.sq}`;
 			if (!p.from || p.from === p.sq || node.dataset.moved === key) return;
 			node.dataset.moved = key;
 			if (isDropped(p)) {
-				node.animate(SQUASH, { duration: 140, easing: 'ease-out' });
+				node.animate(SQUASH, { duration: 140, easing: 'ease-out', composite: 'add' });
 				return;
 			}
 			const w = whiplash(p.from, p.sq, flipped);
 			if (w !== 0 && p.dur > 0) node.animate(whipFrames(w), { duration: p.dur + WHIP_TAIL_MS, easing: 'ease-in-out' });
 		};
 	}
+	// Added on top of the piece's resting transform (composite: 'add'), so a
+	// piece that stays picked up at 112% squashes from there, not from 100%.
 	const SQUASH: Keyframe[] = [{ transform: 'scale(1.08, 0.92)' }, { transform: 'scale(1)' }];
 
 	/** Column and row on screen for a square, 0..7 from the top left. */
@@ -210,6 +215,7 @@
 
 	function pointerDown(e: PointerEvent, sq: string) {
 		dropped = null;
+		settledBack = '';
 		if (pending || !movable.has(sq) || e.button !== 0) return;
 		drag = { from: sq, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, pointer: e.pointerId, tilt: 0 };
 	}
@@ -233,7 +239,7 @@
 		}
 		// Lean toward the pull, from how fast the pointer moves sideways,
 		// smoothed so a jittery drag doesn't wobble.
-		const tilt = moved ? Math.max(-10, Math.min(10, drag.tilt * 0.6 + (e.clientX - drag.x) * 1.2 * 0.4)) : 0;
+		const tilt = moved && !reducedMotion() ? Math.max(-10, Math.min(10, drag.tilt * 0.6 + (e.clientX - drag.x) * 1.2 * 0.4)) : 0;
 		drag = { ...drag, x: e.clientX, y: e.clientY, moved, tilt };
 	}
 
@@ -248,6 +254,7 @@
 			dropped = null;
 			selected = from;
 			bounce = { sq: from, n: bounce.n + 1 };
+			settledBack = from;
 		}
 	}
 
@@ -296,7 +303,7 @@
 	/** A piece leaving the board: a fall shrinks into the hole, a capture fades. */
 	function leave(_node: Element, { fell }: { fell: boolean }) {
 		return fell
-			? { duration: ms(450), css: (t: number) => `opacity: ${t}; transform: scale(${0.25 + 0.75 * t}) rotate(${(1 - t) * 25}deg)` }
+			? { duration: ms(450), css: (t: number) => `opacity: ${t}; transform-origin: 50% 50%; transform: scale(${0.25 + 0.75 * t}) rotate(${(1 - t) * 25}deg)` }
 			: { duration: ms(300), css: (t: number) => `opacity: ${1 - (1 - t) ** 3}` };
 	}
 
@@ -410,7 +417,7 @@
 			<span
 				class="slot piece-slot"
 				class:lifted={movable.has(p.sq) && (hovered === p.sq || current === p.sq) && !drag?.moved}
-				class:picked={current === p.sq && !drag?.moved}
+				class:picked={current === p.sq && !drag?.moved && settledBack !== p.sq}
 				class:dragging={drag?.moved && drag.from === p.sq}
 				style={pieceStyle(p)}
 			>

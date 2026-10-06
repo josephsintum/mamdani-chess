@@ -82,4 +82,4 @@ pnpm --dir web check     # Svelte and TypeScript type checks
 
 - **Pot-Hole Chess** by Peter Spicer and Michael Chamberlain, published on [The Chess Variant Pages](https://www.chessvariants.com/boardrules.dir/potholechess.html) (2001).
 - **The Mamdani** comes from a [patch video](https://www.instagram.com/reels/Dd8tV_MxEQL/).
-- **Chess pieces:** the "cburnett" set by [Colin M.L. Burnett](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces), used under its BSD 3-clause licence option ([notice](web/static/pieces/LICENSE.txt)).
+- **Chess pieces:** the "mpchess" set by [Maxime Chupin](https://github.com/chupinmaxime), as published in [lichess](https://github.com/lichess-org/lila/tree/5ae58154b2be1033dcb0252173b4fff4bb02e73a/public/piece/mpchess), under the GNU GPL v3 or later ([notice](web/static/pieces/LICENSE.txt), [license](web/static/pieces/GPL-3.0.txt)).
