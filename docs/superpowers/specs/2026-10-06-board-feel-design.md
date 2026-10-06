@@ -1,6 +1,6 @@
 # Board Feel: Design
 
-**Status:** design agreed item by item on 2026-10-05 and 06. Sections 1, 2, 3 and 10 built (plan 1); the rest follow in plans 2 and 3.
+**Status:** design agreed item by item on 2026-10-05 and 06. Not built.
 **Mockups:** https://claude.ai/artifact/E6oCYQhp8xaDTZCVssczXy (live, looping; its sections are numbered like this spec, and every board there is the agreed board: outside coordinates, mpchess with the white outline, blue last move, ease-out glide).
 **Why:** the board should call attention to what the dice and the moves do, and feel as lively as chess.com's Arcade style, in our road-works look. Every effect here runs on every turn or at a big moment, so each one is short, and each one is skipped under reduced motion and in instant mode (`setInstant`).
 
@@ -9,7 +9,7 @@
 | # | Change | Mockup |
 | --- | --- | --- |
 | 1 | Coordinates outside the board | 1 |
-| 2 | mpchess pieces, 10% larger, with a white outline instead of a shadow | 2 |
+| 2 | mpchess pieces, 10% larger, lines 1.2× heavier, with a 2 px white outline instead of a shadow | 2 |
 | 3 | Ease-out glide, with a trail and a whiplash | 3 |
 | 4 | Capture knock-back | 4 |
 | 5 | Falling into a pothole, and the save | 5 |
@@ -17,7 +17,7 @@
 | 7 | Win screen: result tally and confetti | 7 |
 | 8 | Catchphrase bubbles (milestone 09) | 8 |
 | 9 | Dice: a tray throw echoed on the board, the pothole scan riding on out-of-sync file and rank dice | 9 |
-| 10 | Pick-up lean and drag tilt, legal moves ripple in | 10 |
+| 10 | Pick-up jiggle and tilt, legal moves ripple in | 10 |
 | 11 | Board shake by size | 11 |
 | 12 | +5 on the clock | 12 |
 
@@ -30,12 +30,13 @@ Already shipped on 2026-10-05: the last move is light blue (`--board-last-*`), s
 - On a phone (under 640 px) the board gives up about 14 px of width for them; the page must still never scroll (`playtest --phone`).
 - The dice light them: during a pothole roll, the letter and number the file and rank dice point to glow orange (section 9).
 
-## 2. Pieces: mpchess, larger, with a white outline
+## 2. Pieces: mpchess, larger, heavier lines, with a white outline
 
 - **Set:** lichess's mpchess by Maxime Chupin, GPLv3+, from `lila/public/piece/mpchess`. It replaces cburnett everywhere pieces are drawn: the board, lost pieces in the player bar, the home page's small boards (`MiniBoard.svelte`), the promotion picker, and the link preview card (`pnpm --dir web og-image` redraws it).
 - **License:** `web/static/pieces/LICENSE.txt` becomes mpchess's notice (author, GPLv3+, source link); the Rules page (milestone 07) credits it. cburnett's BSD notice goes with its files.
 - **Size:** drawn at 110% of today's piece size (`.piece img` from 92% to about 100% of the square), since mpchess has more padding in its viewBox; pawns must still clear the square's edges.
-- **Outline, no shadow:** every piece's `drop-shadow(0 2px 2px)` becomes a crisp cream outline, like a sticker's white border, not a glow: four unblurred drop-shadows of the piece's own shape, offset 1.5 px right, left, down and up (`drop-shadow(1.5px 0 0 var(--piece-outline))` and so on), with a new `--piece-outline` token (`--piece-light`, #fbf8f0). The width scales down where pieces are small (lost pieces, home page boards: 1 px). The lost pieces' soft edge (shipped 2026-10-05) becomes the same outline. A lifted or dragged piece still grows 12%. The Mamdani tile keeps its yellow border and gets no edge.
+- **Line weight (decided 2026-10-06):** every piece's own black line is 1.2 times as heavy. The SVG files are edited: white pieces' strokes widen ×1.2; black pieces, drawn without a stroke, get a black stroke of the same added width (0.2× the original), so both colors grow alike. `LICENSE.txt` and the README say the files are modified.
+- **Outline, no shadow:** every piece's `drop-shadow(0 2px 2px)` becomes a crisp cream outline, like a sticker's white border, not a glow: four unblurred drop-shadows of the piece's own shape, offset 2 px right, left, down and up (`drop-shadow(2px 0 0 var(--piece-outline))` and so on; 1.5 px until 2026-10-06), with a new `--piece-outline` token (`--piece-light`, #fbf8f0). The width scales down where pieces are small (lost pieces, home page boards: 1 px). The lost pieces' soft edge (shipped 2026-10-05) becomes the same outline. A lifted or dragged piece still grows 12%. The Mamdani tile keeps its yellow border and gets no edge.
 
 ## 3. Glide, trail and whiplash
 
@@ -89,9 +90,9 @@ Chosen on 2026-10-06 over rolling the dice along the coordinate rails (mockup 8)
 
 **Timing to check while planning:** the server pauses the next clock with `pauseFor` (`game/clock.go`), computed from one `StepTime` (550 ms) per event after the roll, at least 2 s. The new dice pacing is per kind of step, not uniform, so the plan must make the client's per-step durations and `pauseFor` come from one table (or keep the client within it), and test that a long roll (re-rolls plus a saving roll) never lets the next clock start mid-animation.
 
-## 10. Pick-up lean and drag tilt, legal moves ripple in
+## 10. Pick-up jiggle and tilt, legal moves ripple in
 
-- **Lift:** a selected piece grows 12% and leans 4° to the left, easing in over 0.3 s, and stays leaning while selected (no wobble; changed 2026-10-06 after watching the recordings). It stands upright when put down or deselected.
+- **Lift:** a selected piece grows 12% with a quick wobble (−6°, +5°, upright over 220 ms).
 - **Drag tilt:** while dragged, it tilts toward the pull, up to 10°, from the pointer's sideways speed, easing back on release.
 - **Ripple:** its legal squares pop in (scale 0 to 112% to 100%, 200 ms) in order of distance from the piece, 15 ms per step, instead of all at once.
 - **Land:** a drop lands with a squash (108% × 92%, 140 ms); a drop on an illegal square settles back the same way.
