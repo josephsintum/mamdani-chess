@@ -65,17 +65,37 @@ When a game ends in checkmate and the turn played out on screen (not a reload or
 
 ## 8. Catchphrase bubbles (milestone 09)
 
-- When the dice finish playing out a big moment, a speech bubble pops up from that square (cream, dark text, a tail pointing at the square) with an emoji and a line, stays about 2.8 s and fades. It stays inside the board's bounds near the edges. The same line goes to the toast region's live text for screen readers (`notify`), without a visible toast.
+- When the dice finish playing out a big moment, a speech bubble pops up from that square (cream, dark text, a tail pointing at the square) with an emoji and a line, stays about 2.8 s and fades. It stays inside the board's bounds near the edges. Screen readers hear the line from a live region on the board, without a visible toast. At game over the board darkens under a shade, so an end-of-game bubble and the # badge stay bright.
 - Players and spectators alike see it; a reload doesn't replay it.
-- Lines live in `web/src/lib/catchphrases.ts`, keyed by event, picked at random, never the same line twice in a row:
+- Lines live in `web/src/lib/catchphrases.ts`, keyed by event, picked at random, never the same line twice in a row. Text between tildes (`~bat~`) is drawn struck through, and screen readers skip it:
 
 | Event | Emoji | Lines |
 | --- | --- | --- |
-| The Mamdani falls in | 😢 | "Sorry, my wife is calling." · "Got paperwork to do." · "Ask Batman for help." · "Your friendly neighborhood Spidey can handle this." |
-| The Mamdani repairs a pothole | 👍 | "Filled. Next!" · "Another one off the list." |
-| A queen falls in | 😱 | "Not the queen!" · "Mind the gap." |
-| A saving roll saves a queen or rook | 😅 | "That was close." |
+| The Mamdani falls in | 😢 | "Sorry, my wife is calling." · "Got paperwork to do." · "Ask ~~bat~~ Bruce Wayne for help." (*bat* struck through) · "Someone call 311." · "I'm fallin' here!" · "Stand clear of the closing hole." · "This one's not on the list." · "Tell DOT I'll be late." · "Not for nothin', but ow." · "Did anybody see that?" · "It's so over." · "Mogged by a pothole." · "−1000 aura." |
+| The Mamdani repairs a pothole | 👍 | "Filled. Next!" · "Another one off the list." · "Pothole Blitz!" · "That's 200,001." · "Smooth as a fresh schmear." · "Fuhgeddaboudit." · "We're so back." · "+1000 aura." · "Ate. No crumbs." |
+| A queen falls in | 😱 | "Not the queen!" · "Watch the gap!" · "Gone to Queens." · "Finally, some action!" · "Chat, we're cooked." · "Massive L." |
+| A saving roll saves a queen or rook | 😅 | "That was close." · "It's showtime!" · "I'm walkin' here!" · "Deadass close." · "Clutch." · "No cap, that was close." |
+| A king saved by a re-roll (on the king) | 🛡️ | "Not on my block." · "Fuhgeddaboudit." · "Main character energy." |
+| The pothole dice land on f7 (6 and 7) | 🤷 | "6-7" |
+| A win on time (on the loser's king, once the game ends here) | ⏱️ | "Missed the train." · "This is the last stop." · "Get a move on!" · "Skill issue." (the winner's screen only) |
+| A checkmate by a pothole roll (on the mated king, after the burst) | 🗽 | "Only in New York." · "Somebody call the papers." · "Chat, is this real?" |
+| A checkmate by a move (on the mated king, after the burst) | 🏁 | "Fuhgeddaboudit." · "Ate. No crumbs." · "That's a W." · "Gotta be quicker than that. This is New York." |
+| A resignation (on the resigning king) | 🏳️ | "Somebody call a cab." · "It's so over." · "Touched grass." |
+| A draw (on the king of the side to move) | 🤝 | "Mid." · "6-7 🤷" · "Same time tomorrow?" |
+| **Rare:** a win with just two pieces left, the king and one other (from the king; beats every other end line; a lone king can't win) | 👑 | "Everybody want to know what I would do if I didn't win… I guess we'll never know." |
+| **Rare:** a mate by castling (on the mated king) | 🏰 | "Moved in and took over." |
+| **Rare:** a mate by promoting a pawn (on the mated king) | 🥯 | "From bodega to boardroom." |
+| **Rare:** a mate within two moves each, like fool's mate (on the mated king) | 🚇 | "Fastest commute in New York." |
+| **Rare:** a win with under a second left, before the final move's +5 (on the winning king) | 😮‍💨 | "By a hair. Deadass." |
+| **Rare:** a win after your queen fell into a pothole (on the winning king) | 💅 | "Who needs a queen? Not me." |
+| **Rare:** the fifth pothole open at once, not the cap swapping one (on the new hole) | 🚧 | "Pothole season." |
+| **Rare:** the Mamdani's fifth repair of the game (on the repaired square) | 🏆 | "Employee of the month." |
+| **Rare:** a pothole swallows a side's last piece but its king (on the hole) | 🕳️ | "Gone. All of them." |
 
+- **Rare lines win:** at the end, castling mate, promotion mate, speedrun, two pieces left, by a hair, then no queen, before the ordinary end lines; during a turn, the rare ones before that event's usual line.
+- **End-of-game lines** play once the dice stop, only when the game ended on screen (never after a reload), and never for a game nobody started.
+- **Pairs:** a line answers the one said before it when its moment comes next: "It's so over." → "We're so back.", "−1000 aura." → "+1000 aura."
+- Chosen on 2026-10-06 from the catchphrase shortlist (New York sayings, the city's pothole work, GTA-style lines in our own words, Gen Z and Gen Alpha slang): https://claude.ai/artifact/JVUbAGvZ5NKAyt5bvdTNGp
 - Lines are the game piece's playful voice, never presented as real quotes (the roadmap's caution for a piece named after a real person). Text only, no sound.
 
 ## 9. Dice: a tray throw echoed on the board

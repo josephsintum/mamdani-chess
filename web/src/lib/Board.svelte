@@ -2,6 +2,7 @@
 	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
 	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, fitShift, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
+	import { lineParts, spoken } from './catchphrases.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
@@ -545,6 +546,10 @@
 		{/each}
 	</div>
 
+	<!-- At game over the board darkens under this shade, while the celebrate
+	     layer above it (bubbles, the # badge) stays bright. -->
+	<div class="shade" aria-hidden="true"></div>
+
 	<div class="layer celebrate" aria-hidden="true">
 		{#each fresh as r (r.key)}
 			<span
@@ -567,7 +572,7 @@
 		{#if quip}
 			{#key quip.key}
 				<span class="slot fix quip" class:top={cell(quip.sq).row < 2} style="{place(quip.sq)}; --quip-delay: {quip.delay ?? 0}ms">
-					<span class="bubble" {@attach fit}><em>{quip.emoji}</em> {quip.line}</span>
+					<span class="bubble" {@attach fit}><em>{quip.emoji}</em> {#each lineParts(quip.line) as part, i (i)}{#if part.struck}<s>{part.text}</s>{:else}{part.text}{/if}{/each}</span>
 				</span>
 			{/key}
 		{/if}
@@ -600,7 +605,7 @@
 	</div>
 
 	<!-- Screen readers hear the bubble's line; the bubble itself is drawn above. -->
-	<p class="sr-only" aria-live="polite">{quip?.line ?? ''}</p>
+	<p class="sr-only" aria-live="polite">{quip ? spoken(quip.line) : ''}</p>
 
 	{#if pending}
 		<div class="promote" role="dialog" aria-label="Promote to" tabindex="-1" onkeydown={promoKey} {@attach focusFirst}>
@@ -678,12 +683,27 @@
 		user-select: none;
 		-webkit-touch-callout: none;
 	}
-	.board.dim {
-		filter: saturate(0.6) brightness(0.55);
-		transition: filter 0.4s ease;
+	/* Game over: a shade darkens the squares and pieces (as a filter of
+	   saturate 0.6 and brightness 0.55 did), under the celebrate layer. */
+	.shade {
+		position: absolute;
+		inset: 0;
+		z-index: 5;
+		background: color-mix(in srgb, var(--hole) 45%, transparent);
+		backdrop-filter: saturate(0.6);
+		-webkit-backdrop-filter: saturate(0.6);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.4s ease;
+	}
+	.board.dim .shade {
+		opacity: 1;
+	}
+	.celebrate {
+		z-index: 6;
 	}
 	/* A checkmate burst plays first, then the board dims. */
-	.board.dim.late {
+	.board.dim.late .shade {
 		transition-delay: var(--burst-hold);
 	}
 	.square {
@@ -854,11 +874,11 @@
 		transform: scale(1.12) rotate(var(--tilt, 0deg));
 		transition: transform 0.12s ease-out;
 	}
-	/* mpchess pieces fill the square (110% of the old 92%), with a crisp
+	/* mpchess pieces at 90% of the square, centred, with a crisp
 	   white outline: their own shape offset 2 px four ways, no blur. */
 	.piece img {
-		width: 100%;
-		height: 100%;
+		width: 90%;
+		height: 90%;
 		filter: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
 			drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
 	}
@@ -934,7 +954,7 @@
 		background: var(--surface);
 		border: 2px solid var(--accent);
 		border-radius: 10px;
-		z-index: 4;
+		z-index: 7; /* above the shade and the celebrate layer */
 	}
 	.promote button {
 		min-height: 44px;
@@ -1173,7 +1193,7 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.board.dim,
+		.shade,
 		.piece-slot,
 		.piece,
 		.square::after {
