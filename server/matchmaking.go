@@ -12,6 +12,10 @@ import (
 // stream is open. It sends "queued" at once, then "matched" with the new
 // game's code. The caller gets a name first, so the game can show it.
 func (s *Server) matchStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodHead {
+		headSSE(w) // no place in line, and no name
+		return
+	}
 	guest := guestID(w, r)
 	// One game at a time: a guest already playing is sent back to it.
 	if code := s.games.Active(guest); code != "" {

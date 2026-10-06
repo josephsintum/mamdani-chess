@@ -59,6 +59,10 @@ func (s *Server) gameStream(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 		return
 	}
+	if r.Method == http.MethodHead {
+		headSSE(w)
+		return
+	}
 	sub, err := g.Join(guest)
 	if err != nil { // the game stopped since Get
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})

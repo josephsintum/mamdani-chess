@@ -28,6 +28,19 @@ func startSSE(w http.ResponseWriter) (http.Flusher, bool) {
 	return fl, true
 }
 
+// headSSE answers a HEAD request on a stream with the stream's headers and
+// nothing else. A route for GET also serves HEAD, and opening a stream
+// joins (a game's seat, the quick-match line), so a HEAD must return
+// before that: a link checker or curl -I would otherwise take Black's seat
+// for good.
+func headSSE(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+}
+
 // writeEvent writes one SSE event whose data is already-encoded JSON, and
 // flushes it. The data goes straight to w: every stream in a role sends
 // the same view, so copying it through fmt cost each stream a copy.
