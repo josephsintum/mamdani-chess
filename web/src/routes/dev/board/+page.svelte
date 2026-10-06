@@ -5,7 +5,7 @@
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
 	import { matedKing, pillFor, repairsShown, stageAt } from '#lib/board.ts';
-	import { quipper } from '#lib/catchphrases.ts';
+	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import type { Color, MoveJSON, View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
@@ -51,7 +51,12 @@
 	let repairs = $derived(anim.animated && !instant ? repairsShown(view, anim.shown) : []);
 	// Big moments say something, as in a game.
 	const say = quipper();
-	let quip = $derived(anim.animated && !instant ? say(view.last, view.seq, anim.shown) : null);
+	let quip = $derived.by(() => {
+		if (instant) return null;
+		const end = endings > 0 ? endQuip(view) : null;
+		if (end) return say(view.last, view.seq, anim.shown, { end, key: `sandbox:end:${endings}`, winner: true });
+		return anim.animated ? say(view.last, view.seq, anim.shown, undefined, contextOf(view)) : null;
+	});
 	// The Result card buttons end the game at once: each checkmate bursts once.
 	let endings = $state(0);
 	let mated = $derived.by(() => {
@@ -197,6 +202,7 @@
 					<button onclick={() => load(positions.promotion())}>Promotion</button>
 					<button onclick={() => load(positions.castling())}>Castling</button>
 					<button onclick={() => load(positions.repair())}>Repair</button>
+					<button onclick={() => load(positions.twoLeft())}>Two pieces left</button>
 				</div>
 			</section>
 
@@ -205,6 +211,7 @@
 				<div class="buttons">
 					<button onclick={() => end({ winner: 'white', draw: false, reason: 'checkmate' })}>Checkmate</button>
 					<button onclick={() => end({ winner: 'black', draw: false, reason: 'resignation' })}>Resignation</button>
+					<button onclick={() => end({ winner: 'black', draw: false, reason: 'timeout' })}>Out of time</button>
 					<button onclick={() => end({ draw: true, reason: 'stalemate' })}>Draw</button>
 				</div>
 			</section>

@@ -97,6 +97,8 @@ export const positions = {
 		v.potholes = [{ sq: 'f6', by: 'black', left: 3 }];
 		return v;
 	},
+	/** Black has just its king and a rook: press Resignation (Black wins) for the two-pieces line. */
+	twoLeft: (): View => place(emptyView(), { e1: 'wK', a1: 'wR', h2: 'wP', e8: 'bK', h8: 'bR' }),
 	/** King and rooks on their squares: castle with e1–g1 or e1–c1. */
 	castling: (): View => {
 		const v = place(emptyView(), { e1: 'wK', a1: 'wR', h1: 'wR', e8: 'bK', a8: 'bR', h8: 'bR' });
