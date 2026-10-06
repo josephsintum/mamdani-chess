@@ -61,10 +61,10 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	c := ts.Client()
 
 	home := page(t, c, ts.URL+"/")
-	if got := meta(home, "og:title"); got != "Pothole Chess: Mamdani Edition" {
+	if got := meta(home, "og:title"); got != "Mamdani Chess" {
 		t.Errorf("home og:title %q", got)
 	}
-	if !strings.Contains(home, "<title>Pothole Chess: Mamdani Edition</title>") || !strings.Contains(home, "app shell") {
+	if !strings.Contains(home, "<title>Mamdani Chess</title>") || !strings.Contains(home, "app shell") {
 		t.Errorf("home page: %s", home)
 	}
 	if got := meta(home, "og:image"); got != ts.URL+"/og.png" {
@@ -73,10 +73,10 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	if meta(home, "twitter:card") != "summary_large_image" || meta(home, "og:image:width") != "1200" {
 		t.Error("missing the large card tags")
 	}
-	if got := meta(page(t, c, ts.URL+"/play"), "og:title"); got != "Quick match · Pothole Chess" {
+	if got := meta(page(t, c, ts.URL+"/play"), "og:title"); got != "Quick match · Mamdani Chess" {
 		t.Errorf("/play og:title %q", got)
 	}
-	if got := meta(page(t, c, ts.URL+"/game/ZZZZZZ"), "og:title"); got != "Pothole Chess: Mamdani Edition" {
+	if got := meta(page(t, c, ts.URL+"/game/ZZZZZZ"), "og:title"); got != "Mamdani Chess" {
 		t.Errorf("unknown game og:title %q, want the home page's", got)
 	}
 
@@ -85,7 +85,7 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	link := ts.URL + "/game/" + code
 	a := myName(t, alice)
 	waiting := page(t, c, link)
-	if got := meta(waiting, "og:title"); got != a+" invites you to Pothole Chess" {
+	if got := meta(waiting, "og:title"); got != a+" invites you to Mamdani Chess" {
 		t.Errorf("waiting og:title %q", got)
 	}
 	if got := meta(waiting, "og:description"); !strings.Contains(got, "take Black") {
@@ -98,7 +98,7 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	bob.stream(code).state() // takes Black
 	b := myName(t, bob)
 	playing := page(t, c, link)
-	if got := meta(playing, "og:title"); got != a+" vs "+b+" · Pothole Chess" {
+	if got := meta(playing, "og:title"); got != a+" vs "+b+" · Mamdani Chess" {
 		t.Errorf("playing og:title %q", got)
 	}
 	if got := meta(playing, "og:description"); got != "Watch live, move 1." {

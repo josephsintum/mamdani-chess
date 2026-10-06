@@ -75,8 +75,8 @@ p { font-size: 32px; line-height: 1.35; color: var(--text-body); max-width: 500p
 .stripe { position: absolute; left: 0; right: 0; bottom: 0; height: 22px; background: repeating-linear-gradient(-45deg, var(--accent) 0 22px, var(--bg) 22px 44px); }
 </style></head><body>
 <div class="text">
-	<span class="eyebrow">MAMDANI EDITION</span>
-	<h1>Pothole<br>Chess</h1>
+	<span class="eyebrow">A POTHOLE CHESS VARIANT</span>
+	<h1>Mamdani<br>Chess</h1>
 	<p>Potholes open under the pieces. Play a friend, no sign-up.</p>
 </div>
 <div class="board">${squares}</div>

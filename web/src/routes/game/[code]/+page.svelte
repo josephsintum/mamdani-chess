@@ -432,13 +432,13 @@
 </script>
 
 <svelte:head>
-	<title>Game {code} · Pothole Chess</title>
+	<title>Game {code} · Mamdani Chess</title>
 </svelte:head>
 
 {#if phone.current && view && stage && !notFound}
 	<div class="phone">
 		<header class="ph-head">
-			<a href="/" class="ph-logo">Pothole Chess</a>
+			<a href="/" class="ph-logo">Mamdani Chess</a>
 			<span class="ph-meta">
 				{#if !connected && !lost}<span class="ph-chip warn">Reconnecting…</span>{/if}
 				{#if you === 'spectator'}<span class="ph-chip">Watching</span>{/if}
@@ -577,7 +577,7 @@
 {:else}
 <main>
 	<header>
-		<a href="/" class="logo">Pothole Chess</a>
+		<a href="/" class="logo">Mamdani Chess</a>
 		<span class="code">{code}</span>
 		{#if view && !connected && !lost}<span class="warn">Reconnecting…</span>{/if}
 	</header>

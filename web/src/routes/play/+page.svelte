@@ -125,7 +125,7 @@
 </script>
 
 <svelte:head>
-	<title>Finding an opponent · Pothole Chess</title>
+	<title>Finding an opponent · Mamdani Chess</title>
 </svelte:head>
 
 <Header bind:me={user} />

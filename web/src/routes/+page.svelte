@@ -75,7 +75,7 @@
 </script>
 
 <svelte:head>
-	<title>Pothole Chess: Mamdani Edition</title>
+	<title>Mamdani Chess</title>
 </svelte:head>
 
 <Header bind:me={user} />

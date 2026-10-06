@@ -8,7 +8,7 @@ Software Foundation, either version 3 of the License, or (at your option) any
 later version. They are distributed without any warranty; see GPL-3.0.txt,
 next to this file, for the full license.
 
-Pothole Chess changed the files: every piece's black line is 1.2 times as
+Mamdani Chess changed the files: every piece's black line is 1.2 times as
 heavy (white pieces' strokes widened; black pieces, drawn without a stroke,
 got a black edge of the same added width). It draws them 10% larger, with a
 cream outline added by CSS.

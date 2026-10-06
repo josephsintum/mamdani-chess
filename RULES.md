@@ -1,4 +1,4 @@
-# Pothole Chess: Mamdani Edition
+# Mamdani Chess
 
 Live doc: https://claude.ai/artifact/AvSPCQS42ggQGpTWQGoQRB (source of truth; this file is a copy)
 

@@ -1,4 +1,4 @@
-// Command server runs Pothole Chess: Mamdani Edition.
+// Command server runs Mamdani Chess.
 package main
 
 import (
