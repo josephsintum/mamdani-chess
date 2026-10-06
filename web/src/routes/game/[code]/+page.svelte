@@ -358,13 +358,17 @@
 	}
 
 	// The tally's numbers count up one at a time once the card is in, each
-	// landing with a pop. A game opened after it ended shows them at once.
+	// landing with a pop. A game opened after it ended shows them at once, and
+	// each number counts once: a later update to the finished game (a rematch
+	// offer, the opponent leaving) redraws the tally, and shows it as it is.
 	const COUNT_MS = 250;
 	const COUNT_GAP_MS = 150;
+	const counted: boolean[] = [];
 	function countUp(value: number, i: number) {
 		return (node: HTMLElement) => {
 			node.textContent = String(value);
-			if (!endedLive || instant || reducedMotion()) return;
+			if (!endedLive || instant || reducedMotion() || counted[i]) return;
+			counted[i] = true;
 			node.textContent = '0';
 			let frame = 0;
 			const timer = setTimeout(() => {
