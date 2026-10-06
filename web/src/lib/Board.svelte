@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
-	import { cellOf, coordinates, GLIDE_EASE, rippleDelay, trailColor, trailOf, TRAIL_FADE_MS, whipFrames, whiplash, WHIP_TAIL_MS } from './feel.ts';
+	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, fitShift, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
@@ -15,6 +15,8 @@
 		check = '',
 		saved = '',
 		repairs = [],
+		quip = null,
+		mated = null,
 		onmove
 	}: {
 		stage: Stage;
@@ -33,6 +35,10 @@
 		 * dice land next to it and the pothole never opens. Each key plays once.
 		 */
 		repairs?: { sq: string; key: string; hole: boolean }[];
+		/** A speech bubble for a big moment (catchphrases.ts); a new key pops a new one. */
+		quip?: { sq: string; emoji: string; line: string; key: string; delay?: number } | null;
+		/** The mated king's square, burst once per game (by key). */
+		mated?: { sq: string; key: string } | null;
 		onmove: (move: MoveJSON) => void;
 	} = $props();
 
@@ -126,7 +132,16 @@
 	function motion(p: { id: number; from?: string; sq: string; dur: number }) {
 		return (node: HTMLElement) => {
 			const settled = bounce.sq === p.sq ? `bounce:${bounce.n}` : '';
+			const savedHere = saved === p.sq;
+			if (!saved) delete node.dataset.saved;
 			if (reducedMotion()) return;
+			// Saved by an odd saving roll: it teeters hard, then hops out as
+			// the hole closes under it.
+			if (savedHere && node.dataset.saved !== saved) {
+				node.dataset.saved = saved;
+				node.animate(SAVE_HOP, { duration: 640, easing: 'ease-out' });
+				return;
+			}
 			if (settled && node.dataset.bounce !== settled) {
 				node.dataset.bounce = settled;
 				node.animate(SQUASH, { duration: 140, easing: 'ease-out', composite: 'add' });
@@ -146,6 +161,14 @@
 	// Added on top of the piece's resting transform (composite: 'add'), so a
 	// piece that stays picked up at 112% squashes from there, not from 100%.
 	const SQUASH: Keyframe[] = [{ transform: 'scale(1.08, 0.92)' }, { transform: 'scale(1)' }];
+	const SAVE_HOP: Keyframe[] = [
+		{ transform: 'rotate(0)' },
+		{ transform: 'rotate(-14deg)', offset: 0.16 },
+		{ transform: 'rotate(14deg)', offset: 0.32 },
+		{ transform: 'rotate(0)', offset: 0.41 },
+		{ transform: 'translateY(-22%) scale(1.08)', offset: 0.7 },
+		{ transform: 'translateY(0) scale(1)' }
+	];
 
 	/** Column and row on screen for a square, 0..7 from the top left. */
 	function cell(sq: string): { col: number; row: number } {
@@ -305,12 +328,87 @@
 	// Transitions. Each one collapses to nothing under reduced motion.
 	const ms = (n: number) => (reducedMotion() ? 0 : n);
 
-	/** A piece leaving the board: a fall shrinks into the hole, a capture fades. */
-	function leave(_node: Element, { fell }: { fell: boolean }) {
-		return fell
-			? { duration: ms(450), css: (t: number) => `opacity: ${t}; transform-origin: 50% 50%; transform: scale(${0.25 + 0.75 * t}) rotate(${(1 - t) * 25}deg)` }
-			: { duration: ms(300), css: (t: number) => `opacity: ${1 - (1 - t) ** 3}` };
+	// One shake at a time on the whole frame: a bigger one replaces a smaller
+	// one still running, a smaller one waits its turn out.
+	let frameEl: HTMLDivElement | undefined;
+	let shaking: { shake: Shake; anim: Animation } | null = null;
+	function shake(s: Shake, delay = 0) {
+		if (reducedMotion() || !frameEl) return;
+		const running = shaking?.anim.playState === 'running' ? shaking.shake : null;
+		if (biggerShake(running, s) !== s) return;
+		shaking?.anim.cancel();
+		shaking = { shake: s, anim: frameEl.animate(shakeFrames(s.px), { duration: s.ms, delay, easing: 'linear' }) };
 	}
+
+	/**
+	 * When the move's mover reaches its square, so a taken piece is hit then:
+	 * half its glide, since the ease-out glide has covered 94% of the way by
+	 * then. A dropped piece is already there.
+	 */
+	function impact(): number {
+		if (!lastMove || reducedMotion() || (dropped && dropped.from === lastMove.from && dropped.to === lastMove.to)) return 0;
+		return Math.round(moveDuration(lastMove.from, lastMove.to) / 2);
+	}
+
+	/**
+	 * A fall, `u` from 0 to 1 over 550 ms: two wobbles at the edge (180 ms),
+	 * then a drop into the hole, shrinking, tipping and darkening.
+	 */
+	function fallFrame(u: number): string {
+		const teeter = 180 / 550;
+		if (u < teeter) return `transform-origin: 50% 50%; transform: rotate(${(9 * Math.sin((u / teeter) * 2 * Math.PI)).toFixed(2)}deg)`;
+		const q = ((u - teeter) / (1 - teeter)) ** 2;
+		return `transform-origin: 50% 50%; transform: translateY(${10 * q}%) scale(${1 - 0.85 * q}) rotate(${40 * q}deg); filter: brightness(${1 - 0.75 * q}); opacity: ${1 - q}`;
+	}
+
+	/**
+	 * A piece leaving the board. A fall teeters, then drops into the hole and
+	 * the board shakes. A capture waits for the mover to arrive, then is
+	 * knocked a third of a square along the move, spins and fades, and the
+	 * board shakes by the taken piece's size.
+	 */
+	function leave(node: Element, { fell, code }: { fell: boolean; code: string }) {
+		// A taken piece waits under the mover, which lands on top of it.
+		if (!fell && node.parentElement) node.parentElement.style.zIndex = '1';
+		if (fell) {
+			shake(SHAKE.fall, ms(180));
+			return { duration: ms(FALL_MS), css: (_t: number, u: number) => fallFrame(u) };
+		}
+		const hit = impact();
+		const k = lastMove ? knockOffset(lastMove.from, lastMove.to, flipped) : { x: 0, y: 0 };
+		const spin = k.x < 0 ? -22 : 22;
+		shake(captureShake(code), hit);
+		return {
+			delay: hit,
+			duration: ms(320),
+			css: (t: number, u: number) => {
+				const e = 1 - (1 - u) ** 3;
+				return `transform: translate(${k.x * e}%, ${k.y * e}%) rotate(${spin * e}deg) scale(${1 - 0.15 * e}); opacity: ${t}`;
+			}
+		};
+	}
+
+	/** Slides a bubble inside the board's edges; its tail stays on the square. */
+	function fit(node: HTMLElement) {
+		const slot = node.parentElement?.getBoundingClientRect();
+		const edge = boardEl?.getBoundingClientRect();
+		if (!slot || !edge) return;
+		node.style.setProperty('--shift', `${fitShift(slot.left + slot.width / 2, node.offsetWidth, edge.left, edge.right)}px`);
+	}
+
+	/** The orange ring on a capture's square, as the taken piece is hit. */
+	function ringOut(_node: Element, { fell }: { fell: boolean }) {
+		if (fell || reducedMotion()) return { duration: 1, css: () => 'opacity: 0' };
+		return { delay: impact(), duration: 360, css: (_t: number, u: number) => `opacity: ${1 - u}; transform: scale(${0.4 + 0.75 * u})` };
+	}
+
+	/** Dust puffing off the rim as a piece drops in. */
+	function puff(_node: Element, { fell }: { fell: boolean }) {
+		if (!fell || reducedMotion()) return { duration: 1, css: () => 'opacity: 0' };
+		return { delay: 180, duration: 480, css: (_t: number, u: number) => `--p: ${u}; opacity: ${1 - u}` };
+	}
+	const DUST = [190, 215, 240, 265, 290, 315, 340, 355];
+	const SHARDS = burstShards();
 
 	/** A pothole cracks open. */
 	function crack(_node: Element) {
@@ -360,9 +458,9 @@
 
 <!-- Coordinates sit outside the board, so the squares stay clean. The
      label column and row are the same size, so the frame stays square. -->
-<div class="frame" class:dim>
+<div class="frame" class:dim {@attach (node) => void (frameEl = node)}>
 <div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span>{r}</span>{/each}</div>
-<div class="board" class:dim role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms" {@attach dragArea}>
+<div class="board" class:dim class:late={!!mated && !playedBefore.has(mated.key)} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms" {@attach dragArea}>
 	{#each order as index (index)}
 		{@const sq = squareName(index)}
 		{@const dark = (Math.floor(index / 8) + (index % 8)) % 2 === 0}
@@ -392,6 +490,14 @@
 	{/each}
 
 	<div class="layer" aria-hidden="true">
+		{#if saved && !reducedMotion()}
+			{#key saved}
+				<span class="slot" style={place(saved)}><span class="hole briefly"></span></span>
+			{/key}
+		{/if}
+		{#if mated && !playedBefore.has(mated.key)}
+			<span class="slot" style="{place(mated.sq)}; --delay: {impact()}ms"><span class="wash"></span></span>
+		{/if}
 		{#each stage.potholes as h (h.sq)}
 			<span class="slot" style={place(h.sq)}>
 				<span class="hole" in:crack out:closeUp={{ sq: h.sq }}>
@@ -426,7 +532,9 @@
 				class:dragging={drag?.moved && drag.from === p.sq}
 				style={pieceStyle(p)}
 			>
-				<span class="piece" out:leave={{ fell: stage.target === p.sq }} {@attach motion(p)}>
+				<span class="ring" out:ringOut={{ fell: stage.target === p.sq }}></span>
+				<span class="dust" out:puff={{ fell: stage.target === p.sq }}>{#each DUST as a (a)}<i style="--a: {a}deg"></i>{/each}</span>
+				<span class="piece" out:leave={{ fell: stage.target === p.sq, code: p.code }} {@attach motion(p)}>
 					{#if p.code === 'M'}
 						<img class="mamdani" src="/mamdani/piece.webp" alt="" draggable="false" />
 					{:else}
@@ -456,12 +564,43 @@
 				{#each sparks as a, i (a)}<span class="spark" class:far={i % 2 === 0} style="--a: {a}deg"></span>{/each}
 			</span>
 		{/each}
+		{#if quip}
+			{#key quip.key}
+				<span class="slot fix quip" class:top={cell(quip.sq).row < 2} style="{place(quip.sq)}; --quip-delay: {quip.delay ?? 0}ms">
+					<span class="bubble" {@attach fit}><em>{quip.emoji}</em> {quip.line}</span>
+				</span>
+			{/key}
+		{/if}
+		{#if mated && !playedBefore.has(mated.key)}
+			{#key mated.key}
+				<span
+					class="slot fix burst"
+					class:bottom={cell(mated.sq).row === 7}
+					style="{place(mated.sq)}; --delay: {impact()}ms"
+					{@attach (node) => {
+						// Once: a later update to the finished game (a rematch
+						// offer, say) re-runs this, and must not shake again.
+						if (node.dataset.burst) return;
+						node.dataset.burst = '1';
+						markCelebrated(mated.key);
+						shake(SHAKE.mate, impact() + 500);
+					}}
+				>
+					{#each SHARDS as s, i (i)}<span class="shard" class:hazard={s.hazard} style="--a: {s.angle}deg; --d: {s.dist}; --s: {s.spin}deg"></span>{/each}
+					{#each [-1, 1] as dir (dir)}<svg class="flycone" style="--dir: {dir}" viewBox="0 0 40 40">{@render coneShape()}</svg>{/each}
+					<span class="badge">#</span>
+				</span>
+			{/key}
+		{/if}
 		{#if fresh.length > 0 && stage.mamdani}
 			{#key fresh[0].key}
 				<span class="slot fix" class:top={cell(stage.mamdani).row === 0} style="{place(stage.mamdani)}; --delay: {fresh[0].hole ? glide : 0}ms" {@attach born} out:linger|global><span class="thumb">👍</span></span>
 			{/key}
 		{/if}
 	</div>
+
+	<!-- Screen readers hear the bubble's line; the bubble itself is drawn above. -->
+	<p class="sr-only" aria-live="polite">{quip?.line ?? ''}</p>
 
 	{#if pending}
 		<div class="promote" role="dialog" aria-label="Promote to" tabindex="-1" onkeydown={promoKey} {@attach focusFirst}>
@@ -542,6 +681,10 @@
 	.board.dim {
 		filter: saturate(0.6) brightness(0.55);
 		transition: filter 0.4s ease;
+	}
+	/* A checkmate burst plays first, then the board dims. */
+	.board.dim.late {
+		transition-delay: var(--burst-hold);
 	}
 	.square {
 		position: relative;
@@ -712,12 +855,12 @@
 		transition: transform 0.12s ease-out;
 	}
 	/* mpchess pieces fill the square (110% of the old 92%), with a crisp
-	   white outline: their own shape offset 1.5 px four ways, no blur. */
+	   white outline: their own shape offset 2 px four ways, no blur. */
 	.piece img {
 		width: 100%;
 		height: 100%;
-		filter: drop-shadow(1.5px 0 0 var(--piece-outline)) drop-shadow(-1.5px 0 0 var(--piece-outline))
-			drop-shadow(0 1.5px 0 var(--piece-outline)) drop-shadow(0 -1.5px 0 var(--piece-outline));
+		filter: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
+			drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
 	}
 	.piece .mamdani {
 		filter: none; /* its yellow border is its outline */
@@ -803,8 +946,8 @@
 	.promote img {
 		width: 80%;
 		height: 80%;
-		filter: drop-shadow(1.5px 0 0 var(--piece-outline)) drop-shadow(-1.5px 0 0 var(--piece-outline))
-			drop-shadow(0 1.5px 0 var(--piece-outline)) drop-shadow(0 -1.5px 0 var(--piece-outline));
+		filter: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
+			drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
 	}
 	.promote .cancel {
 		grid-column: 1 / -1;
@@ -1038,6 +1181,254 @@
 		}
 		.saved {
 			animation: none;
+		}
+	}
+	/* A capture: an orange ring on the square as the taken piece is hit. */
+	.ring {
+		position: absolute;
+		inset: 0;
+		border: 3px solid var(--hazard);
+		border-radius: 50%;
+		opacity: 0;
+		pointer-events: none;
+	}
+	/* A fall: dust puffing off the hole's rim (--p runs 0 to 1). */
+	.dust {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.dust i {
+		position: absolute;
+		left: 50%;
+		top: 62%;
+		width: 11%;
+		aspect-ratio: 1;
+		border-radius: 50%;
+		background: var(--text-body);
+		transform: translate(-50%, -50%) rotate(var(--a)) translateX(calc(var(--p, 0) * 300%)) scale(calc(1 + var(--p, 0) * 0.8));
+	}
+	/* A save: the hole cracks open under the piece, then closes as it hops out. */
+	.hole.briefly {
+		animation: briefly 0.75s ease-in-out both;
+	}
+	@keyframes briefly {
+		0% {
+			transform: scale(0);
+			opacity: 0;
+		}
+		20% {
+			transform: scale(1.1);
+			opacity: 1;
+		}
+		35%,
+		55% {
+			transform: scale(1);
+			opacity: 1;
+		}
+		100% {
+			transform: scale(0);
+			opacity: 0;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.dust {
+			display: none;
+		}
+	}
+	/* Checkmate: the king's square turns red in two steps, under the king. */
+	.wash {
+		position: absolute;
+		inset: 0;
+		background: var(--mate);
+		opacity: 0.85;
+		animation: wash 0.52s var(--delay, 0ms) both;
+	}
+	@keyframes wash {
+		0% {
+			opacity: 0;
+		}
+		40%,
+		60% {
+			opacity: 0.45;
+		}
+		100% {
+			opacity: 0.85;
+		}
+	}
+	/* Then white and orange shards and two cones burst across the board, and
+	   a red badge marks the king. */
+	.shard {
+		position: absolute;
+		left: 44%;
+		top: 37%;
+		width: 12%;
+		height: 26%;
+		border-radius: 2px;
+		background: var(--piece-light);
+		opacity: 0;
+		animation: shard 1s cubic-bezier(0.15, 0.7, 0.3, 1) calc(var(--delay, 0ms) + 500ms) forwards;
+	}
+	.shard.hazard {
+		background: var(--hazard);
+	}
+	@keyframes shard {
+		from {
+			opacity: 1;
+			transform: rotate(var(--a)) translateY(0) rotate(0deg);
+		}
+		to {
+			opacity: 0;
+			transform: rotate(var(--a)) translateY(calc(var(--d) * -385%)) rotate(var(--s));
+		}
+	}
+	.flycone {
+		--up: 1;
+		width: 100%;
+		height: 100%;
+		overflow: visible;
+		opacity: 0;
+		animation: flycone 1.1s ease-out calc(var(--delay, 0ms) + 500ms) forwards;
+	}
+	.bottom .flycone {
+		--up: -1;
+	}
+	@keyframes flycone {
+		0% {
+			opacity: 1;
+			transform: translate(0, 0) rotate(0deg) scale(0.6);
+		}
+		55% {
+			opacity: 1;
+			transform: translate(calc(var(--dir) * 160%), calc(var(--up) * 140%)) rotate(calc(var(--dir) * 200deg)) scale(1);
+		}
+		100% {
+			opacity: 0;
+			transform: translate(calc(var(--dir) * 230%), calc(var(--up) * 320%)) rotate(calc(var(--dir) * 330deg)) scale(1);
+		}
+	}
+	.badge {
+		place-self: start end;
+		display: grid;
+		place-items: center;
+		width: 36%;
+		aspect-ratio: 1;
+		margin: 4%;
+		border-radius: 50%;
+		background: var(--mate);
+		box-shadow: 0 0 0 2px var(--bg);
+		color: var(--piece-light);
+		font-family: var(--font-mono);
+		font-weight: 700;
+		font-size: 22cqh;
+		line-height: 1;
+		animation: badge 0.38s ease-out calc(var(--delay, 0ms) + 800ms) both;
+	}
+	@keyframes badge {
+		0% {
+			transform: scale(0);
+		}
+		60% {
+			transform: scale(1.25);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+	/* Reduced motion: the red square and the badge, nothing flying. */
+	@media (prefers-reduced-motion: reduce) {
+		.shard,
+		.flycone {
+			display: none;
+		}
+		.wash,
+		.badge {
+			animation: none;
+		}
+	}
+	/* A big moment: a speech bubble from the square, for about 2.8 s. */
+	.quip {
+		z-index: 6;
+		overflow: visible;
+	}
+	.bubble {
+		position: absolute;
+		left: 50%;
+		bottom: 88%;
+		/* Centred on the square, slid inside the board by fit() (--shift). */
+		translate: calc(-50% + var(--shift, 0px)) 0;
+		width: max-content;
+		max-width: min(280px, 72vw);
+		padding: 7px 11px;
+		border-radius: 12px;
+		background: var(--piece-light);
+		color: var(--piece-dark);
+		font: 600 14px/1.25 var(--font-body);
+		box-shadow: 0 4px 14px var(--hole);
+		transform-origin: calc(50% - var(--shift, 0px)) 100%;
+		animation:
+			bubble-in 0.26s ease-out var(--quip-delay, 0ms) both,
+			bubble-out 0.25s ease-in calc(var(--quip-delay, 0ms) + 2.8s) forwards;
+	}
+	.bubble em {
+		font-style: normal;
+		font-size: 17px;
+	}
+	/* Its tail points at the square's centre, wherever the bubble slid. */
+	.bubble::after {
+		content: '';
+		position: absolute;
+		top: 100%;
+		left: calc(50% - var(--shift, 0px));
+		translate: -50% 0;
+		border: 7px solid transparent;
+		border-top-color: var(--piece-light);
+		border-bottom: 0;
+	}
+	.top .bubble {
+		bottom: auto;
+		top: 88%;
+		transform-origin: calc(50% - var(--shift, 0px)) 0;
+	}
+	.top .bubble::after {
+		top: auto;
+		bottom: 100%;
+		border: 7px solid transparent;
+		border-bottom-color: var(--piece-light);
+		border-top: 0;
+	}
+	@keyframes bubble-in {
+		0% {
+			scale: 0.6;
+			opacity: 0;
+		}
+		70% {
+			scale: 1.06;
+			opacity: 1;
+		}
+		100% {
+			scale: 1;
+		}
+	}
+	@keyframes bubble-out {
+		to {
+			opacity: 0;
+			visibility: hidden;
+		}
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+	/* Reduced motion: the bubble just shows, then goes. */
+	@media (prefers-reduced-motion: reduce) {
+		.bubble {
+			animation: bubble-out 0.25s ease-in calc(var(--quip-delay, 0ms) + 2.8s) forwards;
 		}
 	}
 </style>

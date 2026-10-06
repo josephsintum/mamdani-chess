@@ -28,6 +28,7 @@
 	--trail-white: #fbf8f099; /* the streak behind a gliding piece */
 	--trail-black: #1415188c;
 	--trail-mamdani: #f2c2308c;
+	--mate: #d8413a; /* the mated king's square and badge */
 
 	--font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
 	--font-body: 'IBM Plex Sans', system-ui, sans-serif;

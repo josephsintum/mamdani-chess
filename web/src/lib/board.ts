@@ -1,7 +1,7 @@
 // Pure board logic for the game page: blocked lines, the board while the
 // dice play out, and the dice tray's lines. No DOM, so it is unit-tested.
 
-import { pieceName, type Color, type EventJSON, type View } from './game.ts';
+import { pieceName, squareName, type Color, type EventJSON, type View } from './game.ts';
 
 export function squareIndex(name: string): number {
 	return (Number(name[1]) - 1) * 8 + (name.charCodeAt(0) - 97);
@@ -121,11 +121,30 @@ export function stageAt(view: View, shown: number): Stage {
 				if (at >= 0) list.splice(at, 1);
 			}
 		}
-		if (e.kind === 'pothole_opened' && !revealed) potholes = potholes.filter((p) => p.sq !== e.sq);
+		// A fall's hole opens in the same step as the fall, so the piece drops
+		// into it, and so does the cap's close of the oldest hole: the server
+		// sends the fall, the cap's close (with 5 open), then the new hole.
+		const withFall = fallsWith(view.last, i) < shown;
+		if (e.kind === 'pothole_opened' && !revealed && !withFall) potholes = potholes.filter((p) => p.sq !== e.sq);
 		// The cap closes the oldest hole as a new one opens: until then it stays.
-		if (e.kind === 'pothole_closed' && !revealed && i > roll && e.sq && e.color) potholes = [...potholes, { sq: e.sq, by: e.color, left: 1 }];
+		if (e.kind === 'pothole_closed' && !revealed && !withFall && i > roll && e.sq && e.color) potholes = [...potholes, { sq: e.sq, by: e.color, left: 1 }];
 	});
 	return { board, potholes, mamdani, target: shown < view.last.length ? target : '', lost };
+}
+
+/**
+ * The index of the fall that event `i` comes with, or Infinity: a hole
+ * opening on the fallen piece's square, or the cap closing the oldest hole
+ * between the two.
+ */
+function fallsWith(last: EventJSON[], i: number): number {
+	let open = i;
+	while (last[open]?.kind === 'pothole_closed') open++;
+	let fall = i - 1;
+	while (last[fall]?.kind === 'pothole_closed') fall--;
+	const e = last[open];
+	const f = last[fall];
+	return e?.kind === 'pothole_opened' && f?.kind === 'fell' && f.sq === e.sq ? fall : Infinity;
 }
 
 export interface DiceStep {
@@ -363,4 +382,38 @@ export function pillFor(view: View, color: Color, animating: boolean): { text: s
 	if (animating || view.turn !== color) return { text: '', tone: 'turn' };
 	if (view.check) return { text: 'In check', tone: 'check' };
 	return { text: view.you === color ? 'Your move' : 'To move', tone: 'turn' };
+}
+
+/** The result card's numbers, counted up one at a time when it appears. */
+export function tallyOf(view: View): { label: string; short: string; value: number }[] {
+	return [
+		{ label: 'Moves', short: 'moves', value: Math.ceil(view.seq / 2) },
+		{ label: 'Saving rolls', short: 'rolls', value: view.stats.savingRolls },
+		{ label: 'Saved by the Mamdani', short: 'saved', value: view.stats.saved },
+		{ label: 'Potholes repaired', short: 'repaired', value: view.stats.repaired },
+		{ label: 'Pieces lost to potholes', short: 'lost', value: view.lost.white.length + view.lost.black.length }
+	];
+}
+
+/**
+ * Whether the game ended while this page watched it being played, rather
+ * than being opened (or reopened) after it was over. Only then does the
+ * result card count up and, for the winner, throw confetti.
+ */
+export function endedHere(prev: View | null, next: View): boolean {
+	return prev?.status === 'playing' && !!next.result;
+}
+
+/** Confetti: the game ended here and this viewer won it. Never for a draw or a spectator. */
+export function wonHere(prev: View | null, next: View): boolean {
+	return endedHere(prev, next) && !next.result?.draw && !!next.result?.winner && next.result.winner === next.you;
+}
+
+/** The mated king's square once a game ends in checkmate, else "". */
+export function matedKing(view: View): string {
+	const r = view.result;
+	if (!r || r.reason !== 'checkmate' || r.draw || !r.winner) return '';
+	const king = r.winner === 'white' ? 'bK' : 'wK';
+	const i = view.board.indexOf(king);
+	return i < 0 ? '' : squareName(i);
 }

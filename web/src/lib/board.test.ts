@@ -6,13 +6,17 @@ import {
 	checkSquare,
 	diceSteps,
 	diceSummary,
+	endedHere,
 	firstDiceStep,
 	markCelebrated,
 	matedByRoll,
+	matedKing,
 	pillFor,
 	repairsShown,
 	squareIndex,
-	stageAt
+	stageAt,
+	tallyOf,
+	wonHere
 } from './board.ts';
 import { moveDuration } from './pieces.ts';
 import type { EventJSON, View } from './game.ts';
@@ -114,6 +118,22 @@ describe('stageAt', () => {
 		expect(s.board[squareIndex('g8')]).toBe('bN');
 		expect(s.potholes).toEqual([]);
 		expect(s.target).toBe('');
+	});
+
+	it('with five holes open, closes the oldest and opens the new one as the piece falls', () => {
+		// The server sends the fall, then the cap's close, then the new hole.
+		const capped: EventJSON[] = [...fellOnG8.slice(0, 6), { kind: 'pothole_closed', sq: 'a3', color: 'black' }, { kind: 'pothole_opened', sq: 'g8', color: 'white' }];
+		const v = makeView({ e4: 'wP', e1: 'wK' }, { last: capped, potholes: [{ sq: 'g8', by: 'white', left: 3 }] });
+		const before = stageAt(v, 5);
+		expect(before.potholes.map((h) => h.sq)).toEqual(['a3']);
+		const falling = stageAt(v, 6);
+		expect(falling.board[squareIndex('g8')]).toBe('');
+		expect(falling.potholes.map((h) => h.sq)).toEqual(['g8']);
+	});
+	it("opens a fall's hole in the same step the piece falls, so it drops into it", () => {
+		const s = stageAt(final, 6);
+		expect(s.board[squareIndex('g8')]).toBe('');
+		expect(s.potholes).toEqual([{ sq: 'g8', by: 'white', left: 1 }]);
 	});
 
 	it('rings the latest target while the dice play out', () => {
@@ -429,5 +449,51 @@ describe('repair celebrations', () => {
 		expect(seen.has('k69')).toBe(true);
 		expect(seen.has('k5')).toBe(false);
 		expect(seen.size).toBeLessThanOrEqual(64);
+	});
+});
+
+describe('tallyOf', () => {
+	it("counts up the game's numbers for the result card", () => {
+		const v = makeView({}, { seq: 61, stats: { savingRolls: 6, saved: 4, repaired: 3, mamdaniFell: false }, lost: { white: ['wP', 'wN'], black: ['bP', 'bB', 'bQ'] } });
+		expect(tallyOf(v)).toEqual([
+			{ label: 'Moves', short: 'moves', value: 31 },
+			{ label: 'Saving rolls', short: 'rolls', value: 6 },
+			{ label: 'Saved by the Mamdani', short: 'saved', value: 4 },
+			{ label: 'Potholes repaired', short: 'repaired', value: 3 },
+			{ label: 'Pieces lost to potholes', short: 'lost', value: 5 }
+		]);
+	});
+});
+
+describe('endedHere and wonHere', () => {
+	const playing = makeView({}, { status: 'playing', you: 'white' });
+	const over = (winner: 'white' | 'black', extra: Partial<View> = {}) =>
+		makeView({}, { status: 'over', you: 'white', result: { winner, draw: false, reason: 'checkmate' }, ...extra });
+	it('is true only when this page saw the game in play', () => {
+		expect(endedHere(playing, over('white'))).toBe(true);
+		expect(endedHere(null, over('white'))).toBe(false); // a reload of a finished game
+		expect(endedHere(over('white'), over('white'))).toBe(false); // a later update, a rematch offer say
+		expect(endedHere(playing, playing)).toBe(false);
+	});
+	it('throws confetti for the winner only', () => {
+		expect(wonHere(playing, over('white'))).toBe(true);
+		expect(wonHere(playing, over('black'))).toBe(false);
+		expect(wonHere(null, over('white'))).toBe(false);
+		const spectating = makeView({}, { status: 'playing', you: 'spectator' });
+		expect(wonHere(spectating, over('white', { you: 'spectator' }))).toBe(false);
+		const draw = makeView({}, { status: 'over', you: 'white', result: { draw: true, reason: 'stalemate' } });
+		expect(wonHere(playing, draw)).toBe(false);
+	});
+});
+
+describe('matedKing', () => {
+	it("finds the mated king's square", () => {
+		const v = makeView({ e8: 'bK', e1: 'wK' }, { status: 'over', result: { winner: 'white', draw: false, reason: 'checkmate' } });
+		expect(matedKing(v)).toBe('e8');
+	});
+	it('is empty for any other ending', () => {
+		const v = makeView({ e8: 'bK', e1: 'wK' }, { status: 'over', result: { winner: 'white', draw: false, reason: 'resignation' } });
+		expect(matedKing(v)).toBe('');
+		expect(matedKing(makeView({ e8: 'bK' }))).toBe('');
 	});
 });

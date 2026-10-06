@@ -1,19 +1,22 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { fly } from 'svelte/transition';
+	import { backOut } from 'svelte/easing';
 	import { reducedMotion, setInstant } from '#lib/motion.ts';
 	import { dev } from '$app/env';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import Board from '#lib/Board.svelte';
+	import Confetti from '#lib/Confetti.svelte';
 	import DiceSummary from '#lib/DiceSummary.svelte';
 	import DiceTray from '#lib/DiceTray.svelte';
 	import MoveLog from '#lib/MoveLog.svelte';
 	import MovesSheet from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
-	import { checkSquare, matedByRoll, pillFor, repairsShown, stageAt } from '#lib/board.ts';
+	import { checkSquare, endedHere, matedByRoll, matedKing, pillFor, repairsShown, stageAt, tallyOf, wonHere } from '#lib/board.ts';
+	import { quipper } from '#lib/catchphrases.ts';
+	import { BURST_HOLD_MS, countAt } from '#lib/feel.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
 	import { notify } from '#lib/toast.ts';
@@ -65,6 +68,10 @@
 	let busy = $state(false); // a move or resignation is on its way
 	let confirmResign = $state(false);
 	let copyHint = $state('');
+	// The game ended while this page watched it: the tally counts up, and the
+	// winner gets confetti (cleared once it has fallen).
+	let endedLive = $state(false);
+	let cheer = $state(false);
 
 	function receive(next: View) {
 		if (isStale(anim.view, next)) return; // a slow reply, overtaken by the stream
@@ -77,6 +84,10 @@
 		}
 		if (next.result) confirmResign = false; // the game ended before you chose
 		const prev = anim.view;
+		if (endedHere(prev, next)) {
+			endedLive = true;
+			cheer = wonHere(prev, next) && !instant && !reducedMotion();
+		}
 		const notice = joinNotice(prev, next, fromMatch);
 		if (notice) notify.info(notice, { id: 'join' });
 		anim.receive(next, { hidden: document.hidden });
@@ -178,6 +189,14 @@
 	let savedSquare = $derived(view?.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '');
 	// The Mamdani's repairs, celebrated only on a turn that is playing out (never after a reload).
 	let repairs = $derived(view && anim.animated && !instant ? repairsShown(view, shown) : []);
+	// A speech bubble for a big moment: only on a turn that is playing out, like the repairs.
+	const say = quipper();
+	let quip = $derived(view && anim.animated && !instant ? say(view.last, view.seq, shown) : null);
+	// The checkmate burst, once the dice stop, on a turn that played out here.
+	let mated = $derived.by(() => {
+		const sq = view && anim.animated && !instant && !animating ? matedKing(view) : '';
+		return sq ? { sq, key: `${code}:mate` } : null;
+	});
 	let you = $derived(view?.you ?? 'spectator');
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
 	let top = $derived<Color>(bottom === 'white' ? 'black' : 'white');
@@ -322,6 +341,52 @@
 		return '';
 	});
 
+	// The result card flips in, with a slight overshoot. After a checkmate it
+	// first waits out the burst (the card would cover it), and so do the tally
+	// and the confetti.
+	const FLIP_MS = 420;
+	let hold = $derived(mated ? BURST_HOLD_MS : 0);
+	function flipIn(_node: Element, { lift = '' }: { lift?: string } = {}) {
+		const wait = hold;
+		return {
+			duration: reducedMotion() ? 0 : wait + FLIP_MS,
+			css: (t: number) => {
+				const p = Math.max(0, (t * (wait + FLIP_MS) - wait) / FLIP_MS);
+				return `transform: ${lift} perspective(700px) rotateX(${-75 * (1 - backOut(p))}deg); opacity: ${Math.min(1, p * 2)}`;
+			}
+		};
+	}
+
+	// The tally's numbers count up one at a time once the card is in, each
+	// landing with a pop. A game opened after it ended shows them at once, and
+	// each number counts once: a later update to the finished game (a rematch
+	// offer, the opponent leaving) redraws the tally, and shows it as it is.
+	const COUNT_MS = 250;
+	const COUNT_GAP_MS = 150;
+	const counted: boolean[] = [];
+	function countUp(value: number, i: number) {
+		return (node: HTMLElement) => {
+			node.textContent = String(value);
+			if (!endedLive || instant || reducedMotion() || counted[i]) return;
+			counted[i] = true;
+			node.textContent = '0';
+			let frame = 0;
+			const timer = setTimeout(() => {
+				const start = performance.now();
+				frame = requestAnimationFrame(function step(now) {
+					const t = (now - start) / COUNT_MS;
+					node.textContent = String(countAt(value, t));
+					if (t < 1) frame = requestAnimationFrame(step);
+					else node.classList.add('pop');
+				});
+			}, hold + FLIP_MS + i * (COUNT_MS + COUNT_GAP_MS));
+			return () => {
+				clearTimeout(timer);
+				cancelAnimationFrame(frame);
+			};
+		};
+	}
+
 	let resultCard = $derived.by(() => {
 		const r = view?.result;
 		if (!view || !r || animating) return null;
@@ -389,6 +454,7 @@
 				pillTone={topPill.tone}
 				toMove={playing && view.turn === top && !animating}
 				clockMs={clockFor(top)}
+				seq={view.seq}
 				ticking={view.clock.running === top && !pausedForDice}
 				offline={showsOffline(view, top)}
 			/>
@@ -403,6 +469,8 @@
 					check={checked}
 					saved={savedSquare}
 					{repairs}
+					{quip}
+					{mated}
 					onmove={move}
 				/>
 			</div>
@@ -416,6 +484,7 @@
 				pillTone={bottomPill.tone}
 				toMove={playing && view.turn === bottom && !animating}
 				clockMs={clockFor(bottom)}
+				seq={view.seq}
 				ticking={view.clock.running === bottom && !pausedForDice}
 				offline={showsOffline(view, bottom)}
 			/>
@@ -442,9 +511,12 @@
 				</div>
 			</section>
 		{:else if resultCard}
-			<section class="ph-card accent-line" role="status" aria-label="Game over" in:fly={{ y: 24, duration: reducedMotion() ? 0 : 400 }}>
+			<section class="ph-card accent-line" role="status" aria-label="Game over" in:flipIn>
 				<span class="ph-result"><span class="ph-headline">{resultCard.title}</span><span class="ph-kicker">{resultCard.kicker}</span></span>
 				<span class="ph-detail">{rematchNote || resultCard.detail}</span>
+				<span class="ph-tally">
+					{#each tallyOf(view) as row, i (row.short)}<span><b {@attach countUp(row.value, i)}></b> {row.short}</span>{/each}
+				</span>
 			</section>
 		{:else if error}
 			<p class="ph-card ph-error" role="alert">{error}</p>
@@ -543,6 +615,7 @@
 					pillTone={topPill.tone}
 					toMove={playing && view.turn === top && !animating}
 					clockMs={clockFor(top)}
+					seq={view.seq}
 					ticking={view.clock.running === top && !pausedForDice}
 					pausedForDice={playing && view.turn === top && pausedForDice}
 					offline={showsOffline(view, top)}
@@ -558,10 +631,12 @@
 						check={checked}
 						saved={savedSquare}
 						{repairs}
+						{quip}
+						{mated}
 						onmove={move}
 					/>
 					{#if resultCard}
-						<div class="result" role="status" in:fly={{ y: -24, duration: reducedMotion() ? 0 : 500 }}>
+						<div class="result" role="status" in:flipIn={{ lift: 'translate(-50%, -50%)' }}>
 							<span class="kicker">{resultCard.kicker}</span>
 							<h1>{resultCard.title}</h1>
 							<p>{resultCard.detail}</p>
@@ -577,6 +652,7 @@
 					pillTone={bottomPill.tone}
 					toMove={playing && view.turn === bottom && !animating}
 					clockMs={clockFor(bottom)}
+					seq={view.seq}
 					ticking={view.clock.running === bottom && !pausedForDice}
 					pausedForDice={playing && view.turn === bottom && pausedForDice}
 					offline={showsOffline(view, bottom)}
@@ -589,12 +665,9 @@
 
 				{#if resultCard}
 					<dl class="stats">
-						<div><dt>Lost to potholes</dt><dd>White {view.lost.white.length} · Black {view.lost.black.length}</dd></div>
-						<div><dt>Saving rolls</dt><dd>{view.stats.saved} of {view.stats.savingRolls} saved</dd></div>
-						<div>
-							<dt>Repaired by the Mamdani</dt>
-							<dd>{view.stats.repaired} {view.stats.repaired === 1 ? 'pothole' : 'potholes'}</dd>
-						</div>
+						{#each tallyOf(view) as row, i (row.label)}
+							<div><dt>{row.label}</dt><dd {@attach countUp(row.value, i)}></dd></div>
+						{/each}
 						{#if view.stats.mamdaniFell}<div><dt>The Mamdani</dt><dd>fell in</dd></div>{/if}
 					</dl>
 					{#if isPlayer && view.result?.reason !== 'expired'}
@@ -639,6 +712,7 @@
 	{/if}
 </main>
 {/if}
+{#if cheer && resultCard}<Confetti delay={hold} ondone={() => (cheer = false)} />{/if}
 
 <style>
 	/* Phone layout (under 640px): one screen, no scrolling. */
@@ -735,9 +809,15 @@
 		border: 1px solid var(--surface-2);
 		border-radius: 12px;
 	}
+	/* The result card: tighter, so its three lines (result, detail, tally)
+	   fit the bottom block's height and the board doesn't move. */
 	.ph-card.accent-line {
-		gap: 4px;
+		gap: 2px;
+		padding: 6px 12px;
 		border-color: var(--accent-line);
+	}
+	.ph-card.accent-line .ph-detail {
+		line-height: 1.25;
 	}
 	.ph-card.danger-line {
 		border-color: var(--hazard);
@@ -795,6 +875,31 @@
 	}
 	.ph-detail {
 		font-size: 14px;
+	}
+	/* The tally, one line under the result. */
+	.ph-tally {
+		overflow: hidden;
+		line-height: 1.1;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		color: var(--text-muted);
+	}
+	/* Too narrow for it: the headline already wraps. The moves sheet has the numbers. */
+	@media (max-width: 359px) {
+		.ph-tally {
+			display: none;
+		}
+	}
+	.ph-tally > span + span::before {
+		content: ' · ';
+	}
+	.ph-tally b {
+		display: inline-block;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		color: var(--text);
 	}
 	/* The result card keeps one line, so it fits the bottom block's height
 	   and the board doesn't move at game over. */
@@ -1066,7 +1171,28 @@
 		margin: 0;
 		font-family: var(--font-mono);
 		font-weight: 600;
+		font-variant-numeric: tabular-nums;
 		color: var(--text);
+	}
+	/* A tally number lands with a yellow pop. */
+	.stats dd:global(.pop),
+	.ph-tally b:global(.pop) {
+		animation: tally-pop 0.3s ease-out;
+	}
+	@keyframes tally-pop {
+		0% {
+			color: var(--accent);
+			transform: scale(1.45);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.stats dd:global(.pop),
+		.ph-tally b:global(.pop) {
+			animation: none;
+		}
 	}
 	.actions,
 	.confirm {
