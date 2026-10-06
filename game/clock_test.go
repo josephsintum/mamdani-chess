@@ -236,19 +236,28 @@ func TestThePauseCoversTheDiceAnimation(t *testing.T) {
 		out := make([]rules.Event, len(kinds))
 		for i, k := range kinds {
 			out[i] = rules.Event{Kind: k}
+			if k == rules.RolledPothole {
+				out[i].Roll = 2
+			}
 		}
 		return out
 	}
+	odd := []rules.Event{{Kind: rules.Moved}, {Kind: rules.RolledPothole, Roll: 3}}
 	cases := []struct {
 		name string
 		ev   []rules.Event
 		want time.Duration
 	}{
 		{"checkmate, no roll", ev(rules.Moved), ResolveDelay},
-		{"odd roll", ev(rules.Moved, rules.RolledPothole), ResolveDelay},
-		{"pothole opens", ev(rules.Moved, rules.RolledPothole, rules.Target, rules.PotholeOpened), 3*StepTime + PauseMargin},
-		{"re-roll, saving roll, fall", ev(rules.Moved, rules.Captured, rules.RolledPothole, rules.Reroll, rules.Target,
-			rules.SavingRoll, rules.Fell, rules.PotholeOpened), 6*StepTime + PauseMargin},
+		{"odd roll", odd, ResolveDelay},
+		// The move glides, then each step plays in turn, then the margin.
+		{"pothole opens", ev(rules.Moved, rules.RolledPothole, rules.Target, rules.PotholeOpened),
+			MoveTime + 600*time.Millisecond + 1250*time.Millisecond + 550*time.Millisecond + PauseMargin},
+		// The longest kind of turn: a re-roll, a second target, a saving roll
+		// that fails, the cap closing the oldest hole, the fall, the new hole.
+		{"re-roll, saving roll, cap, fall", ev(rules.Moved, rules.Captured, rules.RolledPothole, rules.Target, rules.Reroll, rules.Target,
+			rules.SavingRoll, rules.Fell, rules.PotholeClosed, rules.PotholeOpened),
+			MoveTime + (600+1250+500+1250+750+600+400+550)*time.Millisecond + PauseMargin},
 	}
 	for _, c := range cases {
 		if got := pauseFor(c.ev); got != c.want {
@@ -257,16 +266,18 @@ func TestThePauseCoversTheDiceAnimation(t *testing.T) {
 	}
 }
 
-// A roll that opens a pothole animates for three steps, so Black's
-// first-move deadline starts when the animation ends, not after 2 s.
+// A roll that opens a pothole animates for longer than 2 s (the roll, the
+// file and rank dice, the hole), so Black's first-move deadline starts when
+// the animation ends.
 func TestALongRollDelaysTheNextClock(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		g, _, _ := seated(t, NewHub(&script{rolls: []int{2, 2, 4}}, nil)) // even, then b4: a pothole opens
 		play(t, g, "alice", "e2e4", 0)
 		v := recvView(t, g, "bob")
-		want := time.Now().Add(3*StepTime + PauseMargin + FirstMoveTime).UnixMilli()
+		roll := MoveTime + 600*time.Millisecond + 1250*time.Millisecond + 550*time.Millisecond + PauseMargin
+		want := time.Now().Add(roll + FirstMoveTime).UnixMilli()
 		if v.Clock.FirstMoveDeadline != want {
-			t.Fatalf("first-move deadline %d, want %d (after the 3-step roll)", v.Clock.FirstMoveDeadline, want)
+			t.Fatalf("first-move deadline %d, want %d (after the roll's %v)", v.Clock.FirstMoveDeadline, want, roll)
 		}
 		finish(t, g)
 	})

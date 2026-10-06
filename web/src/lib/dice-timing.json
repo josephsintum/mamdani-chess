@@ -1,0 +1,19 @@
+{
+	"//": "How long the browser plays each dice step, in ms. The server's clock pause (game/clock.go, pauseFor) uses the same numbers; game/dice_timing_test.go fails if they drift apart.",
+	"moveMs": 550,
+	"marginMs": 500,
+	"minPauseMs": 2000,
+	"playMs": {
+		"rolled_pothole_odd": 700,
+		"rolled_pothole_even": 600,
+		"target": 1250,
+		"reroll": 500,
+		"saving_roll": 750,
+		"fell": 600,
+		"pothole_opened": 550,
+		"repaired": 550,
+		"pothole_closed": 400,
+		"no_pothole": 550,
+		"other": 550
+	}
+}
