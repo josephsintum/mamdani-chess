@@ -73,9 +73,12 @@
 	.square > * {
 		grid-area: 1 / 1;
 	}
+	/* The board's pieces at their size, with a 1 px white outline. */
 	img {
-		width: 92%;
-		height: 92%;
+		width: 100%;
+		height: 100%;
+		filter: drop-shadow(1px 0 0 var(--piece-outline)) drop-shadow(-1px 0 0 var(--piece-outline))
+			drop-shadow(0 1px 0 var(--piece-outline)) drop-shadow(0 -1px 0 var(--piece-outline));
 	}
 	.hole {
 		width: 76%;
@@ -85,6 +88,7 @@
 		box-shadow: 0 0 0 max(1.5px, 0.5cqw) var(--hazard);
 	}
 	.mamdani {
+		filter: none; /* its yellow border is its outline */
 		box-sizing: border-box;
 		width: 74%;
 		height: auto;

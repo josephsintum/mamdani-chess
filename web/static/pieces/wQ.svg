@@ -1,15 +1,1 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="45" height="45">
-  <g style="fill:#ffffff;stroke:#000000;stroke-width:1.5;stroke-linejoin:round">
-    <path d="M 9,26 C 17.5,24.5 30,24.5 36,26 L 38.5,13.5 L 31,25 L 30.7,10.9 L 25.5,24.5 L 22.5,10 L 19.5,24.5 L 14.3,10.9 L 14,25 L 6.5,13.5 L 9,26 z"/>
-    <path d="M 9,26 C 9,28 10.5,28 11.5,30 C 12.5,31.5 12.5,31 12,33.5 C 10.5,34.5 11,36 11,36 C 9.5,37.5 11,38.5 11,38.5 C 17.5,39.5 27.5,39.5 34,38.5 C 34,38.5 35.5,37.5 34,36 C 34,36 34.5,34.5 33,33.5 C 32.5,31 32.5,31.5 33.5,30 C 34.5,28 36,28 36,26 C 27.5,24.5 17.5,24.5 9,26 z"/>
-    <path d="M 11.5,30 C 15,29 30,29 33.5,30" style="fill:none"/>
-    <path d="M 12,33.5 C 18,32.5 27,32.5 33,33.5" style="fill:none"/>
-    <circle cx="6" cy="12" r="2" />
-    <circle cx="14" cy="9" r="2" />
-    <circle cx="22.5" cy="8" r="2" />
-    <circle cx="31" cy="9" r="2" />
-    <circle cx="39" cy="12" r="2" />
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" style="color-scheme:light only" width="10mm" height="10mm" viewBox="0 0 10 10"><g style="fill:#fff;fill-opacity:1"><g style="fill:#fff;fill-opacity:1;stroke-width:.09651081;stroke-miterlimit:4;stroke-dasharray:none"><path d="M6.542 294.178c1.078 0 1.125.858 1.125 1.495H2.069c0-.65.046-1.495 1.124-1.495z" style="fill:#fff;fill-opacity:1;stroke:#000;stroke-width:.38604325;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" transform="matrix(1.07361 0 0 1 -.233 -286.97)"/><path d="M15.014 3.873a3.016 3.016 0 0 0-3.018 3.016 3.016 3.016 0 0 0 1.91 2.804l-.373 8.116-3.984-6.524a3.016 3.016 0 0 0 .53-1.709 3.016 3.016 0 0 0-3.017-3.015 3.016 3.016 0 0 0-3.015 3.015 3.016 3.016 0 0 0 2.504 2.97l4.773 14.69h15.147l4.76-14.6a3.016 3.016 0 0 0 2.595-2.982 3.016 3.016 0 0 0-3.015-3.015 3.016 3.016 0 0 0-3.016 3.015 3.016 3.016 0 0 0 .455 1.584l-4.072 6.57-.319-8.128a3.016 3.016 0 0 0 1.875-2.791 3.016 3.016 0 0 0-3.015-3.016 3.016 3.016 0 0 0-3.016 3.016 3.016 3.016 0 0 0 .854 2.103l-1.702 8.817-1.625-8.88a3.016 3.016 0 0 0 .8-2.04 3.016 3.016 0 0 0-3.016-3.016z" style="fill:#fff;fill-opacity:1;stroke:#000;stroke-width:1.51181102;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;stroke-miterlimit:4;stroke-dasharray:none" transform="scale(.26458)"/></g></g></svg>

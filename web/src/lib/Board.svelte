@@ -577,12 +577,16 @@
 	.dragging .piece {
 		transform: scale(1.12);
 	}
+	/* mpchess pieces fill the square (110% of the old 92%), with a crisp
+	   white outline: their own shape offset 1.5 px four ways, no blur. */
 	.piece img {
-		width: 92%;
-		height: 92%;
-		filter: drop-shadow(0 2px 2px var(--hole));
+		width: 100%;
+		height: 100%;
+		filter: drop-shadow(1.5px 0 0 var(--piece-outline)) drop-shadow(-1.5px 0 0 var(--piece-outline))
+			drop-shadow(0 1.5px 0 var(--piece-outline)) drop-shadow(0 -1.5px 0 var(--piece-outline));
 	}
 	.piece .mamdani {
+		filter: none; /* its yellow border is its outline */
 		box-sizing: border-box;
 		width: 74%;
 		height: auto;
@@ -665,6 +669,8 @@
 	.promote img {
 		width: 80%;
 		height: 80%;
+		filter: drop-shadow(1.5px 0 0 var(--piece-outline)) drop-shadow(-1.5px 0 0 var(--piece-outline))
+			drop-shadow(0 1.5px 0 var(--piece-outline)) drop-shadow(0 -1.5px 0 var(--piece-outline));
 	}
 	.promote .cancel {
 		grid-column: 1 / -1;
