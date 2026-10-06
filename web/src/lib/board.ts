@@ -66,11 +66,11 @@ export function blockedSquares(view: Pick<View, 'board' | 'potholes' | 'mamdani'
 	return blocked;
 }
 
-/** Index of the first dice event (the pothole roll); the end if none was rolled. */
 /** How many of its roller's moves a pothole lasts, and the most open at once (rules/position.go). */
 export const HOLE_ROUNDS = 3;
 export const HOLE_CAP = 5;
 
+/** Index of the first dice event (the pothole roll); the end if none was rolled. */
 export function firstDiceStep(last: EventJSON[]): number {
 	const i = last.findIndex((e) => e.kind === 'rolled_pothole');
 	return i < 0 ? last.length : i;
@@ -138,7 +138,7 @@ export interface DiceStep {
 const rerollReasons: Record<string, string> = {
 	king: 'Kings never fall',
 	pothole: 'Already a pothole',
-	exposes: 'The fall would expose the roller’s king'
+	exposes: 'Would expose the roller’s king'
 };
 
 function capitalize(s: string): string {
@@ -326,6 +326,31 @@ export function matedByRoll(view: Pick<View, 'result' | 'last'>): boolean {
 export function repairsShown(view: View, shown: number): { sq: string; key: string; hole: boolean }[] {
 	const roll = firstDiceStep(view.last);
 	return view.last.flatMap((e, i) => (e.kind === 'repaired' && e.sq && i < shown ? [{ sq: e.sq, key: `${view.seq}:${i}`, hole: i < roll }] : []));
+}
+
+/**
+ * How long a repair celebration stays on the board, in ms: long enough for
+ * the 👍 (it starts 700 ms after the Mamdani's glide and runs 1.1 s) after
+ * the longest glide there is, corner to corner, 614 ms.
+ */
+export const CELEBRATION_MS = 2500;
+
+const celebrated: string[] = [];
+
+/**
+ * Remembers that a repair (by its `repairsShown` key) has been celebrated,
+ * so a board mounted later, as when the game page switches layouts at
+ * 640 px, doesn't play it again. Keeps the latest 64.
+ */
+export function markCelebrated(key: string) {
+	if (celebrated.includes(key)) return;
+	celebrated.push(key);
+	if (celebrated.length > 64) celebrated.shift();
+}
+
+/** The repairs celebrated so far, as a set to check keys against. */
+export function celebratedSoFar(): Set<string> {
+	return new Set(celebrated);
 }
 
 /** The pill on a player's bar: whose move, check, waiting, checkmated. */

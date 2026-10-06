@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { blockedSquares, checkSquare, diceSteps, diceSummary, firstDiceStep, matedByRoll, pillFor, repairsShown, squareIndex, stageAt } from './board.ts';
+import {
+	blockedSquares,
+	CELEBRATION_MS,
+	celebratedSoFar,
+	checkSquare,
+	diceSteps,
+	diceSummary,
+	firstDiceStep,
+	markCelebrated,
+	matedByRoll,
+	pillFor,
+	repairsShown,
+	squareIndex,
+	stageAt
+} from './board.ts';
+import { moveDuration } from './pieces.ts';
 import type { EventJSON, View } from './game.ts';
 
 /** A view with the given pieces ({"e1": "wK"}), potholes and Mamdani square. */
@@ -381,5 +396,38 @@ describe('pillFor', () => {
 		expect(pillFor(over, 'white', false)).toEqual({ text: 'Checkmated', tone: 'check' });
 		expect(pillFor(over, 'black', false).text).toBe('');
 		expect(pillFor(v({ status: 'over', result: { winner: 'black', draw: false, reason: 'resignation' } }), 'white', false).text).toBe('');
+	});
+});
+
+describe('the exposes re-roll', () => {
+	it('says what it guards against without claiming a fall, since the cap can be the cause', () => {
+		const last: EventJSON[] = [
+			{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' },
+			{ kind: 'rolled_pothole', roll: 2, color: 'white' },
+			{ kind: 'target', sq: 'd4' },
+			{ kind: 'reroll', sq: 'd4', reason: 'exposes' }
+		];
+		expect(diceSteps(makeView({}, { last }), last.length).at(-1)?.detail).toBe('Would expose the roller’s king');
+	});
+});
+
+describe('repair celebrations', () => {
+	it('last long enough for the 👍 after the Mamdani’s longest glide', () => {
+		// The 👍 starts 700 ms after the glide and runs 1.1 s (Board.svelte).
+		expect(CELEBRATION_MS).toBeGreaterThanOrEqual(moveDuration('a1', 'h8') + 700 + 1100);
+	});
+
+	it('are remembered once played, so a board mounted later skips them', () => {
+		markCelebrated('9:1');
+		expect(celebratedSoFar().has('9:1')).toBe(true);
+		expect(celebratedSoFar().has('9:4')).toBe(false);
+	});
+
+	it('remember only the latest 64', () => {
+		for (let i = 0; i < 70; i++) markCelebrated(`k${i}`);
+		const seen = celebratedSoFar();
+		expect(seen.has('k69')).toBe(true);
+		expect(seen.has('k5')).toBe(false);
+		expect(seen.size).toBeLessThanOrEqual(64);
 	});
 });

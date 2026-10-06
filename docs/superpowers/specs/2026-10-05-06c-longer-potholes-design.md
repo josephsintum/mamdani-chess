@@ -1,7 +1,7 @@
 # Milestone 06c: Longer potholes — Design
 
 Date: 2026-10-05
-Status: Approved design, ready for a plan
+Status: Built and deployed 2026-10-05 (plan: [2026-10-05-06c-longer-potholes](../plans/2026-10-05-06c-longer-potholes.md))
 Builds on: [the main design spec](2026-10-01-mamdani-chess-design.md), [RULES.md](../../../RULES.md) (live doc: https://claude.ai/artifact/AvSPCQS42ggQGpTWQGoQRB) and [the roadmap](../plans/2026-10-03-00-roadmap.md). Comes before milestone 07 (launch).
 
 ## Goal

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { blockedSquares, squareIndex, type Stage } from './board.ts';
+	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
@@ -69,6 +69,10 @@
 	let movable = $derived(new Set(active ? legal.map((m) => m.from) : []));
 	let blocked = $derived(new Set(current ? blockedSquares(stage, current) : []));
 	let repairedSquares = $derived(new Set(repairs.map((r) => r.sq)));
+	// Repairs already celebrated on a board before this one mounted (the game
+	// page swaps boards at 640 px) don't play again.
+	const playedBefore = celebratedSoFar();
+	let fresh = $derived(repairs.filter((r) => !playedBefore.has(r.key)));
 	// A pothole fixed by the Mamdani's move waits for the Mamdani to arrive.
 	let glide = $derived(lastMove && lastMove.to === stage.mamdani && !reducedMotion() ? moveDuration(lastMove.from, lastMove.to) : 0);
 	let sparks = Array.from({ length: 10 }, (_, i) => i * 36);
@@ -258,7 +262,6 @@
 	 * first (the opponent can reply as soon as the dice stop): the node stays
 	 * until its CSS animations are done.
 	 */
-	const CELEBRATION_MS = 2400;
 	function born(node: HTMLElement) {
 		node.dataset.born = String(performance.now());
 	}
@@ -356,8 +359,16 @@
 	</div>
 
 	<div class="layer celebrate" aria-hidden="true">
-		{#each repairs as r (r.key)}
-			<span class="slot fix" style="{place(r.sq)}; --delay: {r.hole ? glide : 0}ms" {@attach born} out:linger>
+		{#each fresh as r (r.key)}
+			<span
+				class="slot fix"
+				style="{place(r.sq)}; --delay: {r.hole ? glide : 0}ms"
+				{@attach (node) => {
+					born(node);
+					markCelebrated(r.key);
+				}}
+				out:linger
+			>
 				{#if r.hole}<span class="hole patched"></span>{/if}
 				<svg class="cone" viewBox="0 0 40 40">
 					{@render coneShape()}
@@ -366,9 +377,9 @@
 				{#each sparks as a, i (a)}<span class="spark" class:far={i % 2 === 0} style="--a: {a}deg"></span>{/each}
 			</span>
 		{/each}
-		{#if repairs.length > 0 && stage.mamdani}
-			{#key repairs[0].key}
-				<span class="slot fix" class:top={cell(stage.mamdani).row === 0} style="{place(stage.mamdani)}; --delay: {repairs[0].hole ? glide : 0}ms" {@attach born} out:linger|global><span class="thumb">👍</span></span>
+		{#if fresh.length > 0 && stage.mamdani}
+			{#key fresh[0].key}
+				<span class="slot fix" class:top={cell(stage.mamdani).row === 0} style="{place(stage.mamdani)}; --delay: {fresh[0].hole ? glide : 0}ms" {@attach born} out:linger|global><span class="thumb">👍</span></span>
 			{/key}
 		{/if}
 	</div>
