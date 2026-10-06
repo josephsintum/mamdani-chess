@@ -855,12 +855,12 @@
 		transition: transform 0.12s ease-out;
 	}
 	/* mpchess pieces fill the square (110% of the old 92%), with a crisp
-	   white outline: their own shape offset 1.5 px four ways, no blur. */
+	   white outline: their own shape offset 2 px four ways, no blur. */
 	.piece img {
 		width: 100%;
 		height: 100%;
-		filter: drop-shadow(1.5px 0 0 var(--piece-outline)) drop-shadow(-1.5px 0 0 var(--piece-outline))
-			drop-shadow(0 1.5px 0 var(--piece-outline)) drop-shadow(0 -1.5px 0 var(--piece-outline));
+		filter: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
+			drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
 	}
 	.piece .mamdani {
 		filter: none; /* its yellow border is its outline */
@@ -946,8 +946,8 @@
 	.promote img {
 		width: 80%;
 		height: 80%;
-		filter: drop-shadow(1.5px 0 0 var(--piece-outline)) drop-shadow(-1.5px 0 0 var(--piece-outline))
-			drop-shadow(0 1.5px 0 var(--piece-outline)) drop-shadow(0 -1.5px 0 var(--piece-outline));
+		filter: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
+			drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
 	}
 	.promote .cancel {
 		grid-column: 1 / -1;
