@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { formatClock } from './clock.ts';
+	import { bonusOf, formatClock } from './clock.ts';
 	import { pieceName, type Color } from './game.ts';
+	import { reducedMotion } from './motion.ts';
 
 	let {
 		color,
@@ -40,6 +41,41 @@
 
 	let side = $derived(color === 'white' ? 'White' : 'Black');
 	let label = $derived(name || side);
+
+	// The "+5": when this player moves, the increment floats up from their
+	// clock and the time ticks up into place, one second at a time. `lastClock`
+	// is plain bookkeeping between the clock's readings, not state.
+	const TICK_UP_MS = 300;
+	let lastClock: number | undefined;
+	let bonus: { ms: number; key: number } | null = null;
+	let gained = $derived.by(() => {
+		const ms = clockMs === undefined ? 0 : bonusOf(lastClock, clockMs, ticking);
+		lastClock = clockMs;
+		if (ms && !reducedMotion()) bonus = { ms, key: (bonus?.key ?? 0) + 1 };
+		return bonus;
+	});
+	// How far behind the real time the clock shows, while it ticks up.
+	let lag = $state(0);
+	function tickUp(ms: number) {
+		return () => {
+			const steps = Math.max(1, Math.round(ms / 1000));
+			let step = 0;
+			lag = ms;
+			let timer: ReturnType<typeof setInterval> | undefined;
+			const start = setTimeout(() => {
+				timer = setInterval(() => {
+					step += 1;
+					lag = step >= steps ? 0 : ms - step * 1000;
+					if (step >= steps) clearInterval(timer);
+				}, TICK_UP_MS / steps);
+			}, 150);
+			return () => {
+				clearTimeout(start);
+				clearInterval(timer);
+				lag = 0;
+			};
+		};
+	}
 </script>
 
 <div class="bar" class:compact>
@@ -64,13 +100,19 @@
 	{#if pill}<span class="pill {pillTone}">{pill}</span>{/if}
 	{#if pausedForDice && !compact}<span class="note">Paused for dice</span>{/if}
 	{#if clockMs !== undefined}
-		<span
-			class="clock"
-			class:active={toMove}
-			class:low={ticking && clockMs < 20_000}
-			role="timer"
-			aria-label="{side} clock: {formatClock(clockMs)}">{formatClock(clockMs)}</span
-		>
+		<span class="clock-wrap">
+			{#key gained?.key}
+				<span
+					class="clock"
+					class:active={toMove}
+					class:low={ticking && clockMs < 20_000}
+					class:bump={!!gained}
+					role="timer"
+					aria-label="{side} clock: {formatClock(clockMs)}">{formatClock(clockMs - lag)}</span
+				>
+				{#if gained}<span class="plus" aria-hidden="true" {@attach tickUp(gained.ms)}>+5</span>{/if}
+			{/key}
+		</span>
 	{/if}
 </div>
 
@@ -202,6 +244,11 @@
 		font-size: 12px;
 		color: var(--text-muted);
 	}
+	.clock-wrap {
+		position: relative;
+		display: flex;
+		flex-shrink: 0;
+	}
 	.clock {
 		flex-shrink: 0;
 		min-width: 92px;
@@ -231,5 +278,49 @@
 	.clock.active.low {
 		border-color: var(--hazard);
 		background: var(--hazard);
+	}
+	/* The increment: "+5" floats up off the clock, which bumps as the time lands. */
+	.clock.bump {
+		animation: clock-bump 0.2s ease-out 0.45s;
+	}
+	@keyframes clock-bump {
+		40% {
+			transform: scale(1.08);
+		}
+	}
+	.plus {
+		position: absolute;
+		top: 0;
+		left: 50%;
+		z-index: 2;
+		font-family: var(--font-mono);
+		font-weight: 700;
+		font-size: 16px;
+		color: var(--accent);
+		pointer-events: none;
+		opacity: 0;
+		animation: plus-up 0.6s ease-out forwards;
+	}
+	.compact .plus {
+		font-size: 13px;
+	}
+	@keyframes plus-up {
+		0% {
+			opacity: 0;
+			transform: translate(-50%, 0);
+		}
+		25% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 0;
+			transform: translate(-50%, -150%);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.clock.bump,
+		.plus {
+			animation: none;
+		}
 	}
 </style>

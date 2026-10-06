@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstMoveLeft, formatClock, paused, timeLeft, type ClockJSON } from './clock.ts';
+import { bonusOf, firstMoveLeft, formatClock, paused, timeLeft, type ClockJSON } from './clock.ts';
 
 const running: ClockJSON = { whiteMs: 300_000, blackMs: 600_000, running: 'white', since: 10_000, now: 9_000 };
 
@@ -53,5 +53,22 @@ describe('formatClock', () => {
 		expect(formatClock(9_950)).toBe('0:09.9');
 		expect(formatClock(420)).toBe('0:00.4');
 		expect(formatClock(0)).toBe('0:00.0');
+	});
+});
+
+describe('bonusOf', () => {
+	it("finds the mover's increment when their clock jumps up and stops", () => {
+		expect(bonusOf(41_300, 46_100, false)).toBe(4_800);
+		expect(bonusOf(41_300, 46_300, false)).toBe(5_000);
+	});
+	it('ignores ticking down, the first reading, and a running clock', () => {
+		expect(bonusOf(41_300, 41_200, false)).toBe(0);
+		expect(bonusOf(undefined, 46_300, false)).toBe(0);
+		// A deploy restores the side to move's clock, which then runs.
+		expect(bonusOf(41_300, 46_300, true)).toBe(0);
+	});
+	it('ignores jumps that are not an increment', () => {
+		expect(bonusOf(41_300, 42_300, false)).toBe(0);
+		expect(bonusOf(41_300, 101_300, false)).toBe(0); // a new game's clock
 	});
 });

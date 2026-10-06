@@ -50,3 +50,15 @@ export function formatClock(ms: number): string {
 	const secs = Math.ceil(ms / 1000);
 	return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
 }
+
+/**
+ * The time a player just gained from the 5 s increment, from their clock's
+ * last reading and this one, or 0: the clock jumped up by about the
+ * increment (less what the move's trip to the server took) and stopped,
+ * since it's now the other side's turn.
+ */
+export function bonusOf(prev: number | undefined, next: number, ticking: boolean): number {
+	if (prev === undefined || ticking) return 0;
+	const gain = next - prev;
+	return gain >= 3_000 && gain <= 6_000 ? gain : 0;
+}
