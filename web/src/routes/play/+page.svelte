@@ -5,6 +5,7 @@
 	import { createGame, matchCard, type View } from '#lib/game.ts';
 	import { reducedMotion } from '#lib/motion.ts';
 	import { formatElapsed, me, type Me } from '#lib/lobby.ts';
+	import { retryDelay } from '#lib/reconnect.ts';
 
 	// Quick match: the guest is in the queue while this page's stream is
 	// open. Cancel, Back or closing the tab all leave it.
@@ -61,12 +62,14 @@
 		let es: EventSource | undefined;
 		let retry: ReturnType<typeof setTimeout> | undefined;
 		let done = false; // matched, or the page has gone: open nothing more
+		let failures = 0; // refused streams in a row, for the backoff
 		const connect = () => {
 			if (done || already) return;
 			const stream = new EventSource('/api/match');
 			es = stream;
 			stream.addEventListener('queued', () => {
 				connected = true;
+				failures = 0;
 				// Joining the queue gave the guest a name if they had none.
 				me()
 					.then((m) => (user = m))
@@ -89,7 +92,7 @@
 					const m = await me().catch(() => null);
 					if (m?.game) return resume(m.game);
 					connect();
-				}, 2000);
+				}, retryDelay(failures++));
 			};
 		};
 		me()

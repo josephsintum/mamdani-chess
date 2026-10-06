@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"time"
 )
@@ -18,6 +19,10 @@ func startSSE(w http.ResponseWriter) (http.Flusher, bool) {
 	h.Set("Connection", "keep-alive")
 	h.Set("X-Accel-Buffering", "no") // stop proxies buffering the stream
 	w.WriteHeader(http.StatusOK)
+	// A deploy ends every stream at once. A random retry per stream spreads
+	// the browsers' own reconnects instead of sending them all back
+	// together.
+	fmt.Fprintf(w, "retry: %d\n\n", 1000+rand.N(2001))
 	fl.Flush()
 	return fl, true
 }

@@ -17,6 +17,7 @@
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
 	import { notify } from '#lib/toast.ts';
+	import { retryDelay } from '#lib/reconnect.ts';
 	import {
 		createGame,
 		followsRematch,
@@ -96,6 +97,7 @@
 		let retry: ReturnType<typeof setTimeout> | undefined;
 		let disposed = false; // the page has gone: open nothing more
 		let checked = false; // the first failure is checked at once: a mistyped code shouldn't wait
+		let failures = 0; // refused streams in a row, for the backoff; a stream that opens resets it
 		const connect = () => {
 			if (disposed) return;
 			clearTimeout(retry);
@@ -109,6 +111,7 @@
 					return;
 				}
 				connected = true;
+				failures = 0;
 				for (const old of streams) {
 					if (old !== es) {
 						old.close();
@@ -131,7 +134,7 @@
 					if (exists) connect();
 					else if (view) lost = true;
 					else notFound = true;
-				}, view || checked ? 2000 : 0);
+				}, view || checked ? retryDelay(failures++) : 0);
 				checked = true;
 			};
 			es.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));

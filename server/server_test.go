@@ -11,6 +11,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -224,6 +225,31 @@ func TestGuestCookie(t *testing.T) {
 	}
 	if c == nil || len(c.Value) != 32 || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Path != "/" {
 		t.Fatalf("guest cookie %+v", c)
+	}
+}
+
+// A deploy ends every stream at once. A random retry per stream spreads
+// the browsers' own reconnects instead of sending them all back together.
+func TestStreamsStartWithARandomRetry(t *testing.T) {
+	_, ts := newTestServer(t)
+	alice := newPlayer(t, ts)
+	code := alice.create()
+	seen := map[int]bool{}
+	for range 5 {
+		resp, err := alice.c.Get(ts.URL + "/api/games/" + code + "/stream")
+		if err != nil {
+			t.Fatal(err)
+		}
+		line, _ := bufio.NewReader(resp.Body).ReadString('\n')
+		resp.Body.Close()
+		ms, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "retry: ")))
+		if err != nil || ms < 1000 || ms > 3000 {
+			t.Fatalf("first line %q, want retry: 1000 to 3000", line)
+		}
+		seen[ms] = true
+	}
+	if len(seen) < 2 {
+		t.Error("every stream got the same retry")
 	}
 }
 
