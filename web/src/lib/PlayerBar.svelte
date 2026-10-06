@@ -51,13 +51,13 @@
 		{#if compact}
 			{#if lost.length > 0}
 				<span class="glyphs" role="img" aria-label="Lost to potholes: {lost.map((p) => pieceName(p)).join(', ')}">
-					{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt="" />{/each}
+					{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt="" class:black={p[0] === 'b'} />{/each}
 				</span>
 			{/if}
 		{:else}
 			<span class="lost">
 				Lost to potholes:
-				{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} />{/each}</span>{/if}
+				{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} class:black={p[0] === 'b'} />{/each}</span>{/if}
 			</span>
 		{/if}
 	</span>
@@ -165,6 +165,11 @@
 		width: 18px;
 		height: 18px;
 		flex-shrink: 0;
+	}
+	/* A black piece is drawn all in black (a pawn has no light lines at
+	   all), so off the board it needs a light edge to show on the page. */
+	.glyphs img.black {
+		filter: drop-shadow(0 0 0.6px var(--text-body)) drop-shadow(0 0 0.6px var(--text-body));
 	}
 	.pill {
 		display: flex;
