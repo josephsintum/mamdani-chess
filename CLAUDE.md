@@ -38,6 +38,11 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
   - Speech bubbles: every line, the pairs and the rare lines live in `web/src/lib/catchphrases.ts`, chosen from the [catchphrase shortlist](https://claude.ai/artifact/JVUbAGvZ5NKAyt5bvdTNGp).
   - Checkmate burst, the win screen's tally and confetti, and "+5" on the clock.
   - At game over the board darkens under a shade below the bubbles.
+- **Done, on local `main` only (not pushed; `origin/main` has since gained the catchphrases merge, so merge it in before pushing):**
+  - Home page: "How it works" is the second section, beside the [Mamdani Patch reel](https://www.instagram.com/reel/Dd8tV_MxEQL/) with a credit to its creator, @bardelo_bardalini (canvas rows "Home" and "Home (phone)"). Step 01 covers three-round potholes.
+  - Instagram won't play this reel inside the embed (no video loads; a click opens Instagram), even with its own script. Playing it on the page means hosting the clip, which needs the creator's OK.
+  - The embed is a bare iframe without Instagram's script, so its height is measured (a 4:5 video plus 210 px). Recheck it if Instagram changes its layout.
+  - The header shows a returning guest's name at once: `lobby.ts` keeps the last name `/api/me` gave in localStorage (`rememberedName`), and the server's answer replaces it. The `guest` cookie is HttpOnly and holds only a random ID; the name lives in SQLite.
 - **Pending:** a playtest with friends, on their phones.
 
 ## Next step
