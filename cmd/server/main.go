@@ -83,6 +83,7 @@ func run() error {
 // unfinished game, and every game that ended within the last day, so open
 // tabs carry on after a restart or a deploy.
 func restore(ctx context.Context, st *store.Store, hub *game.Hub, now time.Time) error {
+	start := time.Now()
 	expired, err := st.ExpireWaiting(ctx, now.Add(-game.DefaultIdle), now)
 	if err != nil {
 		return fmt.Errorf("expire waiting games: %w", err)
@@ -92,7 +93,9 @@ func restore(ctx context.Context, st *store.Store, hub *game.Hub, now time.Time)
 		return fmt.Errorf("load saved games: %w", err)
 	}
 	n := hub.Restore(saved)
-	slog.Info("games restored", "restored", n, "failed", len(saved)-n, "expired", expired)
+	// One line for the whole restore (each game logs at DEBUG): after a busy
+	// day, a line per game would pass Railway's 500 lines/s at once.
+	slog.Info("games restored", "restored", n, "failed", len(saved)-n, "expired", expired, "duration", time.Since(start))
 	return nil
 }
 

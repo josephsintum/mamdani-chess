@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +21,7 @@ type Server struct {
 	match     *match.Queue
 	assets    fs.FS
 	heartbeat time.Duration
+	slow      time.Duration // a request taking longer logs at WARN
 	log       *slog.Logger
 	mux       *http.ServeMux
 	done      chan struct{} // closed by Close to end SSE streams
@@ -39,6 +39,7 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 		games:     hub,
 		assets:    assets,
 		heartbeat: 15 * time.Second,
+		slow:      time.Second,
 		log:       slog.Default(),
 		mux:       http.NewServeMux(),
 		done:      make(chan struct{}),
@@ -72,19 +73,26 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 func (s *Server) Close() { s.closeOnce.Do(func() { close(s.done) }) }
 
 // ServeHTTP routes the request and logs one line for it: method, path,
-// status and how long it took. Health checks log at debug level.
+// status and how long it took.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 	s.mux.ServeHTTP(rec, r)
-	// Health checks and moves log at debug level: moves are most of the
-	// traffic, and the game logs its own events (ended, aborted…) at INFO.
-	level := slog.LevelInfo
-	if r.URL.Path == "/healthz" || (r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/move")) {
-		level = slog.LevelDebug
+	d := time.Since(start)
+	// Successful requests log at DEBUG: at INFO, a first visit's 30 or so
+	// files would use Railway's 500 log lines/s with about 17 new visitors
+	// a second. Slow requests log at WARN, failed or not (a stream stays
+	// open by design, so it is never slow); refusals and errors at INFO.
+	// The game logs its own events (created, ended…) at INFO.
+	level := slog.LevelDebug
+	switch {
+	case d > s.slow && rec.Header().Get("Content-Type") != "text/event-stream":
+		level = slog.LevelWarn
+	case rec.status >= 400:
+		level = slog.LevelInfo
 	}
 	s.log.Log(r.Context(), level, "request",
-		"method", r.Method, "path", r.URL.Path, "status", rec.status, "duration", time.Since(start))
+		"method", r.Method, "path", r.URL.Path, "status", rec.status, "duration", d)
 }
 
 // statusRecorder remembers the status a handler wrote. It passes Flush

@@ -73,7 +73,7 @@ func (h *Hub) restore(sg store.SavedGame, now time.Time) error {
 		defer h.mu.Unlock()
 		delete(h.games, sg.Code)
 	}
-	slog.Info("game restored", "code", sg.Code, "moves", len(sg.Turns), "phase", g.status())
+	slog.Debug("game restored", "code", sg.Code, "moves", len(sg.Turns), "phase", g.status())
 	g.publish()
 	go g.loop()
 	return nil
