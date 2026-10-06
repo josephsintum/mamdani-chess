@@ -15,7 +15,7 @@
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
 	import { checkSquare, endedHere, matedByRoll, matedKing, pillFor, repairsShown, stageAt, tallyOf, wonHere } from '#lib/board.ts';
-	import { quipper } from '#lib/catchphrases.ts';
+	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import { BURST_HOLD_MS, countAt } from '#lib/feel.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
@@ -189,9 +189,16 @@
 	let savedSquare = $derived(view?.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '');
 	// The Mamdani's repairs, celebrated only on a turn that is playing out (never after a reload).
 	let repairs = $derived(view && anim.animated && !instant ? repairsShown(view, shown) : []);
-	// A speech bubble for a big moment: only on a turn that is playing out, like the repairs.
+	// A speech bubble for a big moment: only on a turn that is playing out,
+	// like the repairs. A game that ended here gets its own line once the dice
+	// stop: a win on time, or a mate by a pothole roll.
 	const say = quipper();
-	let quip = $derived(view && anim.animated && !instant ? say(view.last, view.seq, shown) : null);
+	let quip = $derived.by(() => {
+		if (!view || instant) return null;
+		const end = endedLive && !animating ? endQuip(view) : null;
+		if (end) return say(view.last, view.seq, shown, { end, key: `${code}:end`, winner: view.result?.winner === you });
+		return anim.animated ? say(view.last, view.seq, shown, undefined, contextOf(view)) : null;
+	});
 	// The checkmate burst, once the dice stop, on a turn that played out here.
 	let mated = $derived.by(() => {
 		const sq = view && anim.animated && !instant && !animating ? matedKing(view) : '';
