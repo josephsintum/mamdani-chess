@@ -1,6 +1,6 @@
 # Board Feel: Design
 
-**Status:** design agreed item by item on 2026-10-05 and 06. Not built.
+**Status:** design agreed item by item on 2026-10-05 and 06. Sections 1, 2, 3 and 10 built (plan 1); the rest follow in plans 2 and 3.
 **Mockups:** https://claude.ai/artifact/E6oCYQhp8xaDTZCVssczXy (live, looping; its sections are numbered like this spec, and every board there is the agreed board: outside coordinates, mpchess with the white outline, blue last move, ease-out glide).
 **Why:** the board should call attention to what the dice and the moves do, and feel as lively as chess.com's Arcade style, in our road-works look. Every effect here runs on every turn or at a big moment, so each one is short, and each one is skipped under reduced motion and in instant mode (`setInstant`).
 
