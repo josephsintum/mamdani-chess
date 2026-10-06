@@ -11,3 +11,12 @@ export function setInstant(on: boolean) {
 export function reducedMotion(): boolean {
 	return instant || (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 }
+
+/**
+ * What is left of an exit that started `elapsed` ms ago and lasts `total`,
+ * never under 1 ms: with Svelte 5.57, an update whose leaving elements mixed
+ * a 0 ms exit with a timed one left them all on the page.
+ */
+export function exitMs(elapsed: number, total: number): number {
+	return Math.max(1, total - elapsed);
+}

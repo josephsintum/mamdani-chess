@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { blockedSquares, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
-	import { reducedMotion } from './motion.ts';
+	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
 	let {
@@ -264,7 +264,7 @@
 	}
 	function linger(node: Element) {
 		const age = performance.now() - Number((node as HTMLElement).dataset.born);
-		return { duration: Math.max(0, CELEBRATION_MS - age) };
+		return { duration: exitMs(age, CELEBRATION_MS) };
 	}
 
 	/** A round passes: one of a hole's cones lifts away. */
