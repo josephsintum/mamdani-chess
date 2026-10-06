@@ -30,7 +30,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 - **Done: milestone 06c** ([plan](docs/superpowers/plans/2026-10-05-06c-longer-potholes.md)): potholes last 3 rounds with at most 5 open (the oldest closes), a roll can checkmate, traffic cones count each hole down, the Mamdani's repairs are celebrated (cone, sparks, 👍), and the Mamdani art is on the boards. Games saved under the old rules were retired by migration 5. Checked with whole games: Chromium 8/8, WebKit 8/8, phone 4/4 in instant mode, and 3/3 in each browser with full animations; the playtest now also fails if a closed pothole stays drawn.
 - **Also in the repo, from another session:** two side plans (Go server improvements, Go rules speed).
 - **Checked:** whole games through the UI with the playtest script, 24 in Chromium and 18 in WebKit (Safari's engine), all clean; WebKit at phone size also glides and takes touch taps.
-- **Done: board feel, plans 1 and 2** ([spec](docs/superpowers/specs/2026-10-06-board-feel-design.md), [mockups](https://claude.ai/artifact/E6oCYQhp8xaDTZCVssczXy), PRs #3–#5):
+- **Done: board feel, plans 1–3** ([spec](docs/superpowers/specs/2026-10-06-board-feel-design.md), [mockups](https://claude.ai/artifact/E6oCYQhp8xaDTZCVssczXy), PRs #3–#5 and #7):
   - Coordinates outside the board.
   - mpchess pieces at 90% of the square, with lines 1.2× heavier (the SVGs are edited) and a 2 px cream outline.
   - Ease-out glide with a trail and a lean; pick-up lean, drag tilt and ripple.
@@ -38,7 +38,19 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
   - Speech bubbles: every line, the pairs and the rare lines live in `web/src/lib/catchphrases.ts`, chosen from the [catchphrase shortlist](https://claude.ai/artifact/JVUbAGvZ5NKAyt5bvdTNGp).
   - Checkmate burst, the win screen's tally and confetti, and "+5" on the clock.
   - At game over the board darkens under a shade below the bubbles.
-- **Done, on local `main` only (not pushed; `origin/main` is merged in):**
+  - The dice (plan 3, PR #7):
+    - Dice are thrown into the tray and into the phone's dice card, which stays below the board. Their colours say what each die decides:
+      - the pothole roll's die is grey when odd and yellow when even, shown once it lands;
+      - the file and rank dice are orange;
+      - a saving die is cream.
+    - A pill on the board's corner says what the roll means.
+    - The file and rank dice tumble out of sync while an orange scan on the board follows their faces and lights the outside coordinates, then lands on the target. The faces are seeded, so the tray, the phone card and the board agree.
+    - A re-roll makes the target blink twice.
+- **Known, left for later:** a turn shown at once can still replay some effects:
+  - a reload or reconnect re-throws the last turn's dice (and plays a save's hop and a bubble again);
+  - coming back to a hidden tab mid-roll can replay the scan;
+  - opening the phone's moves sheet re-throws the dice.
+- **Done, on local `main` only (not pushed; merge `origin/main`, which now has board feel 3, before pushing):**
   - Home page: "How it works" is the second section, beside the [Mamdani Patch reel](https://www.instagram.com/reel/Dd8tV_MxEQL/) with a credit to its creator, @bardelo_bardalini (canvas rows "Home" and "Home (phone)"). Step 01 covers three-round potholes.
   - Instagram won't play this reel inside the embed (no video loads; a click opens Instagram), even with its own script. Playing it on the page means hosting the clip, which needs the creator's OK.
   - The embed is a bare iframe without Instagram's script, so its height is measured (a 4:5 video plus 210 px). Recheck it if Instagram changes its layout.
@@ -47,7 +59,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Next step
 
-Board feel plan 3: the dice (spec section 9: tray throw, board pill, out-of-sync file and rank dice with the scan, one timing table shared with `pauseFor`). Then milestone 07 (launch). Its brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08. Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Milestone 07 (launch). Its brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08. Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
@@ -61,6 +73,7 @@ Board feel plan 3: the dice (spec section 9: tray throw, board pill, out-of-sync
 - **Production logs:** `railway logs -s web -n 5000 --json` returns the current deployment's logs. `--since` alone stops at 500 lines without saying so, and `--since` with `--until` returned nothing (railway 5.62). Game events (created, ended, aborted, rematch) log at INFO, and a restart logs one `games restored` summary (with its duration); each restored game logs at DEBUG. Successful requests log at DEBUG, refused or failed ones at INFO, and requests over 1 s (streams excepted) at WARN.
 - **Agents in a browser:** agent-browser 0.8.4 doesn't find its own Chromium here; point it at Playwright's with `--executable-path` (or `AGENT_BROWSER_EXECUTABLE_PATH`), e.g. `~/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell`. Give each player its own `--session`, since a guest is a cookie.
 - **Instant mode:** dev builds only. `/game/CODE?instant`, or the sandbox's Instant checkbox, turns off every animation and plays the dice in 0 ms (`setInstant` in `motion.ts`), so a whole game takes seconds.
+- **Dice timing:** `web/src/lib/dice-timing.json` is the one table of how long each dice step plays. The server's clock pause mirrors it (`pauseFor` and `playTime` in `game/clock.go`), and `TestDiceTimingMatchesTheBrowser` fails if they drift apart, so change both together.
 - **SvelteKit 3 and Svelte 5 traps hit so far:**
   - use `$app/env`, not `$app/environment`;
   - `#lib/...` imports need the file extension (`#lib/game.ts`), and there is no `$lib`;
