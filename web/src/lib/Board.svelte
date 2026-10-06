@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
-	import { cellOf, coordinates } from './feel.ts';
+	import { cellOf, coordinates, GLIDE_EASE, trailColor, trailOf, TRAIL_FADE_MS, whipFrames, whiplash, WHIP_TAIL_MS } from './feel.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
@@ -88,9 +88,44 @@
 		prevPieces = next;
 		return next.map((p) => {
 			const from = before.get(p.id);
-			return { ...p, dur: from && !reducedMotion() ? moveDuration(from, p.sq) : 0 };
+			return { ...p, from, dur: from && !reducedMotion() ? moveDuration(from, p.sq) : 0 };
 		});
 	});
+
+	// The move you just dragged: that piece is already where you put it, so
+	// it gets no trail and no whiplash. Forgotten on your next press.
+	let dropped: { from: string; to: string } | null = null;
+	const isDropped = (p: { from?: string; sq: string }) => dropped !== null && p.from === dropped.from && p.sq === dropped.to;
+
+	// Trails behind the pieces that just moved. A dice step recalculates the
+	// pieces (with nothing moving) while a long glide is still going, so the
+	// last trails stay until a real move replaces them; prevTrails is plain
+	// bookkeeping, like prevPieces.
+	type Trail = ReturnType<typeof trailOf> & { key: string; dur: number; color: string };
+	let prevTrails: Trail[] = [];
+	let trails = $derived.by(() => {
+		const moving = pieces.filter((p) => p.dur > 0 && p.from && !isDropped(p));
+		if (moving.length === 0) return prevTrails;
+		prevTrails = moving.map((p) => ({ ...trailOf(p.from!, p.sq, flipped), key: `${p.id}:${p.sq}`, dur: p.dur, color: trailColor(p.code) }));
+		return prevTrails;
+	});
+
+	/**
+	 * A piece's one-off animations: the whiplash when it glides. The
+	 * attachment re-runs whenever the board recalculates, so it remembers
+	 * what it last played.
+	 */
+	function motion(p: { id: number; from?: string; sq: string; dur: number }) {
+		return (node: HTMLElement) => {
+			if (reducedMotion()) return;
+			const key = `${p.id}:${p.sq}`;
+			if (!p.from || p.from === p.sq || node.dataset.moved === key) return;
+			node.dataset.moved = key;
+			if (isDropped(p)) return;
+			const w = whiplash(p.from, p.sq, flipped);
+			if (w !== 0 && p.dur > 0) node.animate(whipFrames(w), { duration: p.dur + WHIP_TAIL_MS, easing: 'ease-in-out' });
+		};
+	}
 
 	/** Column and row on screen for a square, 0..7 from the top left. */
 	function cell(sq: string): { col: number; row: number } {
@@ -159,6 +194,7 @@
 	}
 
 	function pointerDown(e: PointerEvent, sq: string) {
+		dropped = null;
 		if (pending || !movable.has(sq) || e.button !== 0) return;
 		drag = { from: sq, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, pointer: e.pointerId };
 	}
@@ -189,7 +225,11 @@
 		drag = null;
 		if (!moved) return; // a tap: the square's click handler deals with it
 		const to = squareFromPoint(e.clientX, e.clientY);
-		if (!to || to === from || !moveTo(from, to)) selected = from;
+		if (to && to !== from) dropped = { from, to };
+		if (!to || to === from || !moveTo(from, to)) {
+			dropped = null;
+			selected = from;
+		}
 	}
 
 	// Drag follows the pointer across the whole board, so the listeners live
@@ -291,7 +331,7 @@
      label column and row are the same size, so the frame stays square. -->
 <div class="frame" class:dim>
 <div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span>{r}</span>{/each}</div>
-<div class="board" class:dim role="group" aria-label="Chessboard" {@attach dragArea}>
+<div class="board" class:dim role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms" {@attach dragArea}>
 	{#each order as index (index)}
 		{@const sq = squareName(index)}
 		{@const dark = (Math.floor(index / 8) + (index % 8)) % 2 === 0}
@@ -342,6 +382,10 @@
 	</div>
 
 	<div class="layer" aria-hidden="true">
+		<!-- Under the pieces: a streak from where each moving piece started. -->
+		{#each trails as t (t.key)}
+			<span class="trail" style="--x: {t.x}; --y: {t.y}; --len: {t.length}; --angle: {t.angle}deg; --dur: {t.dur}ms; --color: {t.color}"></span>
+		{/each}
 		{#each pieces as p (p.id)}
 			<span
 				class="slot piece-slot"
@@ -349,7 +393,7 @@
 				class:dragging={drag?.moved && drag.from === p.sq}
 				style={pieceStyle(p)}
 			>
-				<span class="piece" out:leave={{ fell: stage.target === p.sq }}>
+				<span class="piece" out:leave={{ fell: stage.target === p.sq }} {@attach motion(p)}>
 					{#if p.code === 'M'}
 						<img class="mamdani" src="/mamdani/piece.webp" alt="" draggable="false" />
 					{:else}
@@ -558,10 +602,41 @@
 		height: 12.5%;
 		transform: translate(calc(var(--col) * 100%), calc(var(--row) * 100%));
 	}
-	/* The glide: easeInOutQuad, duration by distance (pieces.ts moveDuration). */
+	/* The glide: ease-out (GLIDE_EASE in feel.ts), duration by distance
+	   (pieces.ts moveDuration). */
 	.piece-slot {
-		transition: transform var(--dur, 0ms) cubic-bezier(0.455, 0.03, 0.515, 0.955);
+		transition: transform var(--dur, 0ms) var(--glide-ease);
 		z-index: 2;
+	}
+	/* The streak behind a gliding piece: 55% of a square wide, from its start
+	   square's centre, growing with the glide so its head stays under the
+	   piece, then fading. Transparent at the start, solid at the piece. */
+	.trail {
+		position: absolute;
+		left: calc(var(--x) * 12.5%);
+		top: calc(var(--y) * 12.5% - 3.4375%);
+		width: calc(var(--len) * 12.5%);
+		height: 6.875%;
+		border-radius: 999px;
+		background: linear-gradient(90deg, transparent, var(--color));
+		transform-origin: 0 50%;
+		z-index: 1;
+		animation:
+			trail-grow var(--dur) var(--glide-ease) both,
+			trail-fade var(--trail-fade) linear var(--dur) forwards;
+	}
+	@keyframes trail-grow {
+		from {
+			transform: rotate(var(--angle)) scaleX(0);
+		}
+		to {
+			transform: rotate(var(--angle)) scaleX(1);
+		}
+	}
+	@keyframes trail-fade {
+		to {
+			opacity: 0;
+		}
 	}
 	.piece-slot.dragging {
 		z-index: 3;
@@ -571,6 +646,8 @@
 		place-items: center;
 		width: 100%;
 		height: 100%;
+		/* The whiplash pivots from the base, so the head swings. */
+		transform-origin: 50% 85%;
 		transition: transform 0.3s ease;
 	}
 	.lifted .piece,
