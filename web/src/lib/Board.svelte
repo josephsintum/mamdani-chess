@@ -670,6 +670,8 @@
 	}
 	.board {
 		position: relative;
+		/* Its layers' z-indexes stay inside the board, under the result card. */
+		isolation: isolate;
 		display: grid;
 		grid-template-columns: repeat(8, 1fr);
 		width: 100%;
