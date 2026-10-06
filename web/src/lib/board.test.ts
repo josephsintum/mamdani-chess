@@ -204,8 +204,8 @@ describe('diceSteps', () => {
 			'Black knight falls in',
 			'Pothole opens on g8'
 		]);
-		expect(steps[0].dice).toEqual([2]);
-		expect(steps[1].dice).toEqual([5, 1]);
+		expect(steps[0].dice.map((d) => [d.value, d.tone])).toEqual([[2, 'pot']]);
+		expect(steps[1].dice.map((d) => [d.value, d.tone])).toEqual([[5, 'where'], [1, 'where']]);
 		expect(steps[1].detail).toBe('File 5 = e, rank 1. White king is there');
 		expect(steps[2].detail).toBe('Kings never fall');
 		expect(steps[3].detail).toBe('File 7 = g, rank 8. Black knight is there');
@@ -225,10 +225,12 @@ describe('diceSteps', () => {
 		];
 		const v = makeView({ d2: 'wP' }, { last: saved, mamdani: 'a5' });
 		const steps = diceSteps(v, saved.length);
-		expect(steps[2]).toMatchObject({ title: 'Odd. White pawn is saved', dice: [5], tone: 'good' });
+		expect(steps[2]).toMatchObject({ title: 'Odd. White pawn is saved', tone: 'good' });
+		expect(steps[2].dice.map((d) => [d.value, d.tone])).toEqual([[5, 'save']]);
 		expect(steps[2].detail).toBe('The Mamdani on a5 has a clear line to d2.');
 		const odd = makeView({}, { last: [saved[0], { kind: 'rolled_pothole', roll: 7, color: 'black' }] });
-		expect(diceSteps(odd, 2)[0]).toMatchObject({ title: 'Odd. No pothole', dice: [7], tone: 'muted' });
+		expect(diceSteps(odd, 2)[0]).toMatchObject({ title: 'Odd. No pothole', tone: 'muted' });
+		expect(diceSteps(odd, 2)[0].dice.map((d) => [d.value, d.tone])).toEqual([[7, 'dull']]);
 	});
 });
 

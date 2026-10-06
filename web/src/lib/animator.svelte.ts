@@ -2,14 +2,16 @@
 // /dev/board sandbox, so the sandbox shows exactly what players see.
 
 import { firstDiceStep } from './board.ts';
-import type { View } from './game.ts';
+import { dicePace } from './dice.ts';
+import type { EventJSON, View } from './game.ts';
 
 /**
- * Time between dice steps; a whole roll takes about two seconds. The server
- * pauses the next clock for the roll using the same value (StepTime in
- * game/clock.go): change both together.
+ * How long to wait before showing the next dice step: a fixed number of ms,
+ * or a function of the step just shown (undefined before the roll). The
+ * game uses dicePace, from the table the server's clock pause shares, so a
+ * clock never starts while the dice still play.
  */
-export const STEP_MS = 550;
+export type Pace = number | ((shownLast: EventJSON | undefined) => number);
 
 export class Animator {
 	view = $state<View | null>(null);
@@ -22,12 +24,18 @@ export class Animator {
 	 * replays them.
 	 */
 	animated = $state(false);
-	/** Delay between steps, in ms; applies from the next step on. */
-	stepMs: number;
+	/** The wait before each step; applies from the next step on. */
+	pace: Pace;
 	#timer: ReturnType<typeof setTimeout> | undefined;
 
-	constructor(stepMs = STEP_MS) {
-		this.stepMs = stepMs;
+	constructor(pace: Pace = dicePace) {
+		this.pace = pace;
+	}
+
+	#wait(): number {
+		if (typeof this.pace === 'number') return this.pace;
+		const last = this.view?.last ?? [];
+		return this.pace(this.shown > firstDiceStep(last) ? last[this.shown - 1] : undefined);
 	}
 
 	get animating(): boolean {
@@ -72,6 +80,6 @@ export class Animator {
 		this.#timer = setTimeout(() => {
 			this.shown += 1;
 			this.#tick();
-		}, this.stepMs);
+		}, this.#wait());
 	}
 }

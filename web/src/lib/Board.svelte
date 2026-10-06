@@ -3,7 +3,9 @@
 	import { pieceName, squareName, type MoveJSON } from './game.ts';
 	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, fitShift, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
 	import { lineParts, spoken } from './catchphrases.ts';
+	import { BLINK_MS, scanFrames, SCAN_MS, type DicePill } from './dice.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
+	import { untrack } from 'svelte';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
 
 	let {
@@ -18,6 +20,9 @@
 		repairs = [],
 		quip = null,
 		mated = null,
+		pill = null,
+		scan = null,
+		reroll = false,
 		onmove
 	}: {
 		stage: Stage;
@@ -40,6 +45,12 @@
 		quip?: { sq: string; emoji: string; line: string; key: string; delay?: number } | null;
 		/** The mated king's square, burst once per game (by key). */
 		mated?: { sq: string; key: string } | null;
+		/** The pill on the board's corner saying what the dice mean (dice.ts dicePill). */
+		pill?: DicePill | null;
+		/** The file and rank dice's scan for a target (dice.ts scanOf): it runs once per key. */
+		scan?: { sq: string; key: string; seed: number } | null;
+		/** The dice hit a square they must re-roll: the target blinks. */
+		reroll?: boolean;
 		onmove: (move: MoveJSON) => void;
 	} = $props();
 
@@ -449,6 +460,37 @@
 	function drop(_node: Element) {
 		return { duration: ms(260), css: (t: number) => `transform: scale(${1.5 - 0.5 * t}); opacity: ${t}` };
 	}
+
+	// The square the file and rank dice point to as they tumble; its letter
+	// and number glow on the coordinates outside the board.
+	let lit = $state('');
+	let landed = $state(''); // the scan whose dice have landed, by key
+	function scanner(node: HTMLElement) {
+		const s = untrack(() => scan);
+		if (!s) return;
+		const timers = scanFrames(s.sq, s.seed).map((f) =>
+			setTimeout(() => {
+				node.style.cssText = place(f.sq);
+				lit = f.sq;
+			}, f.at)
+		);
+		timers.push(
+			setTimeout(() => {
+				node.classList.add('landed');
+				landed = s.key;
+			}, SCAN_MS)
+		);
+		timers.push(setTimeout(() => (lit = ''), SCAN_MS + 700));
+		return () => {
+			timers.forEach(clearTimeout);
+			lit = '';
+		};
+	}
+
+	/** How long the turn's last pill stays: an odd roll's briefly, a square or a saving roll's a little longer. */
+	function pillHold(p: DicePill): number {
+		return p.tone === 'odd' && !p.then ? 600 : (p.then?.at ?? 0) + 1400;
+	}
 </script>
 
 {#snippet coneShape()}
@@ -460,8 +502,8 @@
 <!-- Coordinates sit outside the board, so the squares stay clean. The
      label column and row are the same size, so the frame stays square. -->
 <div class="frame" class:dim {@attach (node) => void (frameEl = node)}>
-<div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span>{r}</span>{/each}</div>
-<div class="board" class:dim class:late={!!mated && !playedBefore.has(mated.key)} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms" {@attach dragArea}>
+<div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span class:on={lit[1] === r}>{r}</span>{/each}</div>
+<div class="board" class:dim class:late={!!mated && !playedBefore.has(mated.key)} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms; --blink: {BLINK_MS}ms" {@attach dragArea}>
 	{#each order as index (index)}
 		{@const sq = squareName(index)}
 		{@const dark = (Math.floor(index / 8) + (index % 8)) % 2 === 0}
@@ -513,9 +555,15 @@
 				</span>
 			</span>
 		{/each}
-		{#if stage.target}
+		{#if scan && !reducedMotion()}
+			{#key scan.key}
+				<span class="slot scan" {@attach scanner}></span>
+			{/key}
+		{/if}
+		<!-- The target waits for the scan to land on it. -->
+		{#if stage.target && !(scan && scan.sq === stage.target && landed !== scan.key && !reducedMotion())}
 			{#key stage.target}
-				<span class="slot" style={place(stage.target)}><span class="target" in:drop></span></span>
+				<span class="slot" style={place(stage.target)}><span class="target" class:blink={reroll} in:drop></span></span>
 			{/key}
 		{/if}
 	</div>
@@ -604,6 +652,15 @@
 		{/if}
 	</div>
 
+	{#if pill}
+		{#key pill.key}
+			<span class="pills" class:last={pill.last} style="--at: {pill.at ?? 0}ms; --hold: {(pill.at ?? 0) + pillHold(pill)}ms; --then: {pill.then?.at ?? 0}ms" aria-hidden="true">
+				<span class="pill {pill.tone}" class:swap={!!pill.then}>{pill.text}</span>
+				{#if pill.then}<span class="pill {pill.then.tone} next">{pill.then.text}</span>{/if}
+			</span>
+		{/key}
+	{/if}
+
 	<!-- Screen readers hear the bubble's line; the bubble itself is drawn above. -->
 	<p class="sr-only" aria-live="polite">{quip ? spoken(quip.line) : ''}</p>
 
@@ -618,7 +675,7 @@
 		</div>
 	{/if}
 </div>
-<div class="files" aria-hidden="true">{#each labels.files as f (f)}<span>{f}</span>{/each}</div>
+<div class="files" aria-hidden="true">{#each labels.files as f (f)}<span class:on={lit[0] === f}>{f}</span>{/each}</div>
 </div>
 
 <style>
@@ -1451,6 +1508,109 @@
 	@media (prefers-reduced-motion: reduce) {
 		.bubble {
 			animation: bubble-out 0.25s ease-in calc(var(--quip-delay, 0ms) + 2.8s) forwards;
+		}
+	}
+
+	/* The dice on the board: the scan square follows the file and rank dice,
+	   the matching coordinates glow, the target blinks on a re-roll, and a
+	   pill in the corner says what the roll means. */
+	.ranks span.on,
+	.files span.on {
+		color: var(--hazard);
+		font-weight: 700;
+	}
+	.scan {
+		background: var(--hazard);
+		box-shadow: 0 0 18px 4px color-mix(in srgb, var(--hazard) 60%, transparent);
+		opacity: 0.85;
+		transition: opacity 0.25s ease;
+	}
+	.scan:global(.landed) {
+		opacity: 0;
+	}
+	.target.blink {
+		animation: target-blink var(--blink) steps(2, jump-none) 2;
+	}
+	@keyframes target-blink {
+		50% {
+			opacity: 0.15;
+		}
+	}
+	.pills {
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		z-index: 7;
+		display: grid;
+		justify-items: end;
+		pointer-events: none;
+		animation: pill-in 0.16s ease-out var(--at) both;
+	}
+	.pills.last {
+		animation:
+			pill-in 0.16s ease-out var(--at) both,
+			pill-out 0.22s ease-in var(--hold) forwards;
+	}
+	.pill {
+		grid-area: 1 / 1;
+		padding: 5px 9px;
+		border-radius: 999px;
+		font: 600 12px/1 var(--font-mono);
+		white-space: nowrap;
+		background: var(--surface);
+		color: var(--text);
+		box-shadow: 0 0 0 1px var(--line);
+	}
+	.pill.pot {
+		background: var(--accent);
+		color: var(--accent-text);
+		box-shadow: none;
+	}
+	.pill.where {
+		background: var(--hazard);
+		color: var(--accent-text);
+		box-shadow: none;
+	}
+	.pill.save {
+		background: var(--piece-light);
+		color: var(--piece-dark);
+		box-shadow: none;
+	}
+	.pill.swap {
+		animation: pill-out 0.15s ease-in var(--then) forwards;
+	}
+	.pill.next {
+		opacity: 0;
+		animation: pill-in 0.18s ease-out var(--then) forwards;
+	}
+	@keyframes pill-in {
+		from {
+			opacity: 0;
+			transform: scale(0.8);
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	@keyframes pill-out {
+		to {
+			opacity: 0;
+		}
+	}
+	/* Reduced motion: no scan; the pill shows what the dice decided, then goes. */
+	@media (prefers-reduced-motion: reduce) {
+		.pills,
+		.pill.next {
+			animation: pill-in 1ms linear both;
+		}
+		.pill.swap {
+			animation: pill-out 1ms linear forwards;
+		}
+		.pills.last {
+			animation: pill-out 1ms linear var(--hold) forwards;
+		}
+		.target.blink {
+			animation: none;
 		}
 	}
 </style>

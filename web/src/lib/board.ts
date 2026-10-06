@@ -1,6 +1,7 @@
 // Pure board logic for the game page: blocked lines, the board while the
 // dice play out, and the dice tray's lines. No DOM, so it is unit-tested.
 
+import { SAVE_MS, SCAN_MS, stepDice, THROW_MS, type DieSpec } from './dice.ts';
 import { pieceName, squareName, type Color, type EventJSON, type View } from './game.ts';
 
 export function squareIndex(name: string): number {
@@ -150,8 +151,18 @@ function fallsWith(last: EventJSON[], i: number): number {
 export interface DiceStep {
 	title: string;
 	detail: string;
-	dice: number[]; // d8 values shown as diamonds
+	dice: DieSpec[]; // the d8s thrown for this step
 	tone: 'normal' | 'muted' | 'good' | 'hazard';
+	/** When its line shows, in ms: what the dice decided waits for them to land. */
+	revealAt?: number;
+}
+
+/** When a step's outcome can show: once its dice have landed. */
+function revealAt(e: EventJSON): number | undefined {
+	if (e.kind === 'rolled_pothole') return THROW_MS;
+	if (e.kind === 'target') return SCAN_MS;
+	if (e.kind === 'saving_roll') return SAVE_MS;
+	return undefined;
 }
 
 const rerollReasons: Record<string, string> = {
@@ -180,8 +191,9 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 				steps.push({
 					title: even ? 'Even. A pothole opens' : 'Odd. No pothole',
 					detail: `d8 rolled ${e.roll}`,
-					dice: [e.roll ?? 0],
-					tone: even ? 'normal' : 'muted'
+					dice: stepDice(view, i),
+					tone: even ? 'normal' : 'muted',
+					revealAt: revealAt(e)
 				});
 				break;
 			}
@@ -192,7 +204,7 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 				const before = stageAt(view, i);
 				const occupant = sq === before.mamdani ? 'M' : before.board[squareIndex(sq)];
 				const there = occupant ? `${capitalize(pieceName(occupant))} is there` : 'Empty square';
-				steps.push({ title: `Square ${sq}`, detail: `File ${file} = ${sq[0]}, rank ${rank}. ${there}`, dice: [file, rank], tone: 'normal' });
+				steps.push({ title: `Square ${sq}`, detail: `File ${file} = ${sq[0]}, rank ${rank}. ${there}`, dice: stepDice(view, i), tone: 'normal', revealAt: revealAt(e) });
 				break;
 			}
 			case 'reroll':
@@ -206,8 +218,9 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 						e.piece === 'M'
 							? 'The Mamdani always gets a saving roll.'
 							: `The Mamdani on ${view.mamdani || stageAt(view, i).mamdani} has a clear line to ${e.sq}.`,
-					dice: [e.roll ?? 0],
-					tone: e.saved ? 'good' : 'hazard'
+					dice: stepDice(view, i),
+					tone: e.saved ? 'good' : 'hazard',
+					revealAt: revealAt(e)
 				});
 				break;
 			}
@@ -242,6 +255,8 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 export interface DiceChip {
 	text: string;
 	kind: 'die' | 'square' | 'pending' | 'good' | 'bad' | 'plain';
+	/** The d8s thrown for it: the roll, the file and rank dice, a saving die. */
+	dice?: DieSpec[];
 }
 
 /** The phone's one-line version of a turn's dice (the steps are in the moves sheet). */
@@ -250,6 +265,8 @@ export interface DiceSummary {
 	chips: DiceChip[]; // as far as the dice have played
 	line: string;
 	tone: 'normal' | 'good' | 'hazard' | 'muted';
+	/** When the line shows, in ms: once the latest step's dice land. */
+	lineAt?: number;
 }
 
 /**
@@ -270,18 +287,18 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 	let square = '';
 	let rolled = false;
 	let capped = ''; // a hole the cap closes, told after the new one opens
-	for (const e of view.last.slice(0, shown)) {
+	view.last.slice(0, shown).forEach((e, i) => {
 		switch (e.kind) {
 			case 'rolled_pothole': {
 				rolled = true;
 				const even = (e.roll ?? 1) % 2 === 0;
-				chips.push({ text: String(e.roll), kind: 'die' });
+				chips.push({ text: String(e.roll), kind: 'die', dice: stepDice(view, i) });
 				[line, tone, pending] = even ? ['Even: a pothole opens · finding its square…', 'normal', true] : ['Odd: nothing happens', 'muted', false];
 				break;
 			}
 			case 'target':
 				square = e.sq ?? '';
-				chips.push({ text: square, kind: 'square' });
+				chips.push({ text: square, kind: 'square', dice: stepDice(view, i) });
 				pending = false;
 				break;
 			case 'reroll': {
@@ -296,7 +313,7 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 				break;
 			}
 			case 'saving_roll':
-				chips.push({ text: `save ${e.roll}`, kind: e.saved ? 'good' : 'bad' });
+				chips.push({ text: `save ${e.roll}`, kind: e.saved ? 'good' : 'bad', dice: stepDice(view, i) });
 				if (e.saved) [line, tone] = [`${capitalize(pieceName(e.piece))} saved`, 'good'];
 				break;
 			case 'fell':
@@ -326,10 +343,12 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 				[line, tone, pending] = ['No pothole: no square could take one', 'muted', false];
 				break;
 		}
-	}
+	});
 	if (pending) chips.push({ text: '?', kind: 'pending' });
 	const roll = view.last.find((e) => e.kind === 'rolled_pothole');
-	return { who: roll?.color ?? mover, chips, line, tone };
+	const latest = view.last[Math.min(shown, view.last.length) - 1];
+	const lineAt = latest ? revealAt(latest) : undefined;
+	return { who: roll?.color ?? mover, chips, line, tone, ...(lineAt ? { lineAt } : {}) };
 }
 
 /** Whether the dice, not the move, delivered checkmate: a mating move ends the game before any roll. */

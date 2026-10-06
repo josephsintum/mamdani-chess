@@ -79,7 +79,7 @@ export function rippleDelay(from: string, to: string): number {
 	return Math.round(15 * Math.hypot(df, dr));
 }
 
-/** How long a fall into a pothole plays: a teeter, then the drop. It fits one dice step (STEP_MS). */
+/** How long a fall into a pothole plays: a teeter, then the drop. It fits the fall's dice step (dice-timing.json). */
 export const FALL_MS = 550;
 
 /** A board shake: how far it moves and for how long. */
