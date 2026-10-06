@@ -51,13 +51,13 @@
 		{#if compact}
 			{#if lost.length > 0}
 				<span class="glyphs" role="img" aria-label="Lost to potholes: {lost.map((p) => pieceName(p)).join(', ')}">
-					{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt="" class:black={p[0] === 'b'} />{/each}
+					{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt="" />{/each}
 				</span>
 			{/if}
 		{:else}
 			<span class="lost">
 				Lost to potholes:
-				{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} class:black={p[0] === 'b'} />{/each}</span>{/if}
+				{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} />{/each}</span>{/if}
 			</span>
 		{/if}
 	</span>
@@ -166,10 +166,11 @@
 		height: 18px;
 		flex-shrink: 0;
 	}
-	/* A black piece is drawn all in black (a pawn has no light lines at
-	   all), so off the board it needs a light edge to show on the page. */
-	.glyphs img.black {
-		filter: drop-shadow(0 0 0.6px var(--text-body)) drop-shadow(0 0 0.6px var(--text-body));
+	/* The board's white outline, 1 px at this size, so black pieces show on
+	   the dark page. */
+	.glyphs img {
+		filter: drop-shadow(1px 0 0 var(--piece-outline)) drop-shadow(-1px 0 0 var(--piece-outline))
+			drop-shadow(0 1px 0 var(--piece-outline)) drop-shadow(0 -1px 0 var(--piece-outline));
 	}
 	.pill {
 		display: flex;

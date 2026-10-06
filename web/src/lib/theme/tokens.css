@@ -24,6 +24,10 @@
 	--selected-fill: #ff7a3d8c; /* the selected piece's square */
 	--piece-light: #fbf8f0;
 	--piece-dark: #141518;
+	--piece-outline: #fbf8f0; /* the white border around every piece */
+	--trail-white: #fbf8f099; /* the streak behind a gliding piece */
+	--trail-black: #1415188c;
+	--trail-mamdani: #f2c2308c;
 
 	--font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
 	--font-body: 'IBM Plex Sans', system-ui, sans-serif;
