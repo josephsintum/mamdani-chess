@@ -6,6 +6,12 @@
 // Needs the Go server (:8080) and the dev server (:5173) running; it uses the
 // game page's dev-only ?instant mode, so a whole game takes seconds.
 //
+// The dev server reloads every open page when svelte-kit sync rewrites its
+// generated files (after a rebase, new imports, or `pnpm check`/`build` that
+// change them), which breaks a game mid-move. The script reports that as
+// "page reloaded mid-game": run check and build before a play-test, not during
+// one, or point --base at a production server (no reloads).
+//
 //   pnpm --dir web playtest                       # 6 games in Chromium
 //   pnpm --dir web playtest --browser webkit      # Safari's engine
 //   pnpm --dir web playtest --games 12 --drag 0.5 # half the moves by dragging
@@ -160,6 +166,11 @@ async function playGame(browser, n) {
 	]) {
 		p.on('pageerror', (e) => errors.push(`${who} page error: ${e.message.slice(0, 240)}`));
 		p.on('console', (m) => m.type() === 'error' && errors.push(`${who} console: ${m.text().slice(0, 240)}`));
+		// The last few console lines and any reload after the game started, so a failure explains itself.
+		p.recent = [];
+		p.on('console', (m) => p.recent.push(`${m.type()}: ${m.text().slice(0, 160)}`) > 5 && p.recent.shift());
+		// A real reload fires load again (framenavigated also fires for history updates, which are fine).
+		p.on('load', () => p.started && errors.push(`${who} page reloaded mid-game (${p.url()})`));
 	}
 	const started = Date.now();
 	let url;
@@ -176,6 +187,7 @@ async function playGame(browser, n) {
 	}
 	await w.goto(url);
 	await b.goto(url);
+	w.started = b.started = true;
 
 	const movable = (p) => p.locator('.square.movable').count();
 	const over = async () => (await w.locator(RESULT).count()) > 0 && (await b.locator(RESULT).count()) > 0;
@@ -237,6 +249,7 @@ async function playGame(browser, n) {
 			}
 		}
 	}
+	if (errors.length) for (const [p, who] of [[w, 'White'], [b, 'Black']]) errors.push(`${who} last console: ${p.recent.join(' | ') || '(none)'}`);
 	// The result, without the phone card's tally, which may still be counting up.
 	const resultText = (p) =>
 		p
