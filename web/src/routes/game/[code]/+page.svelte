@@ -13,7 +13,8 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import MovesSheet from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
-	import { Animator, STEP_MS } from '#lib/animator.svelte.ts';
+	import { Animator } from '#lib/animator.svelte.ts';
+	import { dicePill, scanOf } from '#lib/dice.ts';
 	import { checkSquare, endedHere, matedByRoll, matedKing, pillFor, repairsShown, stageAt, tallyOf, wonHere } from '#lib/board.ts';
 	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import { BURST_HOLD_MS, countAt } from '#lib/feel.ts';
@@ -45,7 +46,7 @@
 	// Dev only: /game/CODE?instant turns every animation off, for fast play-testing.
 	const instant = dev && page.url.searchParams.has('instant');
 	setInstant(instant);
-	const anim = new Animator(instant ? 0 : STEP_MS);
+	const anim = new Animator(instant ? 0 : undefined);
 	// Phones in portrait get their own layout (canvas row "Phone game: playtest build").
 	const phone = new MediaQuery('max-width: 639px');
 	let sheet: MovesSheet | undefined = $state();
@@ -189,6 +190,11 @@
 	let savedSquare = $derived(view?.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '');
 	// The Mamdani's repairs, celebrated only on a turn that is playing out (never after a reload).
 	let repairs = $derived(view && anim.animated && !instant ? repairsShown(view, shown) : []);
+	// The dice on the board: the pill in the corner, the file and rank dice's
+	// scan, and the target blinking on a re-roll. Only on a turn that plays out.
+	let pill = $derived(view && anim.animated && !instant ? dicePill(view, shown) : null);
+	let scan = $derived(view && anim.animated && !instant ? scanOf(view, shown) : null);
+	let reroll = $derived(!!view && animating && view.last[shown - 1]?.kind === 'reroll');
 	// A speech bubble for a big moment: only on a turn that is playing out,
 	// like the repairs. A game that ended here gets its own line once the dice
 	// stop: a win on time, or a mate by a pothole roll.
@@ -478,6 +484,9 @@
 					{repairs}
 					{quip}
 					{mated}
+					{pill}
+					{scan}
+					{reroll}
 					onmove={move}
 				/>
 			</div>
@@ -640,6 +649,9 @@
 						{repairs}
 						{quip}
 						{mated}
+						{pill}
+						{scan}
+						{reroll}
 						onmove={move}
 					/>
 					{#if resultCard}

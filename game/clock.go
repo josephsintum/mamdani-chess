@@ -14,9 +14,11 @@ const (
 	// out: the next player's clock (or first-move deadline) starts after it.
 	// A longer roll gets a longer pause (see pauseFor).
 	ResolveDelay = 2 * time.Second
-	// StepTime is how long the browser shows each dice step. It must match
-	// STEP_MS in web/src/lib/animator.svelte.ts.
-	StepTime = 550 * time.Millisecond
+	// MoveTime is how long the browser shows the move before the dice roll.
+	// It and each step's time (playTime) come from the browser's table,
+	// web/src/lib/dice-timing.json; TestDiceTimingMatchesTheBrowser keeps
+	// them the same.
+	MoveTime = 550 * time.Millisecond
 	// PauseMargin covers the state's trip to the browser on top of the
 	// animation itself.
 	PauseMargin = 500 * time.Millisecond
@@ -29,17 +31,45 @@ const (
 )
 
 // pauseFor is how long the next clock waits after a turn with events ev:
-// as long as the browser takes to play the dice, one StepTime per event
-// from the pothole roll on, plus PauseMargin, and never less than
-// ResolveDelay. So a long roll (a re-roll, a saving roll, a fall) costs the
-// next player no clock time.
+// as long as the browser takes to play it (the move, then every step from
+// the pothole roll on, each for its own time), plus PauseMargin, and never
+// less than ResolveDelay. So a long roll (a re-roll, a saving roll, a fall)
+// costs the next player no clock time.
 func pauseFor(ev []rules.Event) time.Duration {
 	for i, e := range ev {
 		if e.Kind == rules.RolledPothole {
-			return max(ResolveDelay, time.Duration(len(ev)-i)*StepTime+PauseMargin)
+			total := MoveTime + PauseMargin
+			for _, step := range ev[i:] {
+				total += playTime(step)
+			}
+			return max(ResolveDelay, total)
 		}
 	}
 	return ResolveDelay
+}
+
+// playTime is how long the browser plays one dice step: the throw, the
+// file and rank dice with the scan, a fall, a hole cracking open.
+func playTime(e rules.Event) time.Duration {
+	ms := 550
+	switch e.Kind {
+	case rules.RolledPothole:
+		ms = 600 // even: the pothole roll, then the file and rank dice follow
+		if e.Roll%2 == 1 {
+			ms = 700 // odd: the throw, and the pill saying nothing happens
+		}
+	case rules.Target:
+		ms = 1250 // the file and rank dice, out of sync, with the scan
+	case rules.Reroll:
+		ms = 500 // the target blinks twice
+	case rules.SavingRoll:
+		ms = 750
+	case rules.Fell:
+		ms = 600
+	case rules.PotholeClosed:
+		ms = 400
+	}
+	return time.Duration(ms) * time.Millisecond
 }
 
 // Result reasons the game package adds to the rules package's.
