@@ -89,3 +89,72 @@ func TestDescribeShowsOnlyTheCapClosing(t *testing.T) {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
 }
+
+func TestPieceCodes(t *testing.T) {
+	want := map[rules.Piece]string{rules.NoPiece: "", rules.MamdaniPiece: "M"}
+	for c, prefix := range map[rules.Color]string{rules.White: "w", rules.Black: "b"} {
+		for k, letter := range map[rules.Kind]string{
+			rules.Pawn: "P", rules.Knight: "N", rules.Bishop: "B",
+			rules.Rook: "R", rules.Queen: "Q", rules.King: "K",
+		} {
+			want[rules.NewPiece(c, k)] = prefix + letter
+		}
+	}
+	for p, code := range want {
+		if got := pieceCode(p); got != code {
+			t.Errorf("pieceCode(%d) = %q, want %q", p, got, code)
+		}
+	}
+}
+
+// playOpening plays four plain plies (odd dice) with alice as White and
+// bob as Black.
+func playOpening(t *testing.T, g *Game) {
+	t.Helper()
+	for i, uci := range []string{"e2e4", "e7e5", "g1f3", "b8c6"} {
+		guest := "alice"
+		if i%2 == 1 {
+			guest = "bob"
+		}
+		if err := g.Move(guest, mv(t, uci), i); err != nil {
+			t.Fatalf("%s: %v", uci, err)
+		}
+	}
+}
+
+// Views share the game's log instead of copying it, so a view already sent
+// must not change when the game moves on.
+func TestViewKeepsItsLogAsTheGameMovesOn(t *testing.T) {
+	g := create(t, NewHub(odd{}, nil), "alice")
+	join(t, g, "bob")
+	playOpening(t, g)
+	v, err := g.View("carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := json.Marshal(v)
+	if err := g.Move("alice", mv(t, "f1c4"), 4); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := json.Marshal(v); string(after) != string(before) {
+		t.Errorf("an earlier view changed when the game moved on:\nbefore %s\nafter  %s", before, after)
+	}
+	if now, _ := g.View("carol"); len(now.Log) != 5 || len(v.Log) != 4 {
+		t.Errorf("log lengths: new view %d (want 5), earlier view %d (want 4)", len(now.Log), len(v.Log))
+	}
+}
+
+// A view costs a few allocations, however long the game: none per piece,
+// square name, legal move or log entry.
+func TestViewAllocations(t *testing.T) {
+	g := create(t, NewHub(odd{}, nil), "alice")
+	join(t, g, "bob")
+	playOpening(t, g)
+	for name, r := range map[string]role{"player to move": role(rules.White), "spectator": roleSpectator} {
+		var n float64
+		g.do(func() { n = testing.AllocsPerRun(100, func() { g.viewFor(r) }) })
+		if n > 5 {
+			t.Errorf("%s's view: %v allocations, want at most 5", name, n)
+		}
+	}
+}

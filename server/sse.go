@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"net/http"
 	"time"
@@ -28,9 +29,18 @@ func startSSE(w http.ResponseWriter) (http.Flusher, bool) {
 }
 
 // writeEvent writes one SSE event whose data is already-encoded JSON, and
-// flushes it.
+// flushes it. The data goes straight to w: every stream in a role sends
+// the same view, so copying it through fmt cost each stream a copy.
 func writeEvent(w http.ResponseWriter, fl http.Flusher, event string, data []byte) error {
-	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data); err != nil {
+	for _, s := range [...]string{"event: ", event, "\ndata: "} {
+		if _, err := io.WriteString(w, s); err != nil {
+			return err
+		}
+	}
+	if _, err := w.Write(data); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, "\n\n"); err != nil {
 		return err
 	}
 	fl.Flush()

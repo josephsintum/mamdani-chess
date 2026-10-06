@@ -140,8 +140,17 @@ func (s Square) String() string {
 	if s == NoSquare {
 		return "-"
 	}
-	return string([]byte{byte('a' + s.File()), byte('1' + s.Rank())})
+	return squareNames[s]
 }
+
+// squareNames holds every square's name, so naming one never allocates:
+// views name a square for every legal move, event and pothole.
+var squareNames = func() (names [64]string) {
+	for s := range names {
+		names[s] = string([]byte{byte('a' + s%8), byte('1' + s/8)})
+	}
+	return names
+}()
 
 // ParseSquare parses "a1".."h8".
 func ParseSquare(name string) (Square, error) {

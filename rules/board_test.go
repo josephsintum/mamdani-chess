@@ -71,3 +71,21 @@ func TestParseFEN(t *testing.T) {
 		}
 	}
 }
+
+// nameSink keeps a square's name alive, as a view does, so the
+// allocation test sees it escape.
+var nameSink string
+
+func TestSquareNames(t *testing.T) {
+	for s := A1; s <= H8; s++ {
+		if p, err := ParseSquare(s.String()); err != nil || p != s {
+			t.Errorf("square %d: named %q, which parses as %v (%v)", s, s.String(), p, err)
+		}
+	}
+	if NoSquare.String() != "-" {
+		t.Errorf("NoSquare is named %q, want -", NoSquare.String())
+	}
+	if n := testing.AllocsPerRun(100, func() { nameSink = E4.String() }); n != 0 {
+		t.Errorf("naming a square: %v allocations, want 0", n)
+	}
+}

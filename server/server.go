@@ -3,6 +3,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -113,6 +114,13 @@ func (r *statusRecorder) WriteHeader(code int) {
 func (r *statusRecorder) Write(b []byte) (int, error) {
 	r.wrote = true
 	return r.ResponseWriter.Write(b)
+}
+
+// WriteString passes strings through without converting them to bytes, so
+// writing an SSE event doesn't allocate.
+func (r *statusRecorder) WriteString(s string) (int, error) {
+	r.wrote = true
+	return io.WriteString(r.ResponseWriter, s)
 }
 
 func (r *statusRecorder) Flush() {

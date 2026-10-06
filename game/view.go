@@ -148,8 +148,18 @@ func pieceCode(p rules.Piece) string {
 	case p == rules.MamdaniPiece:
 		return "M"
 	}
-	return colorName(p.Color())[:1] + kindLetters[p.Kind()]
+	return pieceCodes[p]
 }
+
+// pieceCodes holds every piece's code, so filling a board never allocates.
+var pieceCodes = func() (codes [16]string) {
+	for k, letter := range kindLetters {
+		for _, c := range []rules.Color{rules.White, rules.Black} {
+			codes[rules.NewPiece(c, k)] = colorName(c)[:1] + letter
+		}
+	}
+	return codes
+}()
 
 func colorName(c rules.Color) string { return c.String() }
 

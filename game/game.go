@@ -57,8 +57,8 @@ type Game struct {
 	names   [2]string // each player's name when they sat down; "" if unknown
 	subs    map[*Sub]struct{}
 	last    []rules.Event
-	log     []LogEntry
-	lost    [2][]string // piece codes lost to potholes, by color
+	log     []LogEntry  // only ever grows: views share it (see shared)
+	lost    [2][]string // piece codes lost to potholes, by color; only ever grow
 	stats   StatsJSON
 	clock   clock
 	rematch rematch
@@ -522,6 +522,17 @@ func (g *Game) View(guest string) (*View, error) {
 	return v, err
 }
 
+// shared returns s for a view to hold instead of a copy. The game only
+// appends to its log and lost pieces, never changes an entry, and the
+// capped slice can't reach what is appended later. Never nil, so it
+// encodes as [].
+func shared[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s[:len(s):len(s)]
+}
+
 // send replaces whatever is waiting on the sub with v. Only the game's
 // goroutine sends, so this never blocks.
 func send(sub *Sub, v *View) {
@@ -544,9 +555,9 @@ func (g *Game) viewFor(r role) *View {
 		Turn:     colorName(p.Turn),
 		Check:    p.InCheck(p.Turn),
 		Legal:    []MoveJSON{},
-		Last:     []EventJSON{},
-		Log:      append([]LogEntry{}, g.log...),
-		Lost:     LostJSON{White: append([]string{}, g.lost[rules.White]...), Black: append([]string{}, g.lost[rules.Black]...)},
+		Last:     make([]EventJSON, 0, len(g.last)),
+		Log:      shared(g.log),
+		Lost:     LostJSON{White: shared(g.lost[rules.White]), Black: shared(g.lost[rules.Black])},
 		Stats:    g.stats,
 		Seq:      len(g.g.Turns),
 		Clock:    g.clockJSON(now),
@@ -562,8 +573,10 @@ func (g *Game) viewFor(r role) *View {
 		v.Board[s] = pieceCode(pc)
 	}
 	if v.Status == Playing && seated && color == p.Turn {
-		for _, m := range p.LegalMoves() {
-			v.Legal = append(v.Legal, moveJSON(m))
+		moves := p.LegalMoves()
+		v.Legal = make([]MoveJSON, len(moves))
+		for i, m := range moves {
+			v.Legal[i] = moveJSON(m)
 		}
 	}
 	for _, e := range g.last {

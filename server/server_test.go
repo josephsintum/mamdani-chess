@@ -453,3 +453,21 @@ func TestRequestsAreLogged(t *testing.T) {
 		t.Errorf("log %q", line)
 	}
 }
+
+// Every stream in a role writes the same encoded view, so writing one
+// must not copy or allocate.
+func TestWriteEvent(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rec.Body = bytes.NewBuffer(make([]byte, 0, 64<<10))
+	w := &statusRecorder{ResponseWriter: rec, status: http.StatusOK}
+	if err := writeEvent(w, w, "state", []byte(`{"seq":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := rec.Body.String(), "event: state\ndata: {\"seq\":1}\n\n"; got != want {
+		t.Errorf("wrote %q, want %q", got, want)
+	}
+	data := []byte(`{"seq":2}`)
+	if n := testing.AllocsPerRun(100, func() { writeEvent(w, w, "state", data) }); n != 0 {
+		t.Errorf("writing an event: %v allocations, want 0", n)
+	}
+}
