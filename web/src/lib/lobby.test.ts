@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { boardFromFen, formatElapsed, initials, isCode, normalizeCode, untilText } from './lobby.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	boardFromFen,
+	chooseName,
+	formatElapsed,
+	initials,
+	isCode,
+	me,
+	normalizeCode,
+	rememberedName,
+	untilText
+} from './lobby.ts';
 
 describe('normalizeCode', () => {
 	it('upper-cases and keeps only code characters', () => {
@@ -71,5 +81,62 @@ describe('untilText', () => {
 	});
 	it('never goes below a minute', () => {
 		expect(untilText(now - 5_000, now)).toBe('1 min');
+	});
+});
+
+describe('rememberedName', () => {
+	let store: Map<string, string>;
+	const answer = (body: unknown, status = 200) =>
+		vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status })));
+
+	beforeEach(() => {
+		store = new Map();
+		vi.stubGlobal('localStorage', {
+			getItem: (k: string) => store.get(k) ?? null,
+			setItem: (k: string, v: string) => void store.set(k, v),
+			removeItem: (k: string) => void store.delete(k)
+		});
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('is null before the server has named this browser', () => {
+		expect(rememberedName()).toBeNull();
+	});
+	it('keeps the name /api/me gave', async () => {
+		answer({ name: 'Pothole Pete', changesLeft: 3, changesResetAt: null });
+		await me();
+		expect(rememberedName()).toBe('Pothole Pete');
+	});
+	it('forgets it when /api/me says there is no name', async () => {
+		store.set('name', 'Pothole Pete');
+		answer({ name: null, changesLeft: 3, changesResetAt: null });
+		await me();
+		expect(rememberedName()).toBeNull();
+	});
+	it('keeps a newly chosen name', async () => {
+		answer({ name: 'Asphalt Annie', changesLeft: 2, changesResetAt: 1 });
+		await chooseName('Asphalt Annie');
+		expect(rememberedName()).toBe('Asphalt Annie');
+	});
+	it('keeps the old name when a change is refused', async () => {
+		store.set('name', 'Pothole Pete');
+		answer({ error: 'taken' }, 409);
+		await expect(chooseName('Asphalt Annie')).rejects.toThrow();
+		expect(rememberedName()).toBe('Pothole Pete');
+	});
+	it('is null when storage is blocked', () => {
+		vi.stubGlobal('localStorage', {
+			getItem: () => {
+				throw new Error('blocked');
+			}
+		});
+		expect(rememberedName()).toBeNull();
+	});
+	it('still answers when storage is blocked', async () => {
+		vi.stubGlobal('localStorage', undefined);
+		answer({ name: 'Pothole Pete', changesLeft: 3, changesResetAt: null });
+		await expect(me()).resolves.toMatchObject({ name: 'Pothole Pete' });
 	});
 });
