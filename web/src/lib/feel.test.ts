@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { biggerShake, burstShards, captureShake, cellOf, coordinates, knockOffset, rippleDelay, SHAKE, shakeFrames, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
+import { biggerShake, burstShards, captureShake, cellOf, confetti, CONFETTI_MS, countAt, coordinates, knockOffset, rippleDelay, SHAKE, shakeFrames, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
 
 describe('coordinates', () => {
 	it('reads 8 to 1 down and a to h across for White', () => {
@@ -129,5 +129,33 @@ describe('burstShards', () => {
 	});
 	it('is the same burst every time, so a test can pin it', () => {
 		expect(burstShards()).toEqual(burstShards());
+	});
+});
+
+describe('confetti', () => {
+	it('throws 80 strips in three colors, a few of them traffic cones', () => {
+		const pieces = confetti();
+		expect(pieces).toHaveLength(80);
+		expect(pieces.filter((c) => c.cone)).toHaveLength(5);
+		expect(new Set(pieces.map((c) => c.tone))).toEqual(new Set(['accent', 'hazard', 'cream']));
+		expect(confetti()).toEqual(pieces); // seeded: the same every time
+	});
+	it('lands every piece before it is cleared away', () => {
+		for (const c of confetti()) {
+			expect(c.x).toBeGreaterThanOrEqual(0);
+			expect(c.x).toBeLessThanOrEqual(1);
+			expect(c.delay + c.fall).toBeLessThanOrEqual(CONFETTI_MS);
+		}
+	});
+});
+
+describe('countAt', () => {
+	it('counts from 0 up to the value, never past it', () => {
+		expect(countAt(7, 0)).toBe(0);
+		expect(countAt(7, 1)).toBe(7);
+		expect(countAt(7, 2)).toBe(7);
+		const steps = [0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => countAt(7, t));
+		expect(steps).toEqual([...steps].sort((a, b) => a - b));
+		expect(countAt(0, 0.5)).toBe(0);
 	});
 });

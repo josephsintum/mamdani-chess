@@ -237,8 +237,14 @@ async function playGame(browser, n) {
 			}
 		}
 	}
-	const result = (await w.locator(RESULT).innerText().catch(() => '')).replace(/\s*\n+\s*/g, ' · ');
-	const resultBlack = (await b.locator(RESULT).innerText().catch(() => '')).replace(/\s*\n+\s*/g, ' · ');
+	// The result, without the phone card's tally, which may still be counting up.
+	const resultText = (p) =>
+		p
+			.locator(RESULT)
+			.evaluate((el) => [...el.children].filter((c) => !c.classList.contains('ph-tally')).map((c) => c.innerText).join('\n'))
+			.catch(() => '');
+	const result = (await resultText(w)).replace(/\s*\n+\s*/g, ' · ');
+	const resultBlack = (await resultText(b)).replace(/\s*\n+\s*/g, ' · ');
 	if (result !== resultBlack) errors.push(`the two sides show different results: "${result}" / "${resultBlack}"`);
 	const lost = await w.locator('.glyphs').evaluateAll((gs) => gs.map((g) => g.querySelectorAll('img').length));
 	await Promise.all(contexts.map((c) => c.close()));

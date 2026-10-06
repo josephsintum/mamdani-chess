@@ -369,6 +369,31 @@ export function pillFor(view: View, color: Color, animating: boolean): { text: s
 	return { text: view.you === color ? 'Your move' : 'To move', tone: 'turn' };
 }
 
+/** The result card's numbers, counted up one at a time when it appears. */
+export function tallyOf(view: View): { label: string; short: string; value: number }[] {
+	return [
+		{ label: 'Moves', short: 'moves', value: Math.ceil(view.seq / 2) },
+		{ label: 'Saving rolls', short: 'rolls', value: view.stats.savingRolls },
+		{ label: 'Saved by the Mamdani', short: 'saved', value: view.stats.saved },
+		{ label: 'Potholes repaired', short: 'repaired', value: view.stats.repaired },
+		{ label: 'Pieces lost to potholes', short: 'lost', value: view.lost.white.length + view.lost.black.length }
+	];
+}
+
+/**
+ * Whether the game ended while this page watched it being played, rather
+ * than being opened (or reopened) after it was over. Only then does the
+ * result card count up and, for the winner, throw confetti.
+ */
+export function endedHere(prev: View | null, next: View): boolean {
+	return prev?.status === 'playing' && !!next.result;
+}
+
+/** Confetti: the game ended here and this viewer won it. Never for a draw or a spectator. */
+export function wonHere(prev: View | null, next: View): boolean {
+	return endedHere(prev, next) && !next.result?.draw && !!next.result?.winner && next.result.winner === next.you;
+}
+
 /** The mated king's square once a game ends in checkmate, else "". */
 export function matedKing(view: View): string {
 	const r = view.result;
