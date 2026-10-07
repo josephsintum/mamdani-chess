@@ -7,23 +7,20 @@ A browser chess variant to play with friends. It is [Pot-Hole Chess](https://www
 
 Chess comes first: the dice bring the chaos, and the Mamdani is how you fight back. The full rules, with every decision and why it was made, are in [RULES.md](RULES.md).
 
-## Status
+<p align="center">
+  <img src="https://raw.githubusercontent.com/josephsintum/mamdani-chess/pr-screenshots/readme/gameplay-desktop.png" alt="A game on a laptop: three potholes are open, the Mamdani stands on a6, and the dice have just dropped a white pawn into a new pothole on e2" width="68%">
+  <img src="https://raw.githubusercontent.com/josephsintum/mamdani-chess/pr-screenshots/readme/gameplay-phone.png" alt="The same moment on Black's phone: the board turned for Black, and the dice card saying the white pawn falls into e2" width="26%">
+</p>
 
-Early development. You can play a full game: press **Play a friend**, send the link, and play in two browsers. Every roll plays out in a dice tray, and the game ends with a result card. There is no clock yet, and games live in memory, so they vanish when the server restarts.
+<p align="center"><b>Play it at <a href="https://mamdanichess.com">mamdanichess.com</a></b></p>
 
-| Done | Next |
-| --- | --- |
-| Rules engine (`rules/`): move generation, potholes, saving rolls, game end and replay. It is tested against published chess move counts (perft) and 10,000 random games. | A playtest with friends, then clocks and saved games |
-| App: Go server, live updates over Server-Sent Events, SvelteKit frontend with a tap-to-move board, CI and a Dockerfile. | Clocks, saved games, quick match, spectators and emoji reactions, then a public launch |
+## How it works
 
-The plan is in [docs/superpowers/plans/2026-10-03-00-roadmap.md](docs/superpowers/plans/2026-10-03-00-roadmap.md).
-
-## How it will work
-
-- **Guests only.** No accounts; you get a random name like `pizza-rat-astoria`.
+- **Guests only.** No accounts: you get a random New York name like `babylon-governor`, and can trade it for another up to three times a day.
 - **Ways to play.** Quick match with a stranger, or send a friend a link or a 6-character code.
-- **Clock.** One time control for every game: 10 minutes each, plus 5 seconds per move.
-- **Public games.** Every game is public; spectators watch live and react with emoji instead of chat.
+- **Clock.** One time control for every game: 10 minutes each, plus 5 seconds per move. The clock waits while the dice play out.
+- **Public games.** Every game is public: the home page lists the live ones, and anyone can open a game and watch. Emoji reactions for spectators are planned.
+- **Saved games.** Games are saved as they go, so a server restart doesn't lose them. A game ends with a result card and a rematch button.
 
 ## Stack
 
