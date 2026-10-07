@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { contextOf, endQuip, lineParts, pickLine, quipper, QUIPS, quipFor, spoken } from './catchphrases.ts';
-import type { EventJSON, View } from './game.ts';
+import type { Color, EventJSON, View } from './game.ts';
+import { boardOf, viewOf } from './test-boards.ts';
 
 const roll: EventJSON[] = [{ kind: 'moved', from: 'e2', to: 'e4' }, { kind: 'rolled_pothole', roll: 4 }, { kind: 'target', sq: 'a5' }];
+/** Kings on e1 and e8, two pawns each. */
+const base = boardOf({ e1: 'wK', a2: 'wP', b2: 'wP', a7: 'bP', b7: 'bP', e8: 'bK' });
+/** A game's move log, White first. */
+const log = (...sans: string[]) => sans.map((san, i) => ({ san, color: (i % 2 ? 'black' : 'white') as Color, dice: '' }));
 
 describe('quipFor', () => {
 	it('finds the Mamdani falling in, once that step is revealed', () => {
@@ -105,9 +110,8 @@ describe('pairs and the winner-only line', () => {
 });
 
 describe('endQuip', () => {
-	const view = (extra: Partial<View>) =>
-		// Kings on e1 and e8, two pawns each (a2, b2 and a7, b7).
-		({ board: Array.from({ length: 64 }, (_, i) => ({ 4: 'wK', 8: 'wP', 9: 'wP', 48: 'bP', 49: 'bP', 60: 'bK' })[i] ?? ''), last: [], result: null, ...extra }) as unknown as View;
+	// Five moves in: too many for a speedrun.
+	const view = (extra: Partial<View>) => viewOf({ board: base, log: log('e4', 'e5', 'Nf3', 'Nc6', 'Bc4'), ...extra });
 	it("puts a win on time on the loser's king", () => {
 		expect(endQuip(view({ result: { winner: 'black', draw: false, reason: 'timeout' } }))).toEqual({ kind: 'timeWin', sq: 'e1' });
 	});
@@ -131,8 +135,8 @@ describe('endQuip', () => {
 		expect(endQuip(view({}))).toBeNull();
 	});
 	it("brags from the winner's king when it won with just two pieces left", () => {
-		// Black has its king (e8) and one rook (h8); White still has a rook and a pawn.
-		const board = Array.from({ length: 64 }, (_, i) => ({ 0: 'wR', 4: 'wK', 8: 'wP', 60: 'bK', 63: 'bR' })[i] ?? '');
+		// Black has its king and one rook; White still has a rook and a pawn.
+		const board = boardOf({ a1: 'wR', e1: 'wK', a2: 'wP', e8: 'bK', h8: 'bR' });
 		const two = view({ board, result: { winner: 'black', draw: false, reason: 'checkmate' } });
 		expect(endQuip(two)).toEqual({ kind: 'twoLeft', sq: 'e8', afterBurst: true });
 		expect(QUIPS.twoLeft.lines).toEqual(["Everybody want to know what I would do if I didn't win… I guess we'll never know."]);
@@ -140,7 +144,7 @@ describe('endQuip', () => {
 		expect(endQuip(view({ board, result: { winner: 'white', draw: false, reason: 'resignation' } }))).toEqual({ kind: 'resigned', sq: 'e8' });
 	});
 	it('needs the king and exactly one other piece', () => {
-		const lone = Array.from({ length: 64 }, (_, i) => ({ 4: 'wK', 8: 'wP', 9: 'wP', 60: 'bK' })[i] ?? '');
+		const lone = boardOf({ e1: 'wK', a2: 'wP', b2: 'wP', e8: 'bK' });
 		expect(endQuip(view({ board: lone, result: { winner: 'black', draw: false, reason: 'resignation' } }))).toEqual({ kind: 'resigned', sq: 'e1' });
 	});
 	it('has the new end lines', () => {
@@ -159,11 +163,9 @@ describe('endQuip', () => {
 });
 
 describe('rare moments at the end', () => {
-	// Kings on e1 and e8, two pawns each; White wins unless said otherwise.
-	const base = Array.from({ length: 64 }, (_, i) => ({ 4: 'wK', 8: 'wP', 9: 'wP', 48: 'bP', 49: 'bP', 60: 'bK' })[i] ?? '');
-	const log = (...sans: string[]) => sans.map((san, i) => ({ san, color: i % 2 ? 'black' : 'white', dice: '' }));
-	const end = (extra: Record<string, unknown>) =>
-		({ board: base, last: [], log: log('e4', 'e5', 'Nf3', 'Nc6', 'Bc4'), lost: { white: [], black: [] }, clock: { whiteMs: 60_000, blackMs: 60_000, now: 0 }, turn: 'black', result: { winner: 'white', draw: false, reason: 'checkmate' }, ...extra }) as unknown as View;
+	// White mates unless said otherwise.
+	const end = (extra: Partial<View>) =>
+		viewOf({ board: base, log: log('e4', 'e5', 'Nf3', 'Nc6', 'Bc4'), clock: { whiteMs: 60_000, blackMs: 60_000, now: 0 }, turn: 'black', result: { winner: 'white', draw: false, reason: 'checkmate' }, ...extra });
 	it("calls a mate in two moves a speedrun", () => {
 		const v = end({ log: log('f3', 'e5', 'g4', 'Qh4#'), result: { winner: 'black', draw: false, reason: 'checkmate' } });
 		expect(endQuip(v)).toEqual({ kind: 'speedrun', sq: 'e1', afterBurst: true });
@@ -210,9 +212,9 @@ describe('rare moments during a turn', () => {
 	});
 	it("notices a pothole swallowing a side's last piece but its king", () => {
 		const fell: EventJSON[] = [{ kind: 'moved', from: 'e2', to: 'e4' }, { kind: 'rolled_pothole', roll: 2 }, { kind: 'target', sq: 'd8' }, { kind: 'fell', sq: 'd8', piece: 'bQ' }];
-		const onlyKing = Array.from({ length: 64 }, (_, i) => ({ 4: 'wK', 8: 'wP', 60: 'bK' })[i] ?? '');
+		const onlyKing = boardOf({ e1: 'wK', a2: 'wP', e8: 'bK' });
 		expect(quipFor(fell, 4, { after: at(1, onlyKing) })).toEqual({ kind: 'wipedOut', sq: 'd8', index: 3 });
-		const more = Array.from({ length: 64 }, (_, i) => ({ 4: 'wK', 8: 'wP', 48: 'bP', 60: 'bK' })[i] ?? '');
+		const more = boardOf({ e1: 'wK', a2: 'wP', a7: 'bP', e8: 'bK' });
 		expect(quipFor(fell, 4, { after: at(1, more) })).toEqual({ kind: 'queenFell', sq: 'd8', index: 3 });
 		expect(QUIPS.wipedOut.lines).toEqual(['Gone. All of them.']);
 	});
@@ -221,8 +223,8 @@ describe('rare moments during a turn', () => {
 describe('contextOf', () => {
 	it("reads the board and open holes after each event, and the game's repairs", () => {
 		const last: EventJSON[] = [{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' }, { kind: 'rolled_pothole', roll: 2 }, { kind: 'target', sq: 'c5' }, { kind: 'pothole_opened', sq: 'c5', color: 'white' }];
-		const board = Array.from({ length: 64 }, (_, i) => ({ 4: 'wK', 28: 'wP', 60: 'bK' })[i] ?? '');
-		const v = { board, last, mamdani: 'a5', potholes: [{ sq: 'c5', by: 'white', left: 3 }], lost: { white: [], black: [] }, stats: { savingRolls: 0, saved: 0, repaired: 4, mamdaniFell: false } } as unknown as View;
+		const board = boardOf({ e1: 'wK', e4: 'wP', e8: 'bK' });
+		const v = viewOf({ board, last, mamdani: 'a5', potholes: [{ sq: 'c5', by: 'white', left: 3 }], stats: { savingRolls: 0, saved: 0, repaired: 4, mamdaniFell: false } });
 		const ctx = contextOf(v);
 		expect(ctx.repaired).toBe(4);
 		expect(ctx.after!(3).holes).toBe(1);

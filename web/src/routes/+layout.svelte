@@ -1,8 +1,9 @@
 <script lang="ts">
 	import '#lib/theme/tokens.css';
 	import Toaster from '#lib/Toaster.svelte';
+	import type { LayoutProps } from './$types';
 
-	let { children } = $props();
+	let { children }: LayoutProps = $props();
 </script>
 
 {@render children()}

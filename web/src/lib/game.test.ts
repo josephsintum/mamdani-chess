@@ -72,7 +72,7 @@ describe('trySendMove', () => {
 	it('gives a refusal a message even when the response has no status text (HTTP/2)', async () => {
 		vi.stubGlobal('fetch', async () => new Response('', { status: 400 }));
 		const sent = await trySendMove('ABC123', move, 0);
-		expect(typeof sent === 'object' && sent.refused.length > 0).toBe(true);
+		expect(sent).toEqual({ refused: 'The server refused the move.' });
 	});
 
 	it('hands back the current state a conflict carries, so the page can resync at once', async () => {
@@ -111,7 +111,7 @@ describe('joinNotice', () => {
 		expect(joinNotice(null, at('black', 'playing'), false)).toBe("You joined pizza-rat-astoria · You're Black");
 	});
 
-	it("tells White their color when they arrive at a started game (a rematch swaps colors)", () => {
+	it('tells White their color when they arrive at a started game', () => {
 		expect(joinNotice(null, at('white', 'playing'), false)).toBe("Playing bagel-soho · You're White, your move");
 	});
 

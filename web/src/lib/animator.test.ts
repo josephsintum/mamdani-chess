@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Animator } from './animator.svelte.ts';
+import { MOVE_MS, playMs } from './dice.ts';
 import type { EventJSON, View } from './game.ts';
 
 const roll: EventJSON[] = [
@@ -116,8 +117,7 @@ describe('Animator with the dice table', () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
 
-	it('waits for the move, then for each step as long as it plays', async () => {
-		const { MOVE_MS, playMs } = await import('./dice.ts');
+	it('waits for the move, then for each step as long as it plays', () => {
 		const a = new Animator();
 		a.receive(view(0));
 		a.receive(view(1, roll));

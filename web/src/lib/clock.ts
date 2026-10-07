@@ -1,8 +1,7 @@
 // The game clocks. The server sends each side's remaining time and when the
 // running clock started; the browser counts down from those locally.
 
-import type { Color } from './game.ts';
-import type { ClockJSON } from './wire.gen.ts';
+import type { ClockJSON, Color } from './wire.gen.ts';
 
 export type { ClockJSON };
 
@@ -19,7 +18,7 @@ export function paused(clock: ClockJSON, serverNow: number): boolean {
 }
 
 /** How long each side has for its first move (FirstMoveTime in game/clock.go). */
-export const FIRST_MOVE_MS = 60_000;
+const FIRST_MOVE_MS = 60_000;
 
 /**
  * Time left to make a first move, in ms, or null when there is no deadline.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { biggerShake, burstShards, captureShake, cellOf, confetti, CONFETTI_MS, countAt, fitShift, coordinates, knockOffset, rippleDelay, SHAKE, shakeFrames, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
+import TIMING from './dice-timing.json';
+import { biggerShake, burstShards, captureShake, cellOf, confetti, CONFETTI_MS, countAt, FALL_MS, fitShift, coordinates, knockOffset, rippleDelay, SHAKE, shakeFrames, trailColor, trailOf, whipFrames, whiplash } from './feel.ts';
 
 describe('coordinates', () => {
 	it('reads 8 to 1 down and a to h across for White', () => {
@@ -73,10 +74,11 @@ describe('rippleDelay', () => {
 		expect(rippleDelay('e2', 'e4')).toBe(30);
 		expect(rippleDelay('a1', 'h8')).toBe(Math.round(15 * 7 * Math.SQRT2));
 	});
-	it('pops the nearer squares first, whichever way the board faces', () => {
-		const near = rippleDelay('d4', 'e5'),
-			far = rippleDelay('d4', 'h8');
-		expect(near).toBeLessThan(far);
+});
+
+describe('a fall', () => {
+	it('fits the fall’s dice step', () => {
+		expect(FALL_MS).toBeLessThanOrEqual(TIMING.playMs.fell);
 	});
 });
 

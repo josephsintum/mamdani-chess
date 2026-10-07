@@ -11,11 +11,11 @@
 	import DiceSummary from '#lib/DiceSummary.svelte';
 	import DiceTray from '#lib/DiceTray.svelte';
 	import MoveLog from '#lib/MoveLog.svelte';
-	import MovesSheet from '#lib/MovesSheet.svelte';
+	import MovesSheet, { LANDSCAPE } from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
-	import { dicePill, scanOf } from '#lib/dice.ts';
-	import { checkSquare, endedHere, matedKing, pillFor, repairsShown, resultCardOf, stageAt, tallyOf, wonHere } from '#lib/board.ts';
+	import { dicePill, scanOf, type DicePill } from '#lib/dice.ts';
+	import { checkSquare, endedHere, matedKing, pillFor, repairsShown, resultCardOf, stageAt, tallyOf, wonHere, type Stage } from '#lib/board.ts';
 	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import { BURST_HOLD_MS, countAt } from '#lib/feel.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
@@ -29,9 +29,11 @@
 		gameExists,
 		isStale,
 		joinNotice,
+		opponent,
 		showsOffline,
 		rematch,
 		resign,
+		sideName,
 		trySendMove,
 		type Color,
 		type MoveJSON,
@@ -49,8 +51,8 @@
 	const anim = new Animator(instant ? 0 : undefined);
 	// Phones get their own layout (canvas row "Phone game: playtest build"):
 	// upright, or on their side, where the board sits left of everything else.
-	const phone = new MediaQuery('(max-width: 639px), (orientation: landscape) and (max-height: 499px)');
-	const landscape = new MediaQuery('(orientation: landscape) and (max-height: 499px)');
+	const phone = new MediaQuery(`(max-width: 639px), ${LANDSCAPE}`);
+	const landscape = new MediaQuery(LANDSCAPE);
 	// Arrived from a rematch: the page that sent us here left a note, so the
 	// start-of-game notice says "Rematch" rather than "You joined".
 	const REMATCH_NOTE = 'rematch';
@@ -61,7 +63,7 @@
 	// Your move, shown before the server confirms it (One Million Chessboards
 	// style): the piece glides at once. If the server refuses the move, the
 	// guess is dropped and the piece glides back.
-	let optimistic = $state<{ seq: number; move: MoveJSON } | null>(null);
+	let optimistic = $state.raw<{ seq: number; move: MoveJSON } | null>(null);
 	// The guess couldn't reach the server; it is sent again once it can.
 	let unsent = $state(false);
 	let connected = $state(false);
@@ -72,7 +74,7 @@
 	let notFound = $state(false);
 	let lost = $state(false);
 	let error = $state('');
-	let busy = $state(false); // a move or resignation is on its way
+	let busy = $state(false); // a request is on its way
 	let confirmResign = $state(false);
 	let copyHint = $state('');
 	// On phones the start-of-game notice ("… joined") shows in the dice card
@@ -104,7 +106,7 @@
 		if (notice && phone.current) joined = notice;
 		else if (notice) notify.info(notice, { id: 'join' });
 		anim.receive(next, { hidden: document.hidden });
-		if (unsent) resend();
+		if (unsent) void resend();
 		// A rematch accepted while this page is open: players go to it. Replace,
 		// so Back returns to where they were before, not to a page that would
 		// forward them again. A full load gives the new game a fresh stream.
@@ -135,7 +137,7 @@
 	}
 
 	onMount(() => {
-		if (page.params.code !== code) replaceState(`/game/${code}${location.search}`, page.state);
+		if (page.params.code !== code) void replaceState(`/game/${code}${location.search}`, page.state);
 		// Every stream this page has open. A new one replaces the others only
 		// once it is up, so the server never sees the player leave in between
 		// (which would withdraw a rematch offer, say).
@@ -143,7 +145,7 @@
 		let generation = 0; // the latest connect(); older retries do nothing
 		let retry: ReturnType<typeof setTimeout> | undefined;
 		let disposed = false; // the page has gone: open nothing more
-		let checked = false; // the first failure is checked at once: a mistyped code shouldn't wait
+		let askedOnce = false; // the first failure is checked at once: a mistyped code shouldn't wait
 		let failures = 0; // refused streams in a row, for the backoff; a stream that opens resets it
 		const connect = () => {
 			if (disposed) return;
@@ -181,10 +183,10 @@
 					if (exists) connect();
 					else if (view) lost = true;
 					else notFound = true;
-				}, view || checked ? retryDelay(failures++) : 0);
-				checked = true;
+				}, view || askedOnce ? retryDelay(failures++) : 0);
+				askedOnce = true;
 			};
-			es.addEventListener('state', (e) => receive(JSON.parse((e as MessageEvent<string>).data)));
+			es.addEventListener('state', (e) => receive(JSON.parse(e.data) as View));
 		};
 		connect();
 		// The browser knows at once when the device loses its network; the
@@ -195,7 +197,10 @@
 		const backOnline = () => connect();
 		window.addEventListener('offline', goneOffline);
 		window.addEventListener('online', backOnline);
-		const tick = setInterval(() => (serverNow = Date.now() + offset), 100);
+		// Only a game in progress has a running clock or a first-move deadline.
+		const tick = setInterval(() => {
+			if (view?.status === 'playing') serverNow = Date.now() + offset;
+		}, 100);
 		// Coming back to a tab mid-animation jumps to the end of the roll.
 		const finishOnReturn = () => {
 			if (!document.hidden) anim.finish();
@@ -215,13 +220,15 @@
 	});
 
 	let animating = $derived(anim.animating);
+	// The guess, while it is for the turn on screen.
+	let guess = $derived(optimistic && optimistic.seq === view?.seq ? optimistic : null);
 	let stage = $derived.by(() => {
 		if (!view) return null;
 		const base = stageAt(view, shown);
-		if (optimistic?.seq !== view.seq) return base;
-		return { ...base, ...applyMove(base, optimistic.move) };
+		if (!guess) return base;
+		return { ...base, ...applyMove(base, guess.move) };
 	});
-	let checked = $derived(view && stage ? checkSquare(view, stage, { animating, guessing: optimistic?.seq === view.seq }) : '');
+	let checked = $derived(view && stage ? checkSquare(view, stage, { animating, guessing: !!guess }) : '');
 	let savedSquare = $derived(view?.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '');
 	// The Mamdani's repairs, celebrated only on a turn that is playing out (never after a reload).
 	let repairs = $derived(view && anim.animated && !instant ? repairsShown(view, shown) : []);
@@ -247,16 +254,14 @@
 	});
 	let you = $derived(view?.you ?? 'spectator');
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
-	let top = $derived<Color>(bottom === 'white' ? 'black' : 'white');
+	let top = $derived(opponent(bottom));
 	let lastMove = $derived.by(() => {
-		if (optimistic && optimistic.seq === view?.seq) return { from: optimistic.move.from, to: optimistic.move.to };
+		if (guess) return { from: guess.move.from, to: guess.move.to };
 		const m = view?.last.find((e) => e.kind === 'moved');
 		return m?.from && m?.to ? { from: m.from, to: m.to } : null;
 	});
 	let playing = $derived(view?.status === 'playing');
 	let isPlayer = $derived(you === 'white' || you === 'black');
-	let topPill = $derived(view ? pillFor(view, top, animating) : { text: '', tone: 'turn' as const });
-	let bottomPill = $derived(view ? pillFor(view, bottom, animating) : { text: '', tone: 'turn' as const });
 
 	async function move(m: MoveJSON) {
 		if (!view || busy) return;
@@ -285,17 +290,17 @@
 	// Sends an unsent move again. The same seq means the server refuses a
 	// copy of a move it already has; then the stream's state settles it.
 	async function resend() {
-		const guess = optimistic;
-		if (!unsent || !guess || view?.seq !== guess.seq) return;
+		const pending = guess;
+		if (!unsent || !pending) return;
 		if (!connected) return retryLater();
 		unsent = false;
-		const sent = await trySendMove(code, guess.move, guess.seq);
+		const sent = await trySendMove(code, pending.move, pending.seq);
 		if (sent === 'unsent') {
 			unsent = true;
 			retryLater();
 		} else if (sent !== 'sent') {
 			// Usually the server already has the move; its state settles it.
-			if (optimistic === guess) optimistic = null;
+			if (optimistic === pending) optimistic = null;
 			if (sent.state) receive(sent.state);
 		}
 	}
@@ -321,8 +326,8 @@
 			copyHint = 'Link copied';
 		} catch {
 			// No clipboard on plain-http addresses: select the link instead.
-			const link = document.getElementById('link') as HTMLInputElement | null;
-			link?.select();
+			const link = document.getElementById('link');
+			if (link instanceof HTMLInputElement) link.select();
 			if (!phone.current) copyHint = 'Press Ctrl+C (⌘C on a Mac) to copy';
 			else copyHint = link ? 'Tap and hold the link to copy it' : 'Copy the address bar to share';
 		}
@@ -332,7 +337,7 @@
 	}
 
 	async function share() {
-		if ((await shareLink(page.url.href)) === 'failed') copyLink();
+		if ((await shareLink(page.url.href)) === 'failed') void copyLink();
 	}
 
 	async function newGame() {
@@ -346,7 +351,6 @@
 		}
 	}
 
-	let clockFor = (c: Color) => (view ? timeLeft(view.clock, c, serverNow) : 0);
 	let pausedForDice = $derived(!!view && paused(view.clock, serverNow));
 	let firstMove = $derived(view ? firstMoveLeft(view.clock, serverNow) : null);
 
@@ -357,7 +361,7 @@
 		if (view.result) return animating ? 'Last move played…' : 'Game over';
 		if (unsent) return connected ? 'Sending your move…' : 'Reconnecting — your move will be sent';
 		if (animating) return 'Dice are rolling…';
-		const side = view.turn === 'white' ? 'White' : 'Black';
+		const side = sideName(view.turn);
 		const yours = view.turn === you;
 		let text = yours ? 'Your move' : `${side} to move`;
 		// Name who is in check: a bare "check!" was read as the reader's own king.
@@ -446,6 +450,50 @@
 	<title>Game {code} · Mamdani Chess</title>
 </svelte:head>
 
+<!-- A player's bar; the phone's is compact, which ignores pausedForDice. -->
+{#snippet bar(view: View, stage: Stage, c: Color, compact: boolean)}
+	{@const p = pillFor(view, c, animating)}
+	<PlayerBar
+		{compact}
+		color={c}
+		name={view.players[c]}
+		you={you === c}
+		lost={stage.lost[c]}
+		pill={compact ? phonePill(p, c) : p.text}
+		pillTone={p.tone}
+		toMove={playing && view.turn === c && !animating}
+		clockMs={timeLeft(view.clock, c, serverNow)}
+		seq={view.seq}
+		ticking={view.clock.running === c && !pausedForDice}
+		pausedForDice={playing && view.turn === c && pausedForDice}
+		offline={showsOffline(view, c)}
+	/>
+{/snippet}
+
+{#snippet board(view: View, stage: Stage, dim: boolean, cornerPill: DicePill | null)}
+	<Board
+		{stage}
+		legal={view.legal}
+		{lastMove}
+		flipped={bottom === 'black'}
+		interactive={!animating && !busy && !optimistic && playing}
+		{dim}
+		check={checked}
+		saved={savedSquare}
+		{repairs}
+		{quip}
+		{mated}
+		pill={cornerPill}
+		{scan}
+		{reroll}
+		onmove={move}
+	/>
+{/snippet}
+
+{#snippet flag()}
+	<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"></path><path d="M4 4h12l-2 4 2 4H4"></path></svg>
+{/snippet}
+
 {#if phone.current && view && stage && !notFound}
 	<div class="phone" class:land={landscape.current}>
 		<header class="ph-head">
@@ -468,57 +516,9 @@
 		<p class="sr-only" aria-live="polite">{status}</p>
 
 		<div class="ph-play">
-			<div class="ph-top">
-			<PlayerBar
-				compact
-				color={top}
-				name={view.players[top]}
-				you={you === top}
-				lost={stage.lost[top]}
-				pill={phonePill(topPill, top)}
-				pillTone={topPill.tone}
-				toMove={playing && view.turn === top && !animating}
-				clockMs={clockFor(top)}
-				seq={view.seq}
-				ticking={view.clock.running === top && !pausedForDice}
-				offline={showsOffline(view, top)}
-			/>
-			</div>
-			<div class="ph-board">
-				<Board
-					{stage}
-					legal={view.legal}
-					{lastMove}
-					flipped={bottom === 'black'}
-					interactive={!animating && !busy && !optimistic && playing}
-					dim={!!resultCard || view.status === 'waiting'}
-					check={checked}
-					saved={savedSquare}
-					{repairs}
-					{quip}
-					{mated}
-					pill={null}
-					{scan}
-					{reroll}
-					onmove={move}
-				/>
-			</div>
-			<div class="ph-me">
-			<PlayerBar
-				compact
-				color={bottom}
-				name={view.players[bottom]}
-				you={you === bottom}
-				lost={stage.lost[bottom]}
-				pill={phonePill(bottomPill, bottom)}
-				pillTone={bottomPill.tone}
-				toMove={playing && view.turn === bottom && !animating}
-				clockMs={clockFor(bottom)}
-				seq={view.seq}
-				ticking={view.clock.running === bottom && !pausedForDice}
-				offline={showsOffline(view, bottom)}
-			/>
-			</div>
+			<div class="ph-top">{@render bar(view, stage, top, true)}</div>
+			<div class="ph-board">{@render board(view, stage, !!resultCard || view.status === 'waiting', null)}</div>
+			<div class="ph-me">{@render bar(view, stage, bottom, true)}</div>
 		</div>
 
 		<!-- The card and the bottom bar keep one height whatever shows, so the
@@ -546,7 +546,7 @@
 			</section>
 		{:else if confirmResign}
 			<section class="ph-card danger-line" aria-label="Resign">
-				<span class="ph-title">Resign this game? <span class="muted">{you === 'white' ? 'Black' : 'White'} wins.</span></span>
+				<span class="ph-title">Resign this game? <span class="muted">{sideName(top)} wins.</span></span>
 				<div class="ph-two">
 					<button type="button" class="outline" onclick={() => (confirmResign = false)}>Keep playing</button>
 					<button type="button" class="danger" onclick={doResign} disabled={busy}>Yes, resign</button>
@@ -590,6 +590,7 @@
 				{:else if resultCard}<button type="button" class="primary" onclick={newGame} disabled={busy}>New game</button>{/if}
 				<button type="button" class="solid" onclick={(e) => sheet?.open(e.currentTarget)}>
 					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+					<!-- A literal, so the leading space survives (Svelte trims it from plain text). -->
 					<span>Moves{#if !rematchAction}<span class="and-rolls">{' and rolls'}</span>{/if}</span>
 				</button>
 				{#if you === 'spectator' && !resultCard}
@@ -597,7 +598,7 @@
 				{/if}
 				{#if !resultCard && isPlayer && playing}
 					<button type="button" class="outline" onclick={() => (confirmResign = true)} disabled={busy}>
-						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"></path><path d="M4 4h12l-2 4 2 4H4"></path></svg>
+						{@render flag()}
 						Resign
 					</button>
 				{/if}
@@ -654,38 +655,9 @@
 			</div>
 
 			<div class="board-col">
-				<PlayerBar
-					color={top}
-					name={view.players[top]}
-					you={you === top}
-					lost={stage.lost[top]}
-					pill={topPill.text}
-					pillTone={topPill.tone}
-					toMove={playing && view.turn === top && !animating}
-					clockMs={clockFor(top)}
-					seq={view.seq}
-					ticking={view.clock.running === top && !pausedForDice}
-					pausedForDice={playing && view.turn === top && pausedForDice}
-					offline={showsOffline(view, top)}
-				/>
+				{@render bar(view, stage, top, false)}
 				<div class="board-wrap">
-					<Board
-						{stage}
-						legal={view.legal}
-						{lastMove}
-						flipped={bottom === 'black'}
-						interactive={!animating && !busy && !optimistic && playing}
-						dim={!!resultCard}
-						check={checked}
-						saved={savedSquare}
-						{repairs}
-						{quip}
-						{mated}
-						{pill}
-						{scan}
-						{reroll}
-						onmove={move}
-					/>
+					{@render board(view, stage, !!resultCard, pill)}
 					{#if resultCard}
 						<div class="result" class:won={resultCard.title === 'You win'} class:lost={resultCard.lost} role="status" in:flipIn={{ lift: 'translate(-50%, -50%)' }}>
 							<span class="kicker">{resultCard.kicker}</span>
@@ -694,20 +666,7 @@
 						</div>
 					{/if}
 				</div>
-				<PlayerBar
-					color={bottom}
-					name={view.players[bottom]}
-					you={you === bottom}
-					lost={stage.lost[bottom]}
-					pill={bottomPill.text}
-					pillTone={bottomPill.tone}
-					toMove={playing && view.turn === bottom && !animating}
-					clockMs={clockFor(bottom)}
-					seq={view.seq}
-					ticking={view.clock.running === bottom && !pausedForDice}
-					pausedForDice={playing && view.turn === bottom && pausedForDice}
-					offline={showsOffline(view, bottom)}
-				/>
+				{@render bar(view, stage, bottom, false)}
 			</div>
 
 			<div class="side-col">
@@ -753,7 +712,7 @@
 						</div>
 					{:else}
 						<button class="outline resign" onclick={() => (confirmResign = true)} disabled={busy}>
-							<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"></path><path d="M4 4h12l-2 4 2 4H4"></path></svg>
+							{@render flag()}
 							Resign
 						</button>
 					{/if}
@@ -819,7 +778,7 @@
 		border-color: var(--hazard);
 		color: var(--hazard-text);
 	}
-	.ph-icon {
+	.phone .ph-icon {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -869,9 +828,6 @@
 		padding: 6px 12px;
 		border-color: var(--accent-line);
 	}
-	.ph-card.accent-line .ph-detail {
-		line-height: 1.25;
-	}
 	.ph-card.danger-line {
 		border-color: var(--hazard);
 	}
@@ -885,7 +841,6 @@
 	/* "… joined": in the dice card's place until the first move. */
 	.ph-card.notice {
 		gap: 2px;
-		margin-bottom: 0;
 		border-color: var(--accent-line);
 		background: var(--accent-wash);
 		font-size: 14px;
@@ -988,8 +943,10 @@
 		white-space: nowrap;
 		text-overflow: ellipsis;
 	}
+	.ph-card.accent-line .ph-detail {
+		line-height: 1.25;
+	}
 	.ph-error {
-		margin-bottom: 0;
 		font-size: 14px;
 		color: var(--hazard-text);
 	}
@@ -1120,20 +1077,6 @@
 		grid-area: card;
 		align-self: start;
 		margin: 0;
-	}
-	.phone .ph-icon {
-		padding: 0;
-		border: 0;
-		background: none;
-		color: var(--text-body);
-	}
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	main {
 		max-width: 1400px;

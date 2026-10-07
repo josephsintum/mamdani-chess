@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Header from '#lib/Header.svelte';
-	import { createGame, matchCard, type View } from '#lib/game.ts';
+	import { FriendGame } from '#lib/friend.svelte.ts';
+	import { fetchView, matchCard, sideName, type MatchCard, type MatchSide } from '#lib/game.ts';
 	import { reducedMotion } from '#lib/motion.ts';
 	import { formatElapsed, me, type Me } from '#lib/lobby.ts';
 	import { retryDelay } from '#lib/reconnect.ts';
@@ -15,23 +16,20 @@
 	const FOUND_MS = 2000;
 
 	let user = $state<Me | null>(null);
-	let started = Date.now();
+	const started = Date.now();
 	let now = $state(Date.now());
 	let connected = $state(false);
-	let error = $state('');
-	let busy = $state(false);
 	let elapsed = $derived(now - started);
-	let found = $state<{ code: string; card: ReturnType<typeof matchCard> } | null>(null);
+	let found = $state<{ code: string; card: MatchCard } | null>(null);
 	// The game the guest is already playing, if any: one game at a time.
 	let already = $state('');
+	const friend = new FriendGame();
 
 	// Back to a game the guest is seated in: straight in if nobody has
 	// moved yet (a reload of the opponent-found screen), otherwise ask.
 	async function resume(code: string) {
 		try {
-			const res = await fetch(`/api/games/${code}`);
-			const view = (await res.json()) as View;
-			if (res.ok && view.seq === 0) return play(code);
+			if ((await fetchView(code)).seq === 0) return play(code);
 		} catch {
 			// fall through to asking
 		}
@@ -41,16 +39,14 @@
 
 	function play(code: string) {
 		clearTimeout(foundTimer);
-		goto(`/game/${code}`, { replace: true, state: { matched: true } });
+		void goto(`/game/${code}`, { replace: true, state: { matched: true } });
 	}
 
 	// Who's who, from the game itself (GET shows it without taking a seat);
 	// then into the game after FOUND_MS, or at once if that fails.
 	async function matched(code: string) {
 		try {
-			const res = await fetch(`/api/games/${code}`);
-			if (!res.ok) throw new Error(res.statusText);
-			found = { code, card: matchCard((await res.json()) as View) };
+			found = { code, card: matchCard(await fetchView(code)) };
 		} catch {
 			return play(code);
 		}
@@ -58,7 +54,6 @@
 	}
 
 	onMount(() => {
-		started = Date.now();
 		let es: EventSource | undefined;
 		let retry: ReturnType<typeof setTimeout> | undefined;
 		let done = false; // matched, or the page has gone: open nothing more
@@ -73,13 +68,13 @@
 				// Joining the queue gave the guest a name if they had none.
 				me()
 					.then((m) => (user = m))
-					.catch(() => {});
+					.catch(() => {}); // the header keeps what it shows
 			});
 			stream.addEventListener('matched', (e) => {
 				done = true;
 				stream.close(); // before the server ends the stream, so it isn't reopened
-				const { code } = JSON.parse((e as MessageEvent<string>).data);
-				matched(code);
+				const { code } = JSON.parse(e.data) as { code: string };
+				void matched(code);
 			});
 			// A network error reconnects by itself. An error answer (a proxy's
 			// 502 while the server restarts) closes the stream for good: open a
@@ -90,15 +85,15 @@
 				// Refused (409: already in a game) or a proxy error: check which.
 				retry = setTimeout(async () => {
 					const m = await me().catch(() => null);
-					if (m?.game) return resume(m.game);
-					connect();
+					if (m?.game) void resume(m.game);
+					else connect();
 				}, retryDelay(failures++));
 			};
 		};
 		me()
 			.then((m) => {
 				user = m;
-				if (m.game) resume(m.game);
+				if (m.game) void resume(m.game);
 				else connect();
 			})
 			.catch(() => connect());
@@ -111,18 +106,20 @@
 			clearTimeout(foundTimer);
 		};
 	});
-
-	async function playFriend() {
-		busy = true;
-		error = '';
-		try {
-			await goto(`/game/${await createGame()}`);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-			busy = false;
-		}
-	}
 </script>
+
+{#snippet ring(done: boolean, time?: string)}
+	<div class="ring" class:done aria-hidden="true">
+		<span class="outer"></span>
+		<span class="middle"></span>
+		<span class="inner"></span>
+		{#if time}<span class="time">{time}</span>{/if}
+	</div>
+{/snippet}
+
+{#snippet side(s: MatchSide, you: boolean)}
+	<p class="side"><span class="swatch {s.color}" aria-hidden="true"></span><span class="who">{s.name}</span>{#if you}{' '}<span class="you">(you)</span>{/if}<span class="color">{sideName(s.color)}</span></p>
+{/snippet}
 
 <svelte:head>
 	<title>Finding an opponent · Mamdani Chess</title>
@@ -132,11 +129,7 @@
 
 <main>
 	{#if already}
-		<div class="ring done" aria-hidden="true">
-			<span class="outer"></span>
-			<span class="middle"></span>
-			<span class="inner"></span>
-		</div>
+		{@render ring(true)}
 		<div class="text" role="status">
 			<h1>You're in a game</h1>
 			<p>One game at a time: finish that one, then find another.</p>
@@ -144,29 +137,20 @@
 		<a class="cancel rejoin" href="/game/{already}">Rejoin game</a>
 		<a class="cancel" href="/">Home</a>
 	{:else if found}
-		<div class="ring done" aria-hidden="true">
-			<span class="outer"></span>
-			<span class="middle"></span>
-			<span class="inner"></span>
-		</div>
+		{@render ring(true)}
 		<div class="text" role="status">
 			<h1>Opponent found</h1>
 			<div class="found">
-				<p class="side"><span class="swatch {found.card.you.color}" aria-hidden="true"></span><span class="who">{found.card.you.name}</span> <span class="you">(you)</span><span class="color">{found.card.you.color === 'white' ? 'White' : 'Black'}</span></p>
+				{@render side(found.card.you, true)}
 				<p class="vs">vs</p>
-				<p class="side"><span class="swatch {found.card.them.color}" aria-hidden="true"></span><span class="who">{found.card.them.name}</span><span class="color">{found.card.them.color === 'white' ? 'White' : 'Black'}</span></p>
+				{@render side(found.card.them, false)}
 			</div>
 		</div>
 		<p class="joining">Joining game…</p>
 		<div class="bar" aria-hidden="true"><span style:animation-duration="{FOUND_MS}ms" class:still={reducedMotion()}></span></div>
 		<button class="cancel go" onclick={() => play(found!.code)}>Go now</button>
 	{:else}
-		<div class="ring" aria-hidden="true">
-			<span class="outer"></span>
-			<span class="middle"></span>
-			<span class="inner"></span>
-			<span class="time">{formatElapsed(elapsed)}</span>
-		</div>
+		{@render ring(false, formatElapsed(elapsed))}
 		<div class="text">
 			<h1>Looking for an opponent</h1>
 			<p>You'll be paired with the next player who taps Play online. Colors are picked at random.</p>
@@ -182,10 +166,10 @@
 		{#if elapsed >= OFFER_FRIEND_MS}
 			<p class="friend">
 				Nobody yet.
-				<button onclick={playFriend} disabled={busy}>{busy ? 'Starting…' : 'Invite a friend instead'}</button>
+				<button onclick={friend.start} disabled={friend.busy}>{friend.busy ? 'Starting…' : 'Invite a friend instead'}</button>
 			</p>
 		{/if}
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
+		{#if friend.error}<p class="error" role="alert">{friend.error}</p>{/if}
 	{/if}
 </main>
 
@@ -404,14 +388,6 @@
 		font: inherit;
 		font-weight: 600;
 		cursor: pointer;
-	}
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	/* Phones: everything down to Cancel fits on an iPhone SE (320×568). */
 	@media (max-width: 639px) {

@@ -9,6 +9,8 @@
 	let { die, small = false }: { die: DieSpec; small?: boolean } = $props();
 
 	let face = $state(0); // 0: landed, showing the value
+	// A pothole roll's die shows even (yellow) or odd only once it lands.
+	let tone = $derived(face && (die.tone === 'pot' || die.tone === 'dull') ? '' : die.tone);
 
 	// Thrown once, when the die appears: the tray redraws its steps as the
 	// roll plays, with equal specs, and must not throw it again.
@@ -32,8 +34,7 @@
 	}
 </script>
 
-<!-- A pothole roll's die shows even (yellow) or odd only once it lands. -->
-<span class="die {face && (die.tone === 'pot' || die.tone === 'dull') ? '' : die.tone}" class:small {@attach roll}>
+<span class={['die', tone, { small }]} {@attach roll}>
 	<!-- The tray is a live region: screen readers get the value, never the tumbling faces. -->
 	<span aria-hidden="true">{face || die.value}</span>
 	<span class="sr-only">{die.value}</span>
@@ -66,14 +67,6 @@
 		font-weight: 600;
 		font-size: 15px;
 		color: var(--text);
-	}
-	.die .sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	/* What each die decides: an odd pothole roll is grey, an even one yellow;
 	   the file and rank dice are orange; a saving die is cream. */
