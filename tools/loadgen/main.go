@@ -24,6 +24,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -180,9 +181,9 @@ func (r *run) post(c *http.Client, path string, body []byte) (*http.Response, er
 // stream opens code's SSE stream for c, closes opened once the server has
 // answered, and calls on with every state event until the game is over or
 // the stream ends.
-func (r *run) stream(c *http.Client, code string, opened chan<- struct{}, on func(view, time.Time)) {
+func (r *run) stream(ctx context.Context, c *http.Client, code string, opened chan<- struct{}, on func(view, time.Time)) {
 	resp, err := r.do(c, func() *http.Request {
-		req, _ := http.NewRequest(http.MethodGet, r.cfg.url+"/api/games/"+code+"/stream", nil)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, r.cfg.url+"/api/games/"+code+"/stream", nil)
 		return req
 	})
 	close(opened)
@@ -254,10 +255,15 @@ func (r *run) game(seed uint64) {
 		}
 	}
 
+	// The game's streams end when they see it over. One loadgen gave up on
+	// (a refused move, then a refused resignation) never ends, so they are
+	// cancelled after the stall limit instead (see the end of this function).
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	var streams sync.WaitGroup
 	open := func(c *http.Client, on func(view, time.Time)) {
 		opened := make(chan struct{})
-		streams.Go(func() { r.stream(c, code, opened, on) })
+		streams.Go(func() { r.stream(ctx, c, code, opened, on) })
 		<-opened
 	}
 	// Players join first: the first guest after the creator to open a
@@ -320,7 +326,18 @@ func (r *run) game(seed uint64) {
 	} else {
 		r.fail("resign", err)
 	}
-	streams.Wait()
+	ended := make(chan struct{})
+	go func() {
+		streams.Wait()
+		close(ended)
+	}()
+	select {
+	case <-ended:
+	case <-time.After(r.cfg.stall):
+		r.fail("game "+code, fmt.Errorf("streams still open %v after the game should have ended", r.cfg.stall))
+		cancel()
+		<-ended
+	}
 }
 
 // waitTurn waits for mover's state at seq with legal moves. It returns
