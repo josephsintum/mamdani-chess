@@ -21,6 +21,7 @@ type Server struct {
 	games     *game.Hub
 	match     *match.Queue
 	assets    fs.FS
+	etags     sync.Map // etagKey → ETag of a static file
 	heartbeat time.Duration
 	slow      time.Duration // a request taking longer logs at WARN
 	log       *slog.Logger

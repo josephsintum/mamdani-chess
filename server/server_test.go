@@ -444,6 +444,37 @@ func TestPrecompressedFiles(t *testing.T) {
 	}
 }
 
+// Files outside _app/immutable are revalidated on every visit, so they carry
+// an ETag and a match costs a 304 instead of the file. Each encoding is its
+// own representation with its own tag.
+func TestStaticFilesRevalidate(t *testing.T) {
+	_, ts := newTestServer(t)
+	tags := map[string]bool{}
+	for _, accept := range []string{"br", "gzip", ""} {
+		resp := get(t, ts.URL+"/favicon.svg", accept)
+		tag := resp.Header.Get("ETag")
+		if !strings.HasPrefix(tag, `"`) || tags[tag] {
+			t.Fatalf("Accept-Encoding %q: ETag %q, want a new quoted tag", accept, tag)
+		}
+		tags[tag] = true
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/favicon.svg", nil)
+		req.Header.Set("Accept-Encoding", accept)
+		req.Header.Set("If-None-Match", tag)
+		again, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(again.Body)
+		again.Body.Close()
+		if again.StatusCode != http.StatusNotModified || len(body) != 0 {
+			t.Errorf("Accept-Encoding %q, If-None-Match %s: %d %q, want 304", accept, tag, again.StatusCode, body)
+		}
+	}
+	if tag := get(t, ts.URL+"/_app/immutable/app.js", "").Header.Get("ETag"); tag != "" {
+		t.Errorf("an immutable file has ETag %q; it never revalidates", tag)
+	}
+}
+
 func TestRequestsAreLogged(t *testing.T) {
 	s, ts := newTestServer(t)
 	var buf bytes.Buffer

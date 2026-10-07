@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -34,13 +36,18 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		s.index(w, r) // with the page's link preview tags
 		return
 	}
+	file, encoding := s.compressed(r, name)
 	if strings.HasPrefix(name, "_app/immutable/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")
+		// Embedded files have no modification time, so without a tag a
+		// revalidation downloads the whole file again.
+		if tag := s.etag(file); tag != "" {
+			w.Header().Set("ETag", tag)
+		}
 	}
 	w.Header().Add("Vary", "Accept-Encoding")
-	file, encoding := s.compressed(r, name)
 	if encoding != "" {
 		w.Header().Set("Content-Encoding", encoding)
 		if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
@@ -81,4 +88,33 @@ func accepts(header, encoding string) bool {
 		return true
 	}
 	return false
+}
+
+// etagKey names one version of a file: a rebuilt web/build on disk (no
+// embedweb tag) changes its size or time and so gets a new tag.
+type etagKey struct {
+	name string
+	size int64
+	mod  int64
+}
+
+// etag returns a strong ETag for the file's bytes, hashed once per version,
+// or "" if it can't be read (ServeFileFS then reports the error).
+func (s *Server) etag(name string) string {
+	info, err := fs.Stat(s.assets, name)
+	if err != nil {
+		return ""
+	}
+	key := etagKey{name, info.Size(), info.ModTime().UnixNano()}
+	if tag, ok := s.etags.Load(key); ok {
+		return tag.(string)
+	}
+	data, err := fs.ReadFile(s.assets, name)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	tag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	s.etags.Store(key, tag)
+	return tag
 }
