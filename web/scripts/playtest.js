@@ -123,9 +123,6 @@ async function dragMove(page) {
 	return { from: fromLabel, to: toLabel, dragged: true };
 }
 
-let pairing = Promise.resolve();
-
-/** Both guests tap Play online, the second once the first is queued. */
 /**
  * Whether the potholes drawn match the board's own model (each pothole
  * square's label says so). A hole can still be shrinking when the turn
@@ -146,6 +143,9 @@ async function holesMatch(page) {
 	return drawn === model ? '' : `the board draws ${drawn} potholes but has ${model}`;
 }
 
+let pairing = Promise.resolve();
+
+/** Both guests tap Play online, the second once the first is queued. */
 async function quickMatch(first, second) {
 	for (const p of [first, second]) {
 		await p.goto(`${opts.base}/`);
@@ -160,10 +160,11 @@ async function playGame(browser, n) {
 	const contexts = [await browser.newContext(device), await browser.newContext(device)];
 	const [w, b] = await Promise.all(contexts.map((c) => c.newPage()));
 	const errors = [];
-	for (const [p, who] of [
+	const sides = [
 		[w, 'White'],
 		[b, 'Black']
-	]) {
+	];
+	for (const [p, who] of sides) {
 		p.on('pageerror', (e) => errors.push(`${who} page error: ${e.message.slice(0, 240)}`));
 		p.on('console', (m) => m.type() === 'error' && errors.push(`${who} console: ${m.text().slice(0, 240)}`));
 		// The last few console lines and any reload after the game started, so a failure explains itself.
@@ -173,18 +174,16 @@ async function playGame(browser, n) {
 		p.on('load', () => p.started && errors.push(`${who} page reloaded mid-game (${p.url()})`));
 	}
 	const started = Date.now();
-	let url;
 	if (opts.match) {
 		// One pair queues at a time, so each game's two guests match each other.
 		await (pairing = pairing.then(() => quickMatch(w, b)));
 		if (w.url() !== b.url()) errors.push(`quick match sent the guests to different games: ${w.url()} / ${b.url()}`);
-		url = w.url().split('?')[0] + '?instant';
 	} else {
 		await w.goto(`${opts.base}/`);
 		await w.getByRole('button', { name: 'Invite a friend' }).click();
 		await w.waitForURL(/\/game\//);
-		url = w.url().split('?')[0] + '?instant';
 	}
+	const url = w.url().split('?')[0] + '?instant';
 	await w.goto(url);
 	await b.goto(url);
 	w.started = b.started = true;
@@ -249,15 +248,16 @@ async function playGame(browser, n) {
 			}
 		}
 	}
-	if (errors.length) for (const [p, who] of [[w, 'White'], [b, 'Black']]) errors.push(`${who} last console: ${p.recent.join(' | ') || '(none)'}`);
+	if (errors.length) for (const [p, who] of sides) errors.push(`${who} last console: ${p.recent.join(' | ') || '(none)'}`);
 	// The result, without the phone card's tally, which may still be counting up.
 	const resultText = (p) =>
 		p
 			.locator(RESULT)
 			.evaluate((el) => [...el.children].filter((c) => !c.classList.contains('ph-tally')).map((c) => c.innerText).join('\n'))
+			.then((text) => text.replace(/\s*\n+\s*/g, ' · '))
 			.catch(() => '');
-	const result = (await resultText(w)).replace(/\s*\n+\s*/g, ' · ');
-	const resultBlack = (await resultText(b)).replace(/\s*\n+\s*/g, ' · ');
+	const result = await resultText(w);
+	const resultBlack = await resultText(b);
 	// Each player reads the result as themselves ("You win" / "You lost"), so
 	// the two cards agree on how and when the game ended, and on who won.
 	const outcome = (p) =>

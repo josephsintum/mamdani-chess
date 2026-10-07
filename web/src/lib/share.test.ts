@@ -4,17 +4,13 @@ import { canShare, shareLink } from './share.ts';
 const url = 'https://mamdanichess.com/game/K7F3QZ';
 
 describe('canShare', () => {
-	it('is false without a share sheet', () => {
-		expect(canShare(url, {})).toBe(false);
-	});
-	it('is true with one that takes the link', () => {
-		expect(canShare(url, { share: vi.fn(), canShare: () => true })).toBe(true);
-	});
-	it('is false when the browser says it cannot share the link', () => {
-		expect(canShare(url, { share: vi.fn(), canShare: () => false })).toBe(false);
-	});
-	it('trusts share alone when canShare is missing', () => {
-		expect(canShare(url, { share: vi.fn() })).toBe(true);
+	it.each([
+		['is false without a share sheet', {}, false],
+		['is true with one that takes the link', { share: vi.fn(), canShare: () => true }, true],
+		['is false when the browser says it cannot share the link', { share: vi.fn(), canShare: () => false }, false],
+		['trusts share alone when canShare is missing', { share: vi.fn() }, true]
+	])('%s', (_, nav, want) => {
+		expect(canShare(url, nav)).toBe(want);
 	});
 });
 

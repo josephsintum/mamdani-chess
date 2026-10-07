@@ -2,9 +2,9 @@
 // an emoji and a line (spec: board feel, section 8). The lines are the game
 // piece's playful voice, never presented as real quotes.
 
-import { matedByRoll, stageAt } from './board.ts';
+import { kingSquare, matedByRoll, stageAt } from './board.ts';
 import { FALL_MS } from './feel.ts';
-import { squareName, type EventJSON, type View } from './game.ts';
+import { opponent, type EventJSON, type View } from './game.ts';
 
 export type EndKind =
 	| 'castleMate'
@@ -18,6 +18,8 @@ export type EndKind =
 	| 'timeWin'
 	| 'resigned'
 	| 'draw';
+/** A finished game's line, on the king at `sq`; `afterBurst`: it waits for the mate's burst. */
+export type EndQuip = { kind: EndKind; sq: string; afterBurst?: true };
 export type QuipKind = 'mamdaniFell' | 'repaired' | 'queenFell' | 'saved' | 'kingSpared' | 'sixSeven' | 'potholeSeason' | 'fifthRepair' | 'wipedOut' | EndKind;
 
 // New York sayings, subway announcements, the city's pothole work, and Gen Z
@@ -122,13 +124,15 @@ export function quipFor(events: EventJSON[], shown: number, ctx: TurnContext = {
 		const e = events[i];
 		if (!e.sq) continue;
 		const kind = e.piece?.[1];
-		if (e.kind === 'fell' && e.piece && e.piece !== 'M' && ctx.after) {
-			const side = e.piece[0];
-			const left = ctx.after(i).board.filter((code) => code[0] === side);
-			if (left.length === 1 && left[0][1] === 'K') return { kind: 'wipedOut', sq: e.sq, index: i };
+		if (e.kind === 'fell' && e.piece) {
+			if (e.piece !== 'M' && ctx.after) {
+				const side = e.piece[0];
+				const left = ctx.after(i).board.filter((code) => code.startsWith(side));
+				if (left.length === 1 && left[0][1] === 'K') return { kind: 'wipedOut', sq: e.sq, index: i };
+			}
+			if (e.piece === 'M') return { kind: 'mamdaniFell', sq: e.sq, index: i };
+			if (kind === 'Q') return { kind: 'queenFell', sq: e.sq, index: i };
 		}
-		if (e.kind === 'fell' && e.piece === 'M') return { kind: 'mamdaniFell', sq: e.sq, index: i };
-		if (e.kind === 'fell' && kind === 'Q') return { kind: 'queenFell', sq: e.sq, index: i };
 		if (e.kind === 'repaired') {
 			// This repair's place in the game: the game's total, less the ones after it this turn.
 			const nth = ctx.repaired === undefined ? 0 : ctx.repaired - events.slice(i + 1).filter((x) => x.kind === 'repaired').length;
@@ -154,41 +158,38 @@ export function quipFor(events: EventJSON[], shown: number, ctx: TurnContext = {
  * king), or a draw (on the king of the side to move). A game nobody started,
  * or one still in play, says nothing. `afterBurst`: wait for the mate's burst.
  */
-export function endQuip(view: View): { kind: EndKind; sq: string; afterBurst?: true } | null {
+export function endQuip(view: View): EndQuip | null {
 	const r = view.result;
 	if (!r || r.reason === 'aborted' || r.reason === 'expired') return null;
-	const kingOf = (c: 'white' | 'black') => {
-		const i = view.board.indexOf(c === 'white' ? 'wK' : 'bK');
-		return i < 0 ? '' : squareName(i);
-	};
 	if (r.draw) {
-		const sq = kingOf(view.turn);
+		const sq = kingSquare(view.board, view.turn);
 		return sq ? { kind: 'draw', sq } : null;
 	}
 	if (!r.winner) return null;
 	const winner = r.winner;
 	const mate = r.reason === 'checkmate';
+	const byRoll = mate && matedByRoll(view);
 	const burst = mate ? ({ afterBurst: true } as const) : {};
-	const loserKing = kingOf(winner === 'white' ? 'black' : 'white');
-	const winnerKing = kingOf(winner);
-	const last = view.log?.at(-1);
+	const loserKing = kingSquare(view.board, opponent(winner));
+	const winnerKing = kingSquare(view.board, winner);
+	const last = view.log.at(-1);
 	const san = last?.san ?? '';
-	if (mate && !matedByRoll(view) && loserKing) {
+	if (mate && !byRoll && loserKing) {
 		if (san.startsWith('O-O')) return { kind: 'castleMate', sq: loserKing, ...burst };
 		if (san.includes('=')) return { kind: 'promoMate', sq: loserKing, ...burst };
-		if ((view.log?.length ?? 99) <= 4) return { kind: 'speedrun', sq: loserKing, ...burst };
+		if (view.log.length <= 4) return { kind: 'speedrun', sq: loserKing, ...burst };
 	}
 	if (winnerKing) {
-		if (view.board.filter((code) => code[0] === winner[0]).length === 2) return { kind: 'twoLeft', sq: winnerKing, ...burst };
+		if (view.board.filter((code) => code.startsWith(winner[0])).length === 2) return { kind: 'twoLeft', sq: winnerKing, ...burst };
 		// The winner's time before the final move's +5, if the game ended on its move.
-		const ms = (winner === 'white' ? view.clock?.whiteMs : view.clock?.blackMs) ?? Infinity;
+		const ms = winner === 'white' ? view.clock.whiteMs : view.clock.blackMs;
 		if (ms - (last?.color === winner ? 5_000 : 0) < 1_000) return { kind: 'byAHair', sq: winnerKing, ...burst };
-		if ((view.lost?.[winner] ?? []).some((code) => code[1] === 'Q')) return { kind: 'queenless', sq: winnerKing, ...burst };
+		if (view.lost[winner].some((code) => code[1] === 'Q')) return { kind: 'queenless', sq: winnerKing, ...burst };
 	}
 	if (!loserKing) return null;
 	if (r.reason === 'timeout') return { kind: 'timeWin', sq: loserKing };
 	if (r.reason === 'resignation') return { kind: 'resigned', sq: loserKing };
-	if (mate) return { kind: matedByRoll(view) ? 'mateByRoll' : 'mateByMove', sq: loserKing, ...burst };
+	if (mate) return { kind: byRoll ? 'mateByRoll' : 'mateByMove', sq: loserKing, ...burst };
 	return null;
 }
 
@@ -220,7 +221,7 @@ export function quipper(random: () => number = Math.random) {
 		events: EventJSON[],
 		seq: number,
 		shown: number,
-		ending?: { end: { kind: EndKind; sq: string; afterBurst?: true }; key: string; winner: boolean },
+		ending?: { end: EndQuip; key: string; winner: boolean },
 		ctx?: TurnContext
 	): { sq: string; emoji: string; line: string; key: string; delay: number } | null => {
 		const found = quipFor(events, shown, ctx);

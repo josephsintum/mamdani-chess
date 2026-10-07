@@ -3,17 +3,35 @@
 // go run ./cmd/wiregen), so they can't drift from it.
 
 export type { Color, EventJSON, LogEntry, MoveJSON, View } from './wire.gen.ts';
-import type { Color, EventJSON, MoveJSON, View } from './wire.gen.ts';
+import type { Color, MoveJSON, View } from './wire.gen.ts';
+import { jsonOf, post } from './api.ts';
 
 export function squareName(index: number): string {
 	return 'abcdefgh'[index % 8] + (Math.floor(index / 8) + 1);
 }
 
+/** "White" or "Black". */
+export const sideName = (c: Color) => (c === 'white' ? 'White' : 'Black');
+
+export const opponent = (c: Color): Color => (c === 'white' ? 'black' : 'white');
+
+/** Whether the viewer has a seat (rather than watching). */
+export const isPlayer = (you: View['you']): you is Color => you === 'white' || you === 'black';
+
+export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 /** Starts a friend game with the caller as White; returns its code. */
 export async function createGame(): Promise<string> {
 	const res = await fetch('/api/games', { method: 'POST' });
 	if (!res.ok) throw new Error(`could not create a game (${res.status})`);
-	return (await res.json()).code;
+	return ((await res.json()) as { code: string }).code;
+}
+
+/** A game as anyone sees it (GET never takes a seat); throws if it can't be had. */
+export async function fetchView(code: string): Promise<View> {
+	const res = await fetch(`/api/games/${code}`);
+	if (!res.ok) throw new Error(`could not load the game (${res.status})`);
+	return (await res.json()) as View;
 }
 
 /**
@@ -40,12 +58,9 @@ export async function trySendMove(code: string, move: MoveJSON, seq: number): Pr
 	// A gateway error means the server is restarting (a deploy): it never
 	// saw the move, so send it again. A 500 is the game's own error: not that.
 	if (res.status >= 502 && res.status <= 504) return 'unsent';
-	const body: { error?: string; state?: View } = await res.json().catch(() => ({}));
-	const refused: { refused: string; state?: View } = {
-		refused: body.error || res.statusText || 'The server refused the move.'
-	};
-	if (body.state) refused.state = body.state;
-	return refused;
+	const body = await jsonOf<{ error: string; state: View }>(res);
+	const refused = body.error || res.statusText || 'The server refused the move.';
+	return body.state ? { refused, state: body.state } : { refused };
 }
 
 /**
@@ -54,8 +69,7 @@ export async function trySendMove(code: string, move: MoveJSON, seq: number): Pr
  * link) stays put and offers a link instead.
  */
 export function followsRematch(prev: View | null, next: View): boolean {
-	const player = next.you === 'white' || next.you === 'black';
-	return player && !!next.rematch.code && prev !== null && !prev.rematch.code;
+	return isPlayer(next.you) && !!next.rematch.code && prev !== null && !prev.rematch.code;
 }
 
 /**
@@ -90,18 +104,9 @@ export async function gameExists(code: string): Promise<boolean> {
 	}
 }
 
-async function post(path: string, body: unknown): Promise<string | null> {
-	const res = await fetch(path, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify(body)
-	});
-	if (res.ok) return null;
-	try {
-		return (await res.json()).error ?? res.statusText;
-	} catch {
-		return res.statusText;
-	}
+/** Ends the game; the caller's opponent wins. Returns null or the error. */
+export async function resign(code: string): Promise<string | null> {
+	return post(`/api/games/${code}/resign`);
 }
 
 const pieceNames: Record<string, string> = {
@@ -113,17 +118,6 @@ const pieceNames: Record<string, string> = {
 	K: 'king'
 };
 
-/** Ends the game; the caller's opponent wins. Returns null or the error. */
-export async function resign(code: string): Promise<string | null> {
-	const res = await fetch(`/api/games/${code}/resign`, { method: 'POST' });
-	if (res.ok) return null;
-	try {
-		return (await res.json()).error ?? res.statusText;
-	} catch {
-		return res.statusText;
-	}
-}
-
 /** "white knight", "the Mamdani". */
 export function pieceName(code = ''): string {
 	if (code === 'M') return 'the Mamdani';
@@ -131,40 +125,12 @@ export function pieceName(code = ''): string {
 	return `${color} ${pieceNames[code[1]] ?? 'piece'}`;
 }
 
-const rerollReasons: Record<string, string> = {
+/** Why the dice picked again (a reroll event's reason). */
+export const rerollReasons: Record<string, string> = {
 	king: 'kings never fall',
 	pothole: 'already a pothole',
 	exposes: 'would expose the roller’s king'
 };
-
-/** One plain-English line per turn event. */
-export function eventText(e: EventJSON): string {
-	switch (e.kind) {
-		case 'moved':
-			return `${e.color} moves ${pieceName(e.piece)} ${e.from}–${e.to}`;
-		case 'captured':
-			return `${pieceName(e.piece)} captured`;
-		case 'pothole_closed':
-			return `pothole on ${e.sq} closes`;
-		case 'repaired':
-			return `the Mamdani repairs ${e.sq}`;
-		case 'rolled_pothole':
-			return `pothole roll: ${e.roll} — ${(e.roll ?? 1) % 2 === 0 ? 'a pothole opens' : 'nothing happens'}`;
-		case 'target':
-			return `the dice pick ${e.sq}`;
-		case 'reroll':
-			return `re-roll: ${rerollReasons[e.reason ?? ''] ?? e.reason}`;
-		case 'saving_roll':
-			return `saving roll for ${pieceName(e.piece)}: ${e.roll} — ${e.saved ? 'saved' : 'lost'}`;
-		case 'fell':
-			return `${pieceName(e.piece)} falls into ${e.sq}`;
-		case 'pothole_opened':
-			return `pothole opens on ${e.sq}`;
-		case 'no_pothole':
-			return 'no valid square: no pothole this turn';
-	}
-	return e.kind;
-}
 
 export const reasons: Record<string, string> = {
 	checkmate: 'checkmate',
@@ -179,13 +145,6 @@ export const reasons: Record<string, string> = {
 	insufficient_material: 'insufficient material'
 };
 
-export function resultText(r: NonNullable<View['result']>): string {
-	const why = reasons[r.reason] ?? r.reason;
-	return r.draw ? `Draw by ${why}` : `${r.winner === 'white' ? 'White' : 'Black'} wins by ${why}`;
-}
-
-const sideName = (c: Color) => (c === 'white' ? 'White' : 'Black');
-
 /**
  * What to tell a player as a game starts, or "" for nothing: White hears
  * that their friend sat down; a player arriving at a game not yet moved in
@@ -197,20 +156,30 @@ export function joinNotice(prev: View | null, next: View, fromMatch: boolean, fr
 	if (next.you === 'spectator' || next.status !== 'playing' || next.seq !== 0) return '';
 	// A rematch swaps colours: say so, rather than "You joined".
 	if (fromRematch && prev === null) return next.you === 'black' ? "Rematch · You're Black now" : "Rematch · You're White, your move";
-	const opponent = next.you === 'white' ? next.players.black : next.players.white;
+	const them = next.players[opponent(next.you)];
 	if (prev?.status === 'waiting' && next.you === 'white') {
-		return `${opponent || 'Your friend'} joined · You're White, your move`;
+		return `${them || 'Your friend'} joined · You're White, your move`;
 	}
 	if (prev !== null || fromMatch) return '';
 	return next.you === 'black'
-		? `You joined ${opponent || 'the game'} · You're Black`
-		: `Playing ${opponent || 'your opponent'} · You're White, your move`;
+		? `You joined ${them || 'the game'} · You're Black`
+		: `Playing ${them || 'your opponent'} · You're White, your move`;
+}
+
+export interface MatchSide {
+	name: string;
+	color: Color;
+}
+
+export interface MatchCard {
+	you: MatchSide;
+	them: MatchSide;
 }
 
 /** The two sides of a matched game for the opponent-found screen, you first. */
-export function matchCard(view: View): { you: { name: string; color: Color }; them: { name: string; color: Color } } {
+export function matchCard(view: View): MatchCard {
 	const mine: Color = view.you === 'black' ? 'black' : 'white';
-	const theirs: Color = mine === 'white' ? 'black' : 'white';
+	const theirs = opponent(mine);
 	return {
 		you: { name: view.players[mine] || sideName(mine), color: mine },
 		them: { name: view.players[theirs] || sideName(theirs), color: theirs }

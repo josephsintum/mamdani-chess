@@ -5,7 +5,7 @@
 // at the same moment.
 
 import TIMING from './dice-timing.json';
-import { pieceName, type EventJSON, type View } from './game.ts';
+import { capitalize, pieceName, type EventJSON, type View } from './game.ts';
 
 /** How long the move shows before the dice roll. */
 export const MOVE_MS = TIMING.moveMs;
@@ -22,17 +22,18 @@ export const SAVE_MS = THROW_MS;
 /** A re-roll's target blinks twice, one blink each half of its step. */
 export const BLINK_MS = TIMING.playMs.reroll / 2;
 
-/** Index of the pothole roll in a turn's events; the end if none was rolled (as board.ts's firstDiceStep). */
-function firstDiceStep(last: EventJSON[]): number {
+/** Index of the pothole roll in a turn's events; the end if none was rolled. */
+export function firstDiceStep(last: EventJSON[]): number {
 	const i = last.findIndex((e) => e.kind === 'rolled_pothole');
 	return i < 0 ? last.length : i;
 }
 
+const PLAY: Readonly<Record<string, number>> = TIMING.playMs;
+
 /** How long the browser plays one dice step, from the shared table. */
 export function playMs(e: EventJSON): number {
-	const t = TIMING.playMs as Record<string, number>;
-	if (e.kind === 'rolled_pothole') return (e.roll ?? 1) % 2 === 1 ? t.rolled_pothole_odd : t.rolled_pothole_even;
-	return t[e.kind] ?? t.other;
+	if (e.kind === 'rolled_pothole') return (e.roll ?? 1) % 2 === 1 ? PLAY.rolled_pothole_odd : PLAY.rolled_pothole_even;
+	return PLAY[e.kind] ?? PLAY.other;
 }
 
 /** The Animator's wait before showing the next step: the move first, then the step just shown. */
@@ -40,21 +41,17 @@ export function dicePace(shownLast: EventJSON | undefined): number {
 	return shownLast ? playMs(shownLast) : MOVE_MS;
 }
 
-/** How long a whole turn takes to play, from the move to the last step's end (0 with no roll). */
-export function turnMs(last: EventJSON[]): number {
-	const first = firstDiceStep(last);
-	if (first === last.length) return 0;
-	return MOVE_MS + last.slice(first).reduce((sum, e) => sum + playMs(e), 0);
-}
+/** A die's face from `at` ms after it is thrown. */
+type Frame = { at: number; face: number };
 
 /**
  * A die's faces from `seed`: random faces that flick fast, then slower, and
  * never show `final` until the last frame, at `ms`.
  */
-export function tumbleFaces(final: number, ms: number, seed: number): { at: number; face: number }[] {
+export function tumbleFaces(final: number, ms: number, seed: number): Frame[] {
 	let s = (seed * 9301 + 49297) % 233280 || 1;
 	const rand = () => (s = (s * 16807) % 2147483647) / 2147483647;
-	const frames: { at: number; face: number }[] = [];
+	const frames: Frame[] = [];
 	let at = 0;
 	let prev = 0;
 	while (at < ms) {
@@ -69,7 +66,7 @@ export function tumbleFaces(final: number, ms: number, seed: number): { at: numb
 }
 
 /** A die's face at `t` ms after it was thrown (its first face before then). */
-function faceAt(frames: { at: number; face: number }[], t: number): number {
+function faceAt(frames: Frame[], t: number): number {
 	let face = frames[0].face;
 	for (const f of frames) if (f.at <= t) face = f.face;
 	return face;
@@ -84,8 +81,7 @@ const FILES = 'abcdefgh';
  * lands, at SCAN_MS.
  */
 export function scanFrames(sq: string, seed: number): { at: number; sq: string }[] {
-	const file = tumbleFaces(FILES.indexOf(sq[0]) + 1, FILE_MS, seed + 1);
-	const rank = tumbleFaces(Number(sq[1]), RANK_MS, seed + 2).map((f) => ({ at: f.at + RANK_DELAY_MS, face: f.face }));
+	const [file, rank] = targetDice(sq, seed).map((d) => tumbleFaces(d.value, d.ms, d.seed).map((f) => ({ at: f.at + d.delay, face: f.face })));
 	const times = [...new Set([...file.map((f) => f.at), ...rank.map((f) => f.at)])].sort((a, b) => a - b);
 	const frames: { at: number; sq: string }[] = [];
 	for (const at of times) {
@@ -96,12 +92,19 @@ export function scanFrames(sq: string, seed: number): { at: number; sq: string }
 }
 
 /** The seed for the dice of step `index` of turn `seq`: the tray and the board use the same one. */
-export function diceSeed(seq: number, index: number): number {
+function diceSeed(seq: number, index: number): number {
 	return seq * 97 + index * 2;
 }
 
+/** The file and rank dice's scan for a target: it runs once per key, from the seeded faces. */
+export interface Scan {
+	sq: string;
+	key: string;
+	seed: number;
+}
+
 /** The latest target revealed, unless a re-roll followed it: the scan the board runs. */
-export function scanOf(view: View, shown: number): { sq: string; key: string; seed: number } | null {
+export function scanOf(view: View, shown: number): Scan | null {
 	for (let i = Math.min(shown, view.last.length) - 1; i >= firstDiceStep(view.last); i--) {
 		const e = view.last[i];
 		if (e.kind === 'reroll') return null;
@@ -123,14 +126,10 @@ export interface DicePill {
 	last: boolean;
 }
 
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const PILL_KINDS = ['rolled_pothole', 'target', 'reroll', 'saving_roll', 'no_pothole'];
-
 /** The pill for one dice event, or null for events the pill doesn't name. */
-function pillFor(view: View, i: number): Omit<DicePill, 'last'> | null {
+function pillAt(view: View, i: number): Omit<DicePill, 'last'> | null {
 	const e = view.last[i];
 	const key = `${view.seq}:${i}`;
-	const roll = view.last.find((x) => x.kind === 'rolled_pothole')?.roll ?? 0;
 	switch (e.kind) {
 		case 'rolled_pothole':
 			return (e.roll ?? 1) % 2 === 1
@@ -140,6 +139,7 @@ function pillFor(view: View, i: number): Omit<DicePill, 'last'> | null {
 			// Straight after the roll, the roll's pill stays (same key) and turns
 			// into the square; after a re-roll it is a new pill.
 			const sameKey = view.last[i - 1]?.kind === 'rolled_pothole' ? `${view.seq}:${i - 1}` : key;
+			const roll = view.last.find((x) => x.kind === 'rolled_pothole')?.roll ?? 0;
 			return { key: sameKey, text: `d8 ${roll} · pothole`, tone: 'pot', then: { text: e.sq ?? '', tone: 'where', at: SCAN_MS } };
 		}
 		case 'reroll':
@@ -158,20 +158,20 @@ function pillFor(view: View, i: number): Omit<DicePill, 'last'> | null {
 export function dicePill(view: View, shown: number): DicePill | null {
 	const first = firstDiceStep(view.last);
 	for (let i = Math.min(shown, view.last.length) - 1; i >= first; i--) {
-		const pill = pillFor(view, i);
+		const pill = pillAt(view, i);
 		if (!pill) continue;
-		const last = !view.last.slice(i + 1).some((e) => PILL_KINDS.includes(e.kind));
+		const last = !view.last.some((_, j) => j > i && pillAt(view, j));
 		return { ...pill, last };
 	}
 	return null;
 }
 
+export type DieTone = 'dull' | 'pot' | 'where' | 'save';
 /**
  * A die to throw: its value and color (grey for an odd pothole roll,
  * yellow for even, orange for the file and rank dice, cream for a saving
  * roll), when it is thrown and how long it tumbles, and its seed.
  */
-export type DieTone = 'dull' | 'pot' | 'where' | 'save';
 export interface DieSpec {
 	value: number;
 	tone: DieTone;
@@ -187,15 +187,18 @@ export function stepDice(view: View, i: number): DieSpec[] {
 	switch (e.kind) {
 		case 'rolled_pothole':
 			return [{ value: e.roll ?? 0, tone: (e.roll ?? 1) % 2 === 1 ? 'dull' : 'pot', delay: 0, ms: THROW_MS, seed }];
-		case 'target': {
-			const sq = e.sq ?? 'a1';
-			return [
-				{ value: FILES.indexOf(sq[0]) + 1, tone: 'where', delay: 0, ms: FILE_MS, seed: seed + 1 },
-				{ value: Number(sq[1]), tone: 'where', delay: RANK_DELAY_MS, ms: RANK_MS, seed: seed + 2 }
-			];
-		}
+		case 'target':
+			return targetDice(e.sq ?? 'a1', seed);
 		case 'saving_roll':
 			return [{ value: e.roll ?? 0, tone: 'save', delay: 0, ms: THROW_MS, seed }];
 	}
 	return [];
+}
+
+/** The file and rank dice for a target `sq`: the tray throws them and the board's scan follows them. */
+function targetDice(sq: string, seed: number): DieSpec[] {
+	return [
+		{ value: FILES.indexOf(sq[0]) + 1, tone: 'where', delay: 0, ms: FILE_MS, seed: seed + 1 },
+		{ value: Number(sq[1]), tone: 'where', delay: RANK_DELAY_MS, ms: RANK_MS, seed: seed + 2 }
+	];
 }

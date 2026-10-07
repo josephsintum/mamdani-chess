@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import Header from '#lib/Header.svelte';
 	import MiniBoard from '#lib/MiniBoard.svelte';
-	import { createGame } from '#lib/game.ts';
+	import { FriendGame } from '#lib/friend.svelte.ts';
 	import { boardFromFen, isCode, liveGames, me, normalizeCode, type LiveGame, type Me } from '#lib/lobby.ts';
 
 	// The canvas's hero position: a pothole open on f4, the Mamdani on a5.
@@ -16,8 +16,7 @@
 	let code = $state('');
 	// Friends arrive by link, so the code field waits behind "Have a game code?".
 	let codeOpen = $state(false);
-	let busy = $state(false);
-	let error = $state('');
+	const friend = new FriendGame();
 
 	async function refresh() {
 		try {
@@ -31,54 +30,35 @@
 	function refreshMe() {
 		me()
 			.then((m) => (user = m))
-			.catch(() => {});
+			.catch(() => {}); // keep what's shown, as refresh does
+	}
+
+	// Every 10 s while the tab is visible, and at once when it comes back.
+	function update() {
+		if (!document.hidden) {
+			void refresh();
+			refreshMe();
+		}
 	}
 
 	onMount(() => {
 		refreshMe();
-		refresh();
-		// Every 10 s while the tab is visible, and at once when it comes back.
-		const timer = setInterval(() => {
-			if (!document.hidden) {
-				refresh();
-				refreshMe();
-			}
-		}, REFRESH_MS);
-		const onVisible = () => {
-			if (!document.hidden) {
-				refresh();
-				refreshMe();
-			}
-		};
-		document.addEventListener('visibilitychange', onVisible);
-		return () => {
-			clearInterval(timer);
-			document.removeEventListener('visibilitychange', onVisible);
-		};
+		void refresh();
+		const timer = setInterval(update, REFRESH_MS);
+		return () => clearInterval(timer);
 	});
-
-	async function playFriend() {
-		busy = true;
-		error = '';
-		try {
-			await goto(`/game/${await createGame()}`);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-			busy = false;
-		}
-	}
 
 	function join(e: SubmitEvent) {
 		e.preventDefault();
-		if (isCode(code)) goto(`/game/${code}`);
+		if (isCode(code)) void goto(`/game/${code}`);
 	}
-
-	const side = (name: string, fallback: string) => name || fallback;
 </script>
 
 <svelte:head>
 	<title>Mamdani Chess</title>
 </svelte:head>
+
+<svelte:document onvisibilitychange={update} />
 
 <Header bind:me={user} />
 
@@ -105,12 +85,12 @@
 						<span class="label">Play online</span>
 						<span class="sub"><span class="wide">Quick match · </span>10+5{#if looking > 0}{' · '}<strong>{looking} looking</strong>{/if}</span>
 					</a>
-					<button class="action" onclick={playFriend} disabled={busy}>
-						<span class="label">{busy ? 'Starting…' : 'Invite a friend'}</span>
+					<button class="action" onclick={friend.start} disabled={friend.busy}>
+						<span class="label">{friend.busy ? 'Starting…' : 'Invite a friend'}</span>
 						<span class="sub"><span class="wide">Send a link to your group chat</span><span class="narrow">Share a link</span></span>
 					</button>
 				</div>
-				{#if error}<p class="error" role="alert">{error}</p>{/if}
+				{#if friend.error}<p class="error" role="alert">{friend.error}</p>{/if}
 				{#if codeOpen}
 					<form class="join" onsubmit={join}>
 						<label for="join-code" class="sr-only">Game code</label>
@@ -207,6 +187,8 @@
 		{:else}
 			<ul class="cards">
 				{#each games as g (g.code)}
+					{@const white = g.white || 'White'}
+					{@const black = g.black || 'Black'}
 					<li>
 						<a class="card" href="/game/{g.code}">
 							<MiniBoard
@@ -214,14 +196,14 @@
 								potholes={g.potholes}
 								mamdani={g.mamdani}
 								last={g.last}
-								label="{side(g.white, 'White')} against {side(g.black, 'Black')}, move {g.move}"
+								label="{white} against {black}, move {g.move}"
 							/>
 							<span class="players">
-								<span class="player" title={side(g.white, 'White')}
-									><span class="swatch white" aria-hidden="true"></span><span class="pname">{side(g.white, 'White')}</span></span
+								<span class="player" title={white}
+									><span class="swatch white" aria-hidden="true"></span><span class="pname">{white}</span></span
 								>
-								<span class="player" title={side(g.black, 'Black')}
-									><span class="swatch black" aria-hidden="true"></span><span class="pname">{side(g.black, 'Black')}</span></span
+								<span class="player" title={black}
+									><span class="swatch black" aria-hidden="true"></span><span class="pname">{black}</span></span
 								>
 							</span>
 							<span class="meta">
@@ -381,14 +363,6 @@
 	}
 	.narrow {
 		display: none;
-	}
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	.row {
 		display: flex;
@@ -686,9 +660,6 @@
 		.note {
 			margin-top: -8px;
 		}
-		.live {
-			padding-bottom: 40px;
-		}
 		h2 {
 			font-size: 34px;
 		}
@@ -720,7 +691,7 @@
 			padding: 32px 0 40px;
 		}
 		.live {
-			padding-top: 32px;
+			padding: 32px 0 40px;
 		}
 		.steps {
 			gap: 24px;

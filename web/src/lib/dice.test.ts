@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { BLINK_MS, dicePace, dicePill, stepDice, FILE_MS, MOVE_MS, playMs, RANK_DELAY_MS, RANK_MS, scanFrames, SCAN_MS, scanOf, tumbleFaces, turnMs } from './dice.ts';
+import { BLINK_MS, dicePace, dicePill, stepDice, FILE_MS, MOVE_MS, playMs, RANK_DELAY_MS, RANK_MS, scanFrames, SCAN_MS, scanOf, tumbleFaces } from './dice.ts';
 import TIMING from './dice-timing.json';
-import type { EventJSON, View } from './game.ts';
+import type { EventJSON } from './game.ts';
+import { viewOf } from './test-boards.ts';
 
 const move: EventJSON = { kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' };
+const view = (last: EventJSON[], seq = 7) => viewOf({ seq, last });
 
 describe('the timing table', () => {
 	it('times each step from the shared table', () => {
@@ -17,13 +19,7 @@ describe('the timing table', () => {
 		expect(dicePace(undefined)).toBe(MOVE_MS);
 		expect(dicePace({ kind: 'target', sq: 'd5' })).toBe(TIMING.playMs.target);
 	});
-	it('plays a whole turn in the time the server pauses the clock for', () => {
-		const last: EventJSON[] = [move, { kind: 'rolled_pothole', roll: 2 }, { kind: 'target', sq: 'd5' }, { kind: 'pothole_opened', sq: 'd5' }];
-		expect(turnMs(last)).toBe(MOVE_MS + 600 + 1250 + 550);
-		expect(turnMs([move])).toBe(0);
-	});
 	it('fits the scan inside its step', () => {
-		expect(SCAN_MS).toBe(RANK_DELAY_MS + RANK_MS);
 		expect(FILE_MS).toBeLessThan(SCAN_MS);
 		expect(SCAN_MS).toBeLessThan(TIMING.playMs.target);
 	});
@@ -68,7 +64,6 @@ describe('scanFrames', () => {
 });
 
 describe('the board during a roll', () => {
-	const view = (last: EventJSON[], seq = 7) => ({ seq, last, board: Array(64).fill(''), mamdani: '', potholes: [] }) as unknown as View;
 	it('says an odd roll, and lets the pill go', () => {
 		const v = view([move, { kind: 'rolled_pothole', roll: 3 }]);
 		expect(dicePill(v, 2)).toEqual({ key: '7:1', text: 'd8 3 · no pothole', tone: 'odd', at: 450, last: true });
@@ -107,13 +102,12 @@ describe('the board during a roll', () => {
 });
 
 describe('stepDice', () => {
-	const view = (last: EventJSON[]) => ({ seq: 3, last }) as unknown as View;
 	it('throws one die for the roll, grey when odd and yellow when even', () => {
-		expect(stepDice(view([move, { kind: 'rolled_pothole', roll: 3 }]), 1)).toEqual([{ value: 3, tone: 'dull', delay: 0, ms: 450, seed: 3 * 97 + 2 }]);
-		expect(stepDice(view([move, { kind: 'rolled_pothole', roll: 6 }]), 1)[0].tone).toBe('pot');
+		expect(stepDice(view([move, { kind: 'rolled_pothole', roll: 3 }], 3), 1)).toEqual([{ value: 3, tone: 'dull', delay: 0, ms: 450, seed: 3 * 97 + 2 }]);
+		expect(stepDice(view([move, { kind: 'rolled_pothole', roll: 6 }], 3), 1)[0].tone).toBe('pot');
 	});
 	it('throws the file and rank dice out of sync, with the scan\'s seeds', () => {
-		const v = view([move, { kind: 'rolled_pothole', roll: 6 }, { kind: 'target', sq: 'd5' }]);
+		const v = view([move, { kind: 'rolled_pothole', roll: 6 }, { kind: 'target', sq: 'd5' }], 3);
 		const seed = 3 * 97 + 2 * 2;
 		expect(stepDice(v, 2)).toEqual([
 			{ value: 4, tone: 'where', delay: 0, ms: FILE_MS, seed: seed + 1 },
@@ -121,7 +115,7 @@ describe('stepDice', () => {
 		]);
 	});
 	it('throws a cream die for a saving roll, and none for the rest', () => {
-		const v = view([move, { kind: 'saving_roll', sq: 'b4', piece: 'wN', roll: 5, saved: true }, { kind: 'fell', sq: 'b4', piece: 'wN' }]);
+		const v = view([move, { kind: 'saving_roll', sq: 'b4', piece: 'wN', roll: 5, saved: true }, { kind: 'fell', sq: 'b4', piece: 'wN' }], 3);
 		expect(stepDice(v, 1)[0]).toMatchObject({ value: 5, tone: 'save' });
 		expect(stepDice(v, 2)).toEqual([]);
 	});

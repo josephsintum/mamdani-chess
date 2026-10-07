@@ -1,11 +1,13 @@
 // A local game for testing the board UI at /dev/board. Moves follow how
-// each piece moves but ignore check, and the dice are scripted, but every turn produces the same events the server sends, so it
-// plays through the real board, dice tray and animation code. This is not
-// the rules engine: the Go server is the only source of truth for play.
+// each piece moves but ignore check, and the dice are scripted. Every turn
+// still produces the same events the server sends, so it plays through the
+// real board, dice tray and animation code. This is not the rules engine:
+// the Go server is the only source of truth for play.
 
-import { HOLE_CAP, HOLE_ROUNDS, squareIndex } from './board.ts';
+import { HOLE_CAP, HOLE_ROUNDS } from './wire.gen.ts';
+import { squareAt, squareIndex } from './board.ts';
 import { applyMove } from './pieces.ts';
-import type { Color, EventJSON, MoveJSON, View } from './game.ts';
+import { rerollReasons, type Color, type EventJSON, type MoveJSON, type View } from './game.ts';
 
 /** What the dice do on the next turn. */
 export interface RollScript {
@@ -19,13 +21,8 @@ export interface RollScript {
 	save?: number;
 }
 
-const files = 'abcdefgh';
-
-function sq(file: number, rank: number): string {
-	return files[file] + (rank + 1);
-}
-
-function emptyView(): View {
+/** A game in play with an empty board and nothing played yet. */
+export function emptyView(): View {
 	return {
 		code: 'SANDBOX',
 		status: 'playing',
@@ -59,10 +56,10 @@ export function startView(): View {
 	const v = emptyView();
 	const back = 'RNBQKBNR';
 	for (let f = 0; f < 8; f++) {
-		v.board[squareIndex(sq(f, 0))] = 'w' + back[f];
-		v.board[squareIndex(sq(f, 1))] = 'wP';
-		v.board[squareIndex(sq(f, 6))] = 'bP';
-		v.board[squareIndex(sq(f, 7))] = 'b' + back[f];
+		v.board[squareIndex(squareAt(f, 0))] = 'w' + back[f];
+		v.board[squareIndex(squareAt(f, 1))] = 'wP';
+		v.board[squareIndex(squareAt(f, 6))] = 'bP';
+		v.board[squareIndex(squareAt(f, 7))] = 'b' + back[f];
 	}
 	v.mamdani = 'a5';
 	return v;
@@ -108,7 +105,7 @@ export const positions = {
 };
 
 function colorOf(piece: string): Color {
-	return piece[0] === 'w' ? 'white' : 'black';
+	return piece.startsWith('w') ? 'white' : 'black';
 }
 
 const steps: Record<string, number[][]> = {
@@ -150,14 +147,14 @@ const lines: Record<string, number[][]> = {
 export function freeMoves(v: View, anySide: boolean): MoveJSON[] {
 	const holes = new Set(v.potholes.map((p) => p.sq));
 	const at = (f: number, r: number) => {
-		const s = sq(f, r);
+		const s = squareAt(f, r);
 		return s === v.mamdani ? 'M' : v.board[squareIndex(s)];
 	};
 	const onBoard = (f: number, r: number) => f >= 0 && f < 8 && r >= 0 && r < 8;
-	const free = (f: number, r: number) => onBoard(f, r) && !at(f, r) && !holes.has(sq(f, r));
+	const free = (f: number, r: number) => onBoard(f, r) && !at(f, r) && !holes.has(squareAt(f, r));
 	const moves: MoveJSON[] = [];
 	const add = (from: string, f: number, r: number, pawn: boolean) => {
-		const to = sq(f, r);
+		const to = squareAt(f, r);
 		if (pawn && (r === 0 || r === 7)) {
 			for (const promo of ['q', 'r', 'b', 'n']) moves.push({ from, to, promo });
 		} else {
@@ -168,7 +165,7 @@ export function freeMoves(v: View, anySide: boolean): MoveJSON[] {
 	for (let i = 0; i < 64; i++) {
 		const f0 = i % 8;
 		const r0 = Math.floor(i / 8);
-		const from = sq(f0, r0);
+		const from = squareAt(f0, r0);
 		const isMamdani = from === v.mamdani;
 		const piece = isMamdani ? 'M' : v.board[i];
 		if (!piece || (!isMamdani && !anySide && colorOf(piece) !== v.turn)) continue;
@@ -181,7 +178,7 @@ export function freeMoves(v: View, anySide: boolean): MoveJSON[] {
 		if (lines[kind]) {
 			for (const [df, dr] of lines[kind]) {
 				for (let f = f0 + df, r = r0 + dr; onBoard(f, r); f += df, r += dr) {
-					if (holes.has(sq(f, r))) break;
+					if (holes.has(squareAt(f, r))) break;
 					if (at(f, r)) {
 						if (enemy(f, r)) add(from, f, r, false);
 						break;
@@ -193,7 +190,7 @@ export function freeMoves(v: View, anySide: boolean): MoveJSON[] {
 			for (const [df, dr] of steps[kind]) {
 				const f = f0 + df;
 				const r = r0 + dr;
-				if (onBoard(f, r) && !holes.has(sq(f, r)) && (!at(f, r) || enemy(f, r))) add(from, f, r, false);
+				if (onBoard(f, r) && !holes.has(squareAt(f, r)) && (!at(f, r) || enemy(f, r))) add(from, f, r, false);
 			}
 			if (kind === 'K' && f0 === 4 && (r0 === 0 || r0 === 7)) {
 				const rook = piece[0] + 'R';
@@ -201,7 +198,7 @@ export function freeMoves(v: View, anySide: boolean): MoveJSON[] {
 				if (at(0, r0) === rook && free(1, r0) && free(2, r0) && free(3, r0)) add(from, 2, r0, false);
 			}
 		} else if (kind === 'P') {
-			const dir = piece[0] === 'w' ? 1 : -1;
+			const dir = piece.startsWith('w') ? 1 : -1;
 			if (free(f0, r0 + dir)) {
 				add(from, f0, r0 + dir, true);
 				if (r0 === (dir === 1 ? 1 : 6) && free(f0, r0 + 2 * dir)) add(from, f0, r0 + 2 * dir, true);
@@ -247,12 +244,13 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 	for (const p of v.potholes.filter((h) => h.left <= 0)) ev.push({ kind: 'pothole_closed', sq: p.sq, color: p.by });
 	v.potholes = v.potholes.filter((h) => h.left > 0);
 	const dice: string[] = []; // the move log's text, as the server's describe writes it
-	for (const p of v.potholes.filter((h) => v.mamdani && adjacent(h.sq, v.mamdani))) {
+	const repairs = v.potholes.filter((h) => v.mamdani && adjacent(h.sq, v.mamdani));
+	for (const p of repairs) {
 		ev.push({ kind: 'repaired', sq: p.sq });
 		v.stats.repaired++;
 		dice.push(`repairs ${p.sq}`);
 	}
-	v.potholes = v.potholes.filter((h) => !(v.mamdani && adjacent(h.sq, v.mamdani)));
+	v.potholes = v.potholes.filter((h) => !repairs.includes(h));
 
 	// The dice.
 	dice.push(`d8 ${roll.pothole}`);
@@ -268,18 +266,14 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 		let text = `→ ${t}`;
 		const occupant = t === v.mamdani ? 'M' : v.board[squareIndex(t)];
 		let opens = true;
-		if (occupant?.[1] === 'K') {
-			// Kings never fall: the server re-rolls both d8s. A scripted target
-			// would land here again, so the sandbox stops at the re-roll.
-			ev.push({ kind: 'reroll', sq: t, reason: 'king' });
+		const reroll = occupant?.[1] === 'K' ? 'king' : v.potholes.some((h) => h.sq === t) ? 'pothole' : null;
+		if (reroll) {
+			// Kings never fall, and a square holds one pothole: the server
+			// re-rolls both d8s. A scripted target would land here again, so the
+			// sandbox stops at the re-roll.
+			ev.push({ kind: 'reroll', sq: t, reason: reroll });
 			opens = false;
-			text += ' re-roll (kings never fall)';
-		} else if (v.potholes.some((h) => h.sq === t)) {
-			// Already a pothole: the server re-rolls both d8s. A scripted target
-			// would land here again, so the sandbox stops at the re-roll.
-			ev.push({ kind: 'reroll', sq: t, reason: 'pothole' });
-			opens = false;
-			text += ' re-roll (already a pothole)';
+			text += ` re-roll (${rerollReasons[reroll]})`;
 		} else if (v.mamdani && t !== v.mamdani && adjacent(t, v.mamdani)) {
 			ev.push({ kind: 'repaired', sq: t });
 			v.stats.repaired++;

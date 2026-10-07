@@ -5,9 +5,9 @@
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { dicePace, dicePill, scanOf } from '#lib/dice.ts';
-	import { matedKing, pillFor, repairsShown, stageAt } from '#lib/board.ts';
+	import { matedKing, pieceOn, pillFor, repairsShown, squareAt, squareIndex, stageAt } from '#lib/board.ts';
 	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
-	import type { Color, MoveJSON, View } from '#lib/game.ts';
+	import { opponent, sideName, squareName, type Color, type MoveJSON, type View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
 
@@ -38,22 +38,28 @@
 	let instant = $state(false); // no animation at all, for fast play-testing
 	let you = $state<Color | 'spectator'>('white');
 
-	let view = $derived(anim.view as View);
+	let view = $derived(anim.view!);
 	let stage = $derived(stageAt(view, anim.shown));
 	let legal = $derived(view.status === 'playing' ? freeMoves(view, anySide) : []);
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
-	let top = $derived<Color>(bottom === 'white' ? 'black' : 'white');
+	let top = $derived(opponent(bottom));
+	let topPill = $derived(pillFor(view, top, anim.animating));
+	let bottomPill = $derived(pillFor(view, bottom, anim.animating));
 	let lastMove = $derived.by(() => {
 		const m = view.last.find((e) => e.kind === 'moved');
 		return m?.from && m?.to ? { from: m.from, to: m.to } : null;
 	});
 	let savedSquare = $derived(view.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < anim.shown)?.sq ?? '');
+	// A turn that is playing out, with animations on.
+	let live = $derived(anim.animated && !instant);
 	// The Mamdani's repairs, celebrated only on a turn that is playing out.
-	let repairs = $derived(anim.animated && !instant ? repairsShown(view, anim.shown) : []);
+	let repairs = $derived(live ? repairsShown(view, anim.shown) : []);
 	// The dice on the board, as in a game.
-	let pill = $derived(anim.animated && !instant ? dicePill(view, anim.shown) : null);
-	let scan = $derived(anim.animated && !instant ? scanOf(view, anim.shown) : null);
+	let pill = $derived(live ? dicePill(view, anim.shown) : null);
+	let scan = $derived(live ? scanOf(view, anim.shown) : null);
 	let reroll = $derived(anim.animating && view.last[anim.shown - 1]?.kind === 'reroll');
+	// The Result card buttons end the game at once: each checkmate bursts once.
+	let endings = $state(0);
 	// Big moments say something, as in a game.
 	const say = quipper();
 	let quip = $derived.by(() => {
@@ -62,8 +68,6 @@
 		if (end) return say(view.last, view.seq, anim.shown, { end, key: `sandbox:end:${endings}`, winner: true });
 		return anim.animated ? say(view.last, view.seq, anim.shown, undefined, contextOf(view)) : null;
 	});
-	// The Result card buttons end the game at once: each checkmate bursts once.
-	let endings = $state(0);
 	let mated = $derived.by(() => {
 		const sq = !instant ? matedKing(view) : '';
 		return sq ? { sq, key: `sandbox:${endings}` } : null;
@@ -82,9 +86,8 @@
 		if (targetMode === 'square') return { target };
 		const rerolls: NonNullable<RollScript['rerolls']> = [];
 		for (let i = 0; i < 64; i++) {
-			const sq = 'abcdefgh'[d8() - 1] + d8();
-			const piece = sq === v.mamdani ? 'M' : v.board['abcdefgh'.indexOf(sq[0]) + (Number(sq[1]) - 1) * 8];
-			if (piece?.[1] === 'K') rerolls.push({ sq, reason: 'king' });
+			const sq = squareAt(d8() - 1, d8() - 1);
+			if (pieceOn(v, sq)[1] === 'K') rerolls.push({ sq, reason: 'king' });
 			else if (v.potholes.some((h) => h.sq === sq)) rerolls.push({ sq, reason: 'pothole' });
 			else return { rerolls, target: sq };
 		}
@@ -110,11 +113,9 @@
 				return v.mamdani ? { pothole: 8, target: v.mamdani, save: 2 } : { pothole: 1 };
 			case 'random': {
 				const holes = new Set(v.potholes.map((p) => p.sq));
-				const squares = [...Array(64).keys()]
-					.map((i) => 'abcdefgh'[i % 8] + (Math.floor(i / 8) + 1))
-					.filter((s, i) => !holes.has(s) && v.board[i][1] !== 'K');
+				const squares = [...Array(64).keys()].map(squareName).filter((s, i) => !holes.has(s) && v.board[i][1] !== 'K');
 				const t = squares[Math.floor(Math.random() * squares.length)];
-				const occupied = t === v.mamdani || v.board.some((p, i) => p && 'abcdefgh'[i % 8] + (Math.floor(i / 8) + 1) === t);
+				const occupied = t === v.mamdani || !!v.board[squareIndex(t)];
 				return { pothole: d8(), target: t, save: occupied && Math.random() < 0.5 ? d8() : undefined };
 			}
 		}
@@ -134,12 +135,17 @@
 
 	function end(result: NonNullable<View['result']>) {
 		endings += 1;
-		load({ ...JSON.parse(JSON.stringify(view)), status: 'over', result, last: [] });
+		load({ ...$state.snapshot(view), status: 'over', result, last: [] });
 	}
 
 	function setYou(c: Color | 'spectator') {
 		you = c;
-		load({ ...JSON.parse(JSON.stringify(view)), you: c, last: view.last, seq: view.seq });
+		load($state.snapshot(view));
+	}
+
+	function setInstantMode(on: boolean) {
+		instant = on;
+		setInstant(on);
 	}
 </script>
 
@@ -153,7 +159,7 @@
 		<span class="tag">Board sandbox · dev only</span>
 	</header>
 	<p class="status">
-		{view.result ? 'Game over' : anim.animating ? 'Dice are rolling…' : `${view.turn === 'white' ? 'White' : 'Black'} to move`}
+		{view.result ? 'Game over' : anim.animating ? 'Dice are rolling…' : `${sideName(view.turn)} to move`}
 		<span class="muted">· moves ignore check, dice are scripted, nothing goes to the server</span>
 	</p>
 
@@ -178,7 +184,7 @@
 				<h2 id="view-heading">View</h2>
 				<label class="field">
 					Seen as
-					<select value={you} onchange={(e) => setYou(e.currentTarget.value as Color | 'spectator')}>
+					<select bind:value={() => you, setYou}>
 						<option value="white">White</option>
 						<option value="black">Black (flipped)</option>
 						<option value="spectator">Spectator</option>
@@ -187,14 +193,7 @@
 				<label class="choice"><input type="checkbox" bind:checked={anySide} /> Move either side any time</label>
 				<label class="choice"><input type="checkbox" bind:checked={slow} /> Slow dice (3×)</label>
 				<label class="choice">
-					<input
-						type="checkbox"
-						checked={instant}
-						onchange={(e) => {
-							instant = e.currentTarget.checked;
-							setInstant(instant);
-						}}
-					/>
+					<input type="checkbox" bind:checked={() => instant, setInstantMode} />
 					Instant (no animation)
 				</label>
 			</section>
@@ -223,7 +222,7 @@
 		</div>
 
 		<div class="board-col">
-			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} pill={pillFor(view, top, anim.animating).text} pillTone={pillFor(view, top, anim.animating).tone} />
+			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} pill={topPill.text} pillTone={topPill.tone} />
 			<Board
 				{stage}
 				{legal}
@@ -240,7 +239,7 @@
 				{reroll}
 				onmove={move}
 			/>
-			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={pillFor(view, bottom, anim.animating).text} pillTone={pillFor(view, bottom, anim.animating).tone} />
+			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={bottomPill.text} pillTone={bottomPill.tone} />
 		</div>
 
 		<div class="side">

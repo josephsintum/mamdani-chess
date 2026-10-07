@@ -1,8 +1,7 @@
 // Plays a turn's dice one step at a time. Shared by the game page and the
 // /dev/board sandbox, so the sandbox shows exactly what players see.
 
-import { firstDiceStep } from './board.ts';
-import { dicePace } from './dice.ts';
+import { dicePace, firstDiceStep } from './dice.ts';
 import type { EventJSON, View } from './game.ts';
 
 /**
@@ -14,7 +13,8 @@ import type { EventJSON, View } from './game.ts';
 export type Pace = number | ((shownLast: EventJSON | undefined) => number);
 
 export class Animator {
-	view = $state<View | null>(null);
+	// Raw: a view is only ever replaced, never changed in place.
+	view = $state.raw<View | null>(null);
 	/** Events of view.last revealed so far. */
 	shown = $state(0);
 	/**

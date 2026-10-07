@@ -2,15 +2,15 @@
 	import { diceSummary } from './board.ts';
 	import { SAVE_MS, SCAN_MS } from './dice.ts';
 	import Die from './Die.svelte';
-	import type { View } from './game.ts';
+	import { sideName, type View } from './game.ts';
 
 	// The phone's dice card: the turn's dice as a row of chips that fill in as
 	// they play out, and one outcome line. The steps are in the moves sheet.
 	let { view, shown }: { view: View; shown: number } = $props();
 
 	let summary = $derived(diceSummary(view, shown));
-	let side = $derived(summary.who ? (summary.who === 'white' ? 'White' : 'Black') : 'Dice');
-	let title = $derived(summary.who ? `${side}’s roll` : 'Dice');
+	let side = $derived(summary.who ? sideName(summary.who) : 'Dice');
+	let title = $derived(summary.who ? `${side}’s roll` : side);
 </script>
 
 <section class="card" aria-label={title}>
@@ -22,9 +22,9 @@
 				<!-- The thrown dice, then what they decide once they land: the square, or saved / lost. -->
 				{#each chip.dice as d, j (j)}<Die die={d} small />{/each}
 				{#if chip.kind === 'square'}
-					<span class="chip square late" style="--late: {SCAN_MS}ms">{chip.text}</span>
+					<span class="chip square late" style:--late="{SCAN_MS}ms">{chip.text}</span>
 				{:else if chip.kind === 'good' || chip.kind === 'bad'}
-					<span class="chip {chip.kind} late" style="--late: {SAVE_MS}ms">{chip.kind === 'good' ? 'saved' : 'lost'}</span>
+					<span class="chip {chip.kind} late" style:--late="{SAVE_MS}ms">{chip.kind === 'good' ? 'saved' : 'lost'}</span>
 				{/if}
 			{:else}
 				<span class="chip {chip.kind}">{chip.text}</span>
@@ -32,7 +32,7 @@
 		{/each}
 	</div>
 	<p class="line {summary.tone}" aria-live="polite">
-		{#key summary.line}<span class:late={summary.lineAt} style="--late: {summary.lineAt ?? 0}ms">{summary.line}</span>{/key}
+		{#key summary.line}<span class:late={summary.lineAt} style:--late="{summary.lineAt ?? 0}ms">{summary.line}</span>{/key}
 	</p>
 </section>
 
@@ -87,7 +87,6 @@
 		padding: 0 8px;
 		border-radius: 6px;
 		background: var(--line);
-		white-space: nowrap;
 	}
 	.chip.pending {
 		background: none;
