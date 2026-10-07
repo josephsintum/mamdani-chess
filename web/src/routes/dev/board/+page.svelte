@@ -144,12 +144,12 @@
 </script>
 
 <svelte:head>
-	<title>Board sandbox · Pothole Chess</title>
+	<title>Board sandbox · Mamdani Chess</title>
 </svelte:head>
 
 <main>
 	<header>
-		<a href="/" class="logo">Pothole Chess</a>
+		<a href="/" class="logo">Mamdani Chess</a>
 		<span class="tag">Board sandbox · dev only</span>
 	</header>
 	<p class="status">

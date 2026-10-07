@@ -10,10 +10,10 @@ import (
 	"mamdani-chess/store"
 )
 
-// meJSON is the caller's name and name changes on the wire. ChangesResetAt
+// MeJSON is the caller's name and name changes on the wire. ChangesResetAt
 // is when they get store.NameChanges again (Unix ms), or null while none
 // are used.
-type meJSON struct {
+type MeJSON struct {
 	Name           *string `json:"name"`
 	ChangesLeft    int     `json:"changesLeft"`
 	ChangesResetAt *int64  `json:"changesResetAt"`
@@ -22,8 +22,8 @@ type meJSON struct {
 	Game *string `json:"game,omitempty"`
 }
 
-func newMeJSON(name string, a store.Allowance) meJSON {
-	out := meJSON{ChangesLeft: a.Left}
+func newMeJSON(name string, a store.Allowance) MeJSON {
+	out := MeJSON{ChangesLeft: a.Left}
 	if name != "" {
 		out.Name = &name
 	}

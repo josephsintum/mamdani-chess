@@ -1,4 +1,4 @@
-# Pothole Chess: Mamdani Edition
+# Mamdani Chess
 
 A browser chess variant to play with friends: the original Pot-Hole Chess (Spicer and Chamberlain, 2001) plus one neutral piece, the Mamdani.
 
@@ -59,13 +59,15 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 
 ## Next step
 
-Milestone 07 (launch). Its brainstorm has started: audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08 ([brainstorm](docs/superpowers/specs/2026-10-06-08-leaderboards-brainstorm.md)). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
+Milestone 07 (launch). Its brainstorm has started ([notes](docs/superpowers/specs/2026-10-06-07-launch-brainstorm.md)): the app is renamed Mamdani Chess, audience a few friends, the Railway subdomain, the canvas rules page plus a collapsible full-rules section written for the new pothole rules, one spec. The Mamdani art is already on the boards. Player history waits for milestone 08 ([brainstorm](docs/superpowers/specs/2026-10-06-08-leaderboards-brainstorm.md)). Follow `docs/superpowers/plans/2026-10-03-00-roadmap.md`. Repo: https://github.com/josephsintum/mamdani-chess (public).
 
 ## Working notes
 
 - **Run it:** `go run ./cmd/server` (:8080) and `pnpm --dir web dev` (:5173, forwards `/api`). `/dev/board` is a dev-only sandbox: one browser plays both sides, dice are scripted, and nothing goes to the server.
 - **Two players in one browser:** `localhost` and `[::1]` (or `127.0.0.1` against the Go server) keep separate cookies, so each origin is a different guest.
 - **Tests:** `go test -race -short ./...` (the rules engine's full random-game suite takes about 2 min under `-race`), `pnpm --dir web check`, `pnpm --dir web test` (Vitest), `pnpm --dir web build`.
+- **Contract checks:** `contract/` checks what clients see through the public API (status codes, error strings, JSON key order, cookies, SSE framing, static files, link previews) against the real server binary on a free port with a new database. Run `pnpm --dir web build` first, then `CONTRACT=1 go test ./contract -count=1` (about 16 s; `-count=1` because a cached pass doesn't see server changes); `CONTRACT_SLOW=1` adds the minute-long first-move abort, and `BASE_URL=<url>` checks a running server instead. Without `CONTRACT=1` the package skips, so `go test ./...` doesn't need the web build.
+- **Wire types:** `web/src/lib/wire.gen.ts` (the JSON types the browser gets, and the pothole limits) is generated from the Go types by `go run ./cmd/wiregen`; `go test ./cmd/wiregen` fails while it's stale. A field that is narrower in TypeScript than in Go (a color is a Go string) carries a tag, e.g. `ts:"Color"`. Never edit the file by hand.
 - **Playtest:** with both servers running, `pnpm --dir web playtest` plays whole games through the real UI (two guests per game, random legal moves, some by mouse drag) and exits 1 on any page error, stuck board or lost move. Flags: `--browser webkit`, `--games 12`, `--drag 0.5`, `--headed`, and `--match` (the two guests find each other through quick match instead of a link). Run it after any change to the board, game page or server protocol.
 - **Phones:** under 640 px wide the game page renders its phone layout (canvas row "Phone game: playtest build"). Check phone changes with `pnpm --dir web playtest --phone`, which fails if the page ever scrolls.
 - **Deploys:** every push to `main` deploys to Railway once CI is green, and a deploy pauses every game in progress: games are saved, open tabs reconnect on their own, and the side to move's clock restarts 10 s after the server is back, from what it had at the start of that turn. Don't push to `main` during a playtest. Share the URL with friends only until milestone 07's per-IP limits. The production image logs JSON (`LOG_FORMAT=json`); `go run` logs text.
@@ -80,7 +82,7 @@ Milestone 07 (launch). Its brainstorm has started: audience a few friends, the R
   - transition functions take `(node, params)`;
   - `$state.snapshot` only works in `.svelte`/`.svelte.ts` files;
   - run `npx @sveltejs/mcp svelte-autofixer` on every component and avoid `$effect`.
-- **Dev server and `pnpm check`:** `pnpm --dir web check` regenerates SvelteKit's files and can leave a running `pnpm --dir web dev` hung (pages stop loading). Restart the dev server after it.
+- **Dev server and `pnpm check`:** `pnpm --dir web check` regenerates SvelteKit's files and can leave a running `pnpm --dir web dev` hung (pages stop loading). Restart the dev server after it. Opening a page while the dev server is still starting can make it log `failed to load virtual css module` and serve that component's raw `.svelte` file as its CSS, so the page loses rules (e.g. the home page runs edge to edge); restart it and wait for "ready".
 - **PR screenshots:** a PR that changes the UI embeds screenshots, before and after where it fits. They live on the unmerged `pr-screenshots` branch under `pr-<number>/` and are linked from `raw.githubusercontent.com`, so `main` stays free of images.
 - **Notices:** show toasts with `notify.*` from `#lib/toast.ts` (svelte-sonner behind it, themed in `Toaster.svelte`, mounted once in the layout). Never import svelte-sonner in a page.
 - **Board pointer rule:** capture the pointer only once a drag has moved more than 6px from the press (not from the last event, or slow drags never start). Capturing on pointerdown sends the click to the board, and taps stop working.

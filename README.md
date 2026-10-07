@@ -1,4 +1,4 @@
-# Pothole Chess: Mamdani Edition
+# Mamdani Chess
 
 A browser chess variant to play with friends. It is [Pot-Hole Chess](https://www.chessvariants.com/boardrules.dir/potholechess.html) (Peter Spicer and Michael Chamberlain, 2001) plus one new piece: the Mamdani.
 

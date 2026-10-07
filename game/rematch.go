@@ -20,7 +20,7 @@ type rematch struct {
 
 // RematchJSON is the rematch on the wire.
 type RematchJSON struct {
-	Offer    string `json:"offer,omitempty"` // the color that offered, while waiting
+	Offer    string `json:"offer,omitempty" ts:"Color"` // the color that offered, while waiting
 	Declined bool   `json:"declined,omitempty"`
 	Code     string `json:"code,omitempty"` // set once accepted: everyone goes there
 }

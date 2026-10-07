@@ -2,19 +2,9 @@
 // running clock started; the browser counts down from those locally.
 
 import type { Color } from './game.ts';
+import type { ClockJSON } from './wire.gen.ts';
 
-export interface ClockJSON {
-	whiteMs: number;
-	blackMs: number;
-	/** The side whose clock is counting, if any. */
-	running?: Color;
-	/** When the running clock starts or started (server ms); after `now` during the dice pause. */
-	since?: number;
-	/** The server's time when it sent the view, in ms. */
-	now: number;
-	/** When the side to move must make its first move by (server ms). */
-	firstMoveDeadline?: number;
-}
+export type { ClockJSON };
 
 /** What color has left at serverNow, in ms. */
 export function timeLeft(clock: ClockJSON, color: Color, serverNow: number): number {
