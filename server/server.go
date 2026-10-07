@@ -60,6 +60,7 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	s.mux.HandleFunc("GET /api/match", s.matchStream)
 	s.mux.HandleFunc("GET /api/games", s.liveGames)
 	s.mux.HandleFunc("POST /api/games", s.createGame)
+	s.mux.HandleFunc("POST /api/practice", s.createPractice)
 	s.mux.HandleFunc("GET /api/games/{code}", s.gameView)
 	s.mux.HandleFunc("GET /api/games/{code}/stream", s.gameStream)
 	s.mux.HandleFunc("POST /api/games/{code}/move", s.gameMove)

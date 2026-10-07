@@ -60,8 +60,16 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	if meta(home, "twitter:card") != "summary_large_image" || meta(home, "og:image:width") != "1200" {
 		t.Error("missing the large card tags")
 	}
-	if got := meta(page(t, c, ts.URL+"/play"), "og:title"); got != "Quick match · Mamdani Chess" {
-		t.Errorf("/play og:title %q", got)
+	for path, want := range map[string]string{
+		"/play":        "Quick match · Mamdani Chess",
+		"/how-to-play": "How to play · Mamdani Chess",
+		"/rules":       "Rules · Mamdani Chess",
+		"/practice":    "Practice · Mamdani Chess",
+		"/about":       "About · Mamdani Chess",
+	} {
+		if got := meta(page(t, c, ts.URL+path), "og:title"); got != want {
+			t.Errorf("%s og:title %q, want %q", path, got, want)
+		}
 	}
 	if got := meta(page(t, c, ts.URL+"/game/ZZZZZZ"), "og:title"); got != "Mamdani Chess" {
 		t.Errorf("unknown game og:title %q, want the home page's", got)

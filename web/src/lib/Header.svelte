@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
+	import { page } from '$app/state';
 	import {
 		ApiError,
 		chooseName,
@@ -20,6 +21,12 @@
 	// browser's last visit shows, so it doesn't pop in a moment later.
 	let { me = $bindable(null) }: { me?: Me | null } = $props();
 	const remembered = rememberedName();
+	const links = [
+		{ href: '/how-to-play', label: 'How to play' },
+		{ href: '/rules', label: 'Rules' },
+		{ href: '/practice', label: 'Practice' },
+		{ href: '/about', label: 'About' }
+	];
 
 	let open = $state(false);
 	let offers = $state<string[] | null>(null);
@@ -145,6 +152,11 @@
 			</svg>
 			<span class="title">Mamdani Chess</span>
 		</a>
+		<nav class="links" aria-label="Main">
+			{#each links as l (l.href)}
+				<a href={l.href} aria-current={page.url.pathname === l.href ? 'page' : undefined}>{l.label}</a>
+			{/each}
+		</nav>
 		{#if name}
 			<div class="me" bind:this={pill} onfocusout={onFocusOut}>
 				<span class="badge" aria-hidden="true">{initials(name)}</span>
@@ -238,11 +250,12 @@
 		margin: 0 auto;
 		padding: 0 32px;
 	}
+	/* The logo never shrinks: a long name gives way instead. */
 	.brand {
 		display: flex;
+		flex-shrink: 0;
 		align-items: center;
 		gap: 12px;
-		min-width: 0;
 		color: var(--text);
 		text-decoration: none;
 	}
@@ -258,6 +271,28 @@
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		white-space: nowrap;
+	}
+	.links {
+		display: flex;
+		gap: 4px;
+		margin-left: auto;
+	}
+	.links a {
+		display: flex;
+		align-items: center;
+		height: 44px;
+		padding: 0 12px;
+		border-radius: 8px;
+		color: var(--text-muted);
+		font-size: 15px;
+		font-weight: 500;
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.links a:hover,
+	.links a[aria-current='page'] {
+		color: var(--text);
+		background: var(--surface);
 	}
 	.me {
 		display: flex;
@@ -420,10 +455,12 @@
 	   Wider than the page's 640 px phone layout, so a long name never
 	   squeezes the logo. */
 	@media (max-width: 799px) {
+		/* The links get their own row: beside a name they'd squeeze the logo. */
 		.inner {
-			height: 60px;
+			flex-wrap: wrap;
+			height: auto;
 			padding: 0 16px;
-			gap: 8px;
+			gap: 0 8px;
 		}
 		.brand {
 			gap: 8px;
@@ -434,6 +471,22 @@
 		}
 		.title {
 			font-size: 22px;
+		}
+		.brand,
+		.me {
+			min-height: 44px;
+			margin-block: 8px;
+		}
+		.links {
+			order: 3;
+			flex-basis: 100%;
+			margin: 0 -8px;
+			padding-bottom: 6px;
+		}
+		.links a {
+			height: 40px;
+			padding: 0 8px;
+			font-size: 14px;
 		}
 		.me {
 			flex-shrink: 0;

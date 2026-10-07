@@ -117,4 +117,21 @@
 		font-weight: 600;
 		cursor: pointer;
 	}
+	/* Narrow screens: a button beside the text would squeeze it into a tall
+	   column over the board, so it goes underneath. */
+	@media (max-width: 479px) {
+		:global(.mc-toast) {
+			flex-wrap: wrap;
+		}
+		:global(.mc-toast [data-content]) {
+			flex: 1 1 calc(100% - 64px);
+		}
+		:global(.mc-toast-close) {
+			order: 2;
+		}
+		:global(.mc-toast-action) {
+			order: 3;
+			margin-left: 20px;
+		}
+	}
 </style>

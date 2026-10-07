@@ -41,6 +41,11 @@ export function dicePace(shownLast: EventJSON | undefined): number {
 	return shownLast ? playMs(shownLast) : MOVE_MS;
 }
 
+/** How long a turn takes to play out in the browser: the move, then every dice step. */
+export function playOutMs(last: EventJSON[]): number {
+	return last.slice(firstDiceStep(last)).reduce((ms, e) => ms + playMs(e), MOVE_MS);
+}
+
 /** A die's face from `at` ms after it is thrown. */
 type Frame = { at: number; face: number };
 

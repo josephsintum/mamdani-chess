@@ -3,26 +3,37 @@
 	import { squareName, type MoveJSON } from './game.ts';
 	import type { Pothole } from './wire.gen.ts';
 
-	// A board to look at, not to play on: the live games list and the home
-	// page's hero. No buttons, so a card that holds one stays one link.
+	// A board to look at, not to play on: the live games list, the home
+	// page's hero and the rules' figures. No buttons, so a card that holds one
+	// stays one link.
 	let {
 		board,
 		potholes = [],
 		mamdani = '',
 		last = null,
+		dots = [],
+		target = '',
+		cones = false,
 		label
 	}: {
 		board: string[]; // 64 entries, index 0 = a1
 		potholes?: Pothole[];
 		mamdani?: string;
 		last?: MoveJSON | null;
+		/** Squares a piece can move to. */
+		dots?: string[];
+		/** The square the dice picked, ringed. */
+		target?: string;
+		/** Whether each pothole shows its rounds left as cones. */
+		cones?: boolean;
 		/** What a screen reader hears instead of 64 squares. */
 		label: string;
 	} = $props();
 
 	// a8 first, row by row, as the board is drawn.
 	const order = Array.from({ length: 64 }, (_, n) => (7 - Math.floor(n / 8)) * 8 + (n % 8));
-	let holes = $derived(new Set(potholes.map((h) => h.sq)));
+	let holes = $derived(new Map(potholes.map((h) => [h.sq, h])));
+	let dotted = $derived(new Set(dots));
 </script>
 
 <div class="mini" role="img" aria-label={label}>
@@ -34,6 +45,11 @@
 			class:last={last?.from === sq || last?.to === sq}
 		>
 			{#if holes.has(sq)}<span class="hole"></span>{/if}
+			{#if cones && holes.has(sq)}
+				<span class="cones">{#each { length: holes.get(sq)!.left } as _, i (i)}<span class="cone"></span>{/each}</span>
+			{/if}
+			{#if dotted.has(sq)}<span class="dot"></span>{/if}
+			{#if target === sq}<span class="target"></span>{/if}
 			{#if mamdani === sq}
 				<img class="mamdani" src="/mamdani/piece.webp" alt="" draggable="false" />
 			{:else if board[index]}
@@ -88,6 +104,32 @@
 		border-radius: 46% 54% 42% 58% / 55% 45% 55% 45%;
 		background: var(--hole);
 		box-shadow: 0 0 0 max(1.5px, 0.5cqw) var(--hazard);
+	}
+	.cones {
+		align-self: end;
+		display: flex;
+		gap: 4%;
+		justify-content: center;
+		width: 100%;
+		height: 30%;
+		margin-bottom: 4%;
+	}
+	.cone {
+		width: 22%;
+		background: var(--hazard);
+		clip-path: polygon(50% 0, 100% 100%, 0 100%);
+	}
+	.dot {
+		width: 30%;
+		height: 30%;
+		border-radius: 50%;
+		background: var(--legal-fill);
+	}
+	.target {
+		width: 100%;
+		height: 100%;
+		box-sizing: border-box;
+		border: max(2px, 0.6cqw) solid var(--target-ring);
 	}
 	.mamdani {
 		filter: none; /* its yellow border is its outline */

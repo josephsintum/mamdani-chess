@@ -1,12 +1,11 @@
 <script lang="ts">
-	import Board from '#lib/Board.svelte';
 	import DiceTray from '#lib/DiceTray.svelte';
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
+	import ScriptedBoard from '#lib/ScriptedBoard.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
-	import { dicePace, dicePill, scanOf } from '#lib/dice.ts';
-	import { matedKing, pieceOn, pillFor, repairsShown, squareAt, squareIndex, stageAt } from '#lib/board.ts';
-	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
+	import { dicePace } from '#lib/dice.ts';
+	import { pieceOn, pillFor, squareAt, squareIndex, stageAt } from '#lib/board.ts';
 	import { opponent, sideName, squareName, type Color, type MoveJSON, type View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
@@ -45,33 +44,8 @@
 	let top = $derived(opponent(bottom));
 	let topPill = $derived(pillFor(view, top, anim.animating));
 	let bottomPill = $derived(pillFor(view, bottom, anim.animating));
-	let lastMove = $derived.by(() => {
-		const m = view.last.find((e) => e.kind === 'moved');
-		return m?.from && m?.to ? { from: m.from, to: m.to } : null;
-	});
-	let savedSquare = $derived(view.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < anim.shown)?.sq ?? '');
-	// A turn that is playing out, with animations on.
-	let live = $derived(anim.animated && !instant);
-	// The Mamdani's repairs, celebrated only on a turn that is playing out.
-	let repairs = $derived(live ? repairsShown(view, anim.shown) : []);
-	// The dice on the board, as in a game.
-	let pill = $derived(live ? dicePill(view, anim.shown) : null);
-	let scan = $derived(live ? scanOf(view, anim.shown) : null);
-	let reroll = $derived(anim.animating && view.last[anim.shown - 1]?.kind === 'reroll');
 	// The Result card buttons end the game at once: each checkmate bursts once.
 	let endings = $state(0);
-	// Big moments say something, as in a game.
-	const say = quipper();
-	let quip = $derived.by(() => {
-		if (instant) return null;
-		const end = endings > 0 ? endQuip(view) : null;
-		if (end) return say(view.last, view.seq, anim.shown, { end, key: `sandbox:end:${endings}`, winner: true });
-		return anim.animated ? say(view.last, view.seq, anim.shown, undefined, contextOf(view)) : null;
-	});
-	let mated = $derived.by(() => {
-		const sq = !instant ? matedKing(view) : '';
-		return sq ? { sq, key: `sandbox:${endings}` } : null;
-	});
 	let needsTarget = $derived(rollKinds.find((r) => r.kind === rollKind)?.needsTarget ?? false);
 
 	function d8(): number {
@@ -223,22 +197,7 @@
 
 		<div class="board-col">
 			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} pill={topPill.text} pillTone={topPill.tone} />
-			<Board
-				{stage}
-				{legal}
-				{lastMove}
-				flipped={bottom === 'black'}
-				interactive={!anim.animating && view.status === 'playing'}
-				dim={!!view.result && !anim.animating}
-				saved={savedSquare}
-				{repairs}
-				{quip}
-				{mated}
-				{pill}
-				{scan}
-				{reroll}
-				onmove={move}
-			/>
+			<ScriptedBoard {anim} {legal} flipped={bottom === 'black'} interactive still={instant} id="sandbox" ending={endings} onmove={move} />
 			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={bottomPill.text} pillTone={bottomPill.tone} />
 		</div>
 

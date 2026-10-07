@@ -23,6 +23,7 @@
 		pill = null,
 		scan = null,
 		reroll = false,
+		showing = '',
 		onmove
 	}: {
 		stage: Stage;
@@ -51,6 +52,8 @@
 		scan?: Scan | null;
 		/** The dice hit a square they must re-roll: the target blinks. */
 		reroll?: boolean;
+		/** A piece shown as if picked up, its moves and blocked squares marked, on a board you can't play on (how-to-play). */
+		showing?: string;
 		onmove: (move: MoveJSON) => void;
 	} = $props();
 
@@ -77,7 +80,7 @@
 
 	// Without moves to make (not your turn, dice still rolling) nothing is selectable.
 	let active = $derived(interactive && legal.length > 0);
-	let current = $derived(active ? selected : null);
+	let current = $derived(active ? selected : showing || null);
 	let pending = $derived(active ? promoting : null);
 	// The piece being dragged, once the drag has really started.
 	let held = $derived(drag?.moved ? drag.from : null);
@@ -224,7 +227,7 @@
 	}
 
 	function tap(sq: string) {
-		if (pending) return;
+		if (!active || pending) return;
 		if (current && targets.has(sq) && moveTo(current, sq)) return;
 		selected = movable.has(sq) && current !== sq ? sq : null;
 	}

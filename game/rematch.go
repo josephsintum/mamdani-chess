@@ -45,6 +45,8 @@ func (g *Game) offerRematch(guest string, decline bool) error {
 	switch {
 	case !seated:
 		return ErrNotPlayer
+	case g.practice:
+		return ErrPractice
 	case !g.g.Result.Over:
 		return ErrNotOver
 	case g.rematch.code != "": // already accepted

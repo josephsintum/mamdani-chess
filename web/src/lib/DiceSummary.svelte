@@ -6,7 +6,9 @@
 
 	// The phone's dice card: the turn's dice as a row of chips that fill in as
 	// they play out, and one outcome line. The steps are in the moves sheet.
-	let { view, shown }: { view: View; shown: number } = $props();
+	// wrap: chips that don't fit take a second line (pages whose layout can
+	// grow); the game's card keeps one height, so there they clip.
+	let { view, shown, wrap = false }: { view: View; shown: number; wrap?: boolean } = $props();
 
 	let summary = $derived(diceSummary(view, shown));
 	let side = $derived(summary.who ? sideName(summary.who) : 'Dice');
@@ -14,7 +16,7 @@
 </script>
 
 <section class="card" aria-label={title}>
-	<div class="chips">
+	<div class="chips" class:wrap>
 		<span class="who" aria-hidden="true">{side}</span>
 		{#each summary.chips as chip, i (i)}
 			{#if i > 0}<span class="arrow" aria-hidden="true">→</span>{/if}
@@ -32,7 +34,7 @@
 		{/each}
 	</div>
 	<p class="line {summary.tone}" aria-live="polite">
-		{#key summary.line}<span class:late={summary.lineAt} style:--late="{summary.lineAt ?? 0}ms">{summary.line}</span>{/key}
+		{#key summary.line}<span class="text" class:late={summary.lineAt} style:--late="{summary.lineAt ?? 0}ms">{summary.line}</span>{/key}
 	</p>
 </section>
 
@@ -103,12 +105,32 @@
 	}
 	.line {
 		margin: 0;
-		overflow: hidden;
 		font-size: 14px;
 		line-height: 19px;
 		white-space: nowrap;
-		text-overflow: ellipsis;
 		color: var(--text-body);
+	}
+	/* The ellipsis is the text's own, so it fades in with it. */
+	.text {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.chips.wrap {
+		flex-wrap: wrap;
+		row-gap: 6px;
+	}
+	/* Phones up to 420 px: tighter, so a usual turn fits on one line. */
+	@media (max-width: 420px) {
+		.chips {
+			gap: 4px;
+		}
+		.chip {
+			padding: 0 6px;
+		}
+		.who {
+			margin-right: 2px;
+		}
 	}
 	.line.muted {
 		color: var(--text-muted);

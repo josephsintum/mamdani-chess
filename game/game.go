@@ -28,6 +28,7 @@ var (
 	ErrIllegalMove = rules.ErrIllegalMove
 	ErrInternal    = errors.New("internal error in this game")
 	ErrNotOver     = errors.New("the game isn't over")
+	ErrPractice    = errors.New("a practice game has no rematch")
 	// ErrGone is returned once a game has stopped: it sat idle and was
 	// evicted, or a panic retired it.
 	ErrGone = errors.New("game not found")
@@ -72,6 +73,12 @@ type Game struct {
 	// views is the latest encoded view for each role, which streams that
 	// join soon after reuse (see sharedView).
 	views [3]builtView
+	// practice: one guest holds both seats and moves for the side to move;
+	// there's no clock (see CreatePractice).
+	practice bool
+	// quit stops the game after the current call: the guest started
+	// another practice game.
+	quit bool
 }
 
 // Sub is one open stream. C always holds the newest View: a reader that
@@ -139,6 +146,12 @@ func (g *Game) loop() {
 				// before replying, so the caller never sees it listed.
 				g.stop()
 				c.reply <- err
+				return
+			}
+			if g.quit {
+				slog.Info("practice game ended", "code", g.code, "moves", len(g.g.Turns))
+				g.stop()
+				c.reply <- nil
 				return
 			}
 			g.publish() // before the reply, so the caller's next List sees it
@@ -451,6 +464,9 @@ func (g *Game) player(guest string, now time.Time) (rules.Color, error) {
 }
 
 func (g *Game) seatOf(guest string) (rules.Color, bool) {
+	if g.practice && guest == g.seats[rules.White] {
+		return g.g.Pos.Turn, true // the one guest plays whoever is to move
+	}
 	for c, id := range g.seats {
 		if id != "" && id == guest {
 			return rules.Color(c), true
@@ -573,6 +589,7 @@ func (g *Game) viewFor(r role) *View {
 		Players:  PlayersJSON{White: g.names[rules.White], Black: g.names[rules.Black]},
 		Rematch:  g.rematchJSON(),
 		Result:   resultJSON(g.g.Result),
+		Practice: g.practice,
 	}
 	color, seated := rules.Color(r), r != roleSpectator
 	if seated {

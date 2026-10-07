@@ -45,6 +45,11 @@ export interface View {
 	players: PlayersJSON;
 	/** only once the game is over */
 	rematch: RematchJSON;
+	/**
+	 * Practice is set for a practice game: one guest plays both sides,
+	 * with no clock (absent otherwise).
+	 */
+	practice?: boolean;
 }
 
 /**
