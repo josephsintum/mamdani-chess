@@ -12,12 +12,15 @@ Chess comes first: the dice bring the chaos, and the Mamdani is how you fight ba
   <img src="https://raw.githubusercontent.com/josephsintum/mamdani-chess/pr-screenshots/readme/gameplay-phone.png" alt="The same moment on Black's phone: the board turned for Black, and the dice card saying the white pawn falls into e2" width="26%">
 </p>
 
-## How it will work
+<p align="center"><b>Play it at <a href="https://mamdanichess.com">mamdanichess.com</a></b></p>
 
-- **Guests only.** No accounts; you get a random name like `pizza-rat-astoria`.
+## How it works
+
+- **Guests only.** No accounts: you get a random New York name like `babylon-governor`, and can trade it for another up to three times a day.
 - **Ways to play.** Quick match with a stranger, or send a friend a link or a 6-character code.
-- **Clock.** One time control for every game: 10 minutes each, plus 5 seconds per move.
-- **Public games.** Every game is public; spectators watch live and react with emoji instead of chat.
+- **Clock.** One time control for every game: 10 minutes each, plus 5 seconds per move. The clock waits while the dice play out.
+- **Public games.** Every game is public: the home page lists the live ones, and anyone can open a game and watch. Emoji reactions for spectators are planned.
+- **Saved games.** Games are saved as they go, so a server restart doesn't lose them. A game ends with a result card and a rematch button.
 
 ## Stack
 
