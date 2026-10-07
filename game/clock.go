@@ -174,7 +174,7 @@ func (g *Game) flag(now time.Time) {
 type ClockJSON struct {
 	WhiteMS int64  `json:"whiteMs"`
 	BlackMS int64  `json:"blackMs"`
-	Running string `json:"running,omitempty"` // "white", "black" or "" when stopped
+	Running string `json:"running,omitempty" ts:"Color"` // "white", "black" or "" when stopped
 	// Since is when the running clock starts or started, in unix ms. It can
 	// be after Now during the dice pause.
 	Since int64 `json:"since,omitempty"`

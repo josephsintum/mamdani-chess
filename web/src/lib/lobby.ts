@@ -1,20 +1,10 @@
 // Calls for finding games: the guest's name, the live games list and game
-// codes. Mirrors server/me.go and game/live.go.
+// codes. The JSON types come from the server's Go types (wire.gen.ts).
 
-import type { MoveJSON, View } from './game.ts';
+import type { Live, MeJSON } from './wire.gen.ts';
 
 /** A game being played, as the home page lists it. */
-export interface LiveGame {
-	code: string;
-	white: string;
-	black: string;
-	move: number;
-	board: string[]; // 64 entries, index 0 = a1
-	mamdani: string;
-	potholes: View['potholes'];
-	last: MoveJSON | null;
-	watching: number;
-}
+export type LiveGame = Live;
 
 export interface LiveGames {
 	games: LiveGame[];
@@ -25,15 +15,9 @@ export interface LiveGames {
 /**
  * The caller's name (null until they first play) and their name changes:
  * 3 in any 24 hours. changesResetAt (Unix ms) is when they get 3 again, or
- * null while none are used. Mirrors server/me.go.
+ * null while none are used.
  */
-export interface Me {
-	name: string | null;
-	changesLeft: number;
-	changesResetAt: number | null;
-	/** The code of the game the caller is playing right now, if any. */
-	game?: string;
-}
+export type Me = MeJSON;
 
 /** A refused API call, with its HTTP status (409 stale or taken, 429 none left…). */
 export class ApiError extends Error {
