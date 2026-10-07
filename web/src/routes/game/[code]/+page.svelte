@@ -22,6 +22,7 @@
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
 	import { notify } from '#lib/toast.ts';
 	import { retryDelay } from '#lib/reconnect.ts';
+	import { canShare, shareLink } from '#lib/share.ts';
 	import {
 		createGame,
 		followsRematch,
@@ -69,6 +70,8 @@
 	let busy = $state(false); // a move or resignation is on its way
 	let confirmResign = $state(false);
 	let copyHint = $state('');
+	// Phones with a share sheet get Share link first; the rest copy.
+	const sharable = canShare(page.url.href);
 	// The game ended while this page watched it: the tally counts up, and the
 	// winner gets confetti (cleared once it has fallen).
 	let endedLive = $state(false);
@@ -296,6 +299,10 @@
 		hintTimer = setTimeout(() => (copyHint = ''), 2500);
 	}
 
+	async function share() {
+		if ((await shareLink(page.url.href)) === 'failed') copyLink();
+	}
+
 	async function newGame() {
 		busy = true;
 		try {
@@ -511,11 +518,22 @@
 		<div class="ph-bottom">
 		{#if view.status === 'waiting' && you === 'white'}
 			<section class="ph-card" aria-label="Invite a friend">
-				<label for="link" class="ph-title">Send this link to your friend</label>
-				<div class="ph-row">
-					<input id="link" readonly value={page.url.href} />
-					<button type="button" class="primary" onclick={copyLink}>Copy link</button>
-				</div>
+				{#if sharable}
+					<span class="ph-title">Send this link to your friend</span>
+					<div class="ph-row">
+						<button type="button" class="primary share" onclick={share}>
+							<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3" /><path d="m7 8 5-5 5 5" /><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" /></svg>
+							Share link
+						</button>
+						<button type="button" class="outline" onclick={copyLink}>Copy link</button>
+					</div>
+				{:else}
+					<label for="link" class="ph-title">Send this link to your friend</label>
+					<div class="ph-row">
+						<input id="link" readonly value={page.url.href} />
+						<button type="button" class="primary" onclick={copyLink}>Copy link</button>
+					</div>
+				{/if}
 				{#if copyHint}<span class="muted">{copyHint}</span>{/if}
 			</section>
 		{:else if confirmResign}
@@ -864,6 +882,9 @@
 	}
 	.ph-row .primary {
 		flex-grow: 0;
+	}
+	.ph-row .share {
+		flex-grow: 1;
 	}
 	.ph-two {
 		display: grid;
