@@ -115,6 +115,11 @@ describe('joinNotice', () => {
 		expect(joinNotice(null, at('white', 'playing'), false)).toBe("Playing bagel-soho · You're White, your move");
 	});
 
+	it('says Rematch after a rematch, with the swapped colour', () => {
+		expect(joinNotice(null, at('black', 'playing'), false, true)).toBe("Rematch · You're Black now");
+		expect(joinNotice(null, at('white', 'playing'), false, true)).toBe("Rematch · You're White, your move");
+	});
+
 	it('says nothing after a quick match: the opponent-found screen did', () => {
 		expect(joinNotice(null, at('black', 'playing'), true)).toBe('');
 		expect(joinNotice(null, at('white', 'playing'), true)).toBe('');

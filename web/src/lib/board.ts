@@ -3,7 +3,7 @@
 
 import { HOLE_CAP, HOLE_ROUNDS } from './wire.gen.ts';
 import { SAVE_MS, SCAN_MS, stepDice, THROW_MS, type DieSpec } from './dice.ts';
-import { pieceName, squareName, type Color, type EventJSON, type View } from './game.ts';
+import { pieceName, reasons, squareName, type Color, type EventJSON, type View } from './game.ts';
 
 export function squareIndex(name: string): number {
 	return (Number(name[1]) - 1) * 8 + (name.charCodeAt(0) - 97);
@@ -403,12 +403,63 @@ export function pillFor(view: View, color: Color, animating: boolean): { text: s
 	return { text: view.you === color ? 'Your move' : 'To move', tone: 'turn' };
 }
 
-/** The result card's numbers, counted up one at a time when it appears. */
+/**
+ * The result card. Players read it as themselves ("You win", "You lost"),
+ * spectators by colour with the names in the detail. `lost` makes the
+ * loser's card quiet: no yellow.
+ */
+export function resultCardOf(view: View): { title: string; kicker: string; detail: string; lost: boolean } | null {
+	const r = view.result;
+	if (!r) return null;
+	const player = view.you === 'white' || view.you === 'black';
+	const colour = (c: Color) => (c === 'white' ? 'White' : 'Black');
+	const other = (c: Color): Color => (c === 'white' ? 'black' : 'white');
+	// Who did it: "You", the player's name, or for spectators "name (White)".
+	const who = (c: Color, start = true) => {
+		if (view.you === c) return start ? 'You' : 'you';
+		const name = view.players[c];
+		if (!name) return colour(c);
+		return player ? name : `${name} (${colour(c)})`;
+	};
+	const why = reasons[r.reason] ?? r.reason;
+	const winner = r.winner ?? 'white';
+	const loser = other(winner);
+	const lastSan = view.log.at(-1)?.san ?? '';
+	const byRoll = matedByRoll(view);
+	let title = r.draw ? 'Draw' : player ? (view.you === winner ? 'You win' : 'You lost') : `${colour(winner)} wins`;
+	let detail = `By ${why}.`;
+	if (r.reason === 'resignation') detail = `${who(loser)} resigned.`;
+	if (r.reason === 'checkmate') detail = byRoll ? `${who(winner)} mated by a pothole after ${lastSan}.` : `${who(winner)} mated with ${lastSan}.`;
+	if (r.reason === 'timeout') detail = `${who(loser)} ran out of time.`;
+	if (r.reason === 'timeout_vs_insufficient') detail = `${who(view.turn)} ran out of time; ${who(other(view.turn), false)} couldn’t mate.`;
+	if (r.reason === 'aborted') {
+		title = 'Aborted';
+		detail = `${who(view.turn)} didn’t make a first move. Nobody wins.`;
+	}
+	if (r.reason === 'expired') {
+		title = 'Expired';
+		detail = 'Nobody joined within a day.';
+	}
+	return {
+		title,
+		kicker: `${byRoll ? `${why} · by a pothole` : why} · Move ${Math.max(1, Math.ceil(view.seq / 2))}`,
+		detail,
+		lost: title === 'You lost'
+	};
+}
+
+/**
+ * The result card's numbers, counted up one at a time when it appears.
+ * `label` is for the desktop's list; `short` for the phone's one line, which
+ * folds the saving rolls into "4 of 6 saved" (a row with no `short` is left
+ * out there).
+ */
 export function tallyOf(view: View): { label: string; short: string; value: number }[] {
+	const rolls = view.stats.savingRolls;
 	return [
 		{ label: 'Moves', short: 'moves', value: Math.ceil(view.seq / 2) },
-		{ label: 'Saving rolls', short: 'rolls', value: view.stats.savingRolls },
-		{ label: 'Saved by the Mamdani', short: 'saved', value: view.stats.saved },
+		{ label: 'Saving rolls', short: '', value: rolls },
+		{ label: 'Saved by the Mamdani', short: rolls ? `of ${rolls} saved` : 'saved', value: view.stats.saved },
 		{ label: 'Potholes repaired', short: 'repaired', value: view.stats.repaired },
 		{ label: 'Pieces lost to potholes', short: 'lost', value: view.lost.white.length + view.lost.black.length }
 	];

@@ -189,12 +189,14 @@ const sideName = (c: Color) => (c === 'white' ? 'White' : 'Black');
 /**
  * What to tell a player as a game starts, or "" for nothing: White hears
  * that their friend sat down; a player arriving at a game not yet moved in
- * hears their color and opponent (a friend's link, or a rematch, which
- * swaps colors). After a quick match the opponent-found screen already said
- * it, so fromMatch silences the arrival notice.
+ * by a friend's link hears their color and opponent. A rematch (fromRematch)
+ * says so, with the swapped color. After a quick match the opponent-found
+ * screen already said it, so fromMatch silences the arrival notice.
  */
-export function joinNotice(prev: View | null, next: View, fromMatch: boolean): string {
+export function joinNotice(prev: View | null, next: View, fromMatch: boolean, fromRematch = false): string {
 	if (next.you === 'spectator' || next.status !== 'playing' || next.seq !== 0) return '';
+	// A rematch swaps colours: say so, rather than "You joined".
+	if (fromRematch && prev === null) return next.you === 'black' ? "Rematch · You're Black now" : "Rematch · You're White, your move";
 	const opponent = next.you === 'white' ? next.players.black : next.players.white;
 	if (prev?.status === 'waiting' && next.you === 'white') {
 		return `${opponent || 'Your friend'} joined · You're White, your move`;

@@ -15,7 +15,7 @@
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { dicePill, scanOf } from '#lib/dice.ts';
-	import { checkSquare, endedHere, matedByRoll, matedKing, pillFor, repairsShown, stageAt, tallyOf, wonHere } from '#lib/board.ts';
+	import { checkSquare, endedHere, matedKing, pillFor, repairsShown, resultCardOf, stageAt, tallyOf, wonHere } from '#lib/board.ts';
 	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import { BURST_HOLD_MS, countAt } from '#lib/feel.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
@@ -30,7 +30,6 @@
 		isStale,
 		joinNotice,
 		showsOffline,
-		reasons,
 		rematch,
 		resign,
 		trySendMove,
@@ -48,8 +47,14 @@
 	const instant = dev && page.url.searchParams.has('instant');
 	setInstant(instant);
 	const anim = new Animator(instant ? 0 : undefined);
-	// Phones in portrait get their own layout (canvas row "Phone game: playtest build").
-	const phone = new MediaQuery('max-width: 639px');
+	// Phones get their own layout (canvas row "Phone game: playtest build"):
+	// upright, or on their side, where the board sits left of everything else.
+	const phone = new MediaQuery('(max-width: 639px), (orientation: landscape) and (max-height: 499px)');
+	const landscape = new MediaQuery('(orientation: landscape) and (max-height: 499px)');
+	// Arrived from a rematch: the page that sent us here left a note, so the
+	// start-of-game notice says "Rematch" rather than "You joined".
+	const REMATCH_NOTE = 'rematch';
+	const fromRematch = tookRematchNote(code);
 	let sheet: MovesSheet | undefined = $state();
 	let view = $derived(anim.view);
 	let shown = $derived(anim.shown);
@@ -70,6 +75,9 @@
 	let busy = $state(false); // a move or resignation is on its way
 	let confirmResign = $state(false);
 	let copyHint = $state('');
+	// On phones the start-of-game notice ("… joined") shows in the dice card
+	// until the first move, instead of a toast over the opponent's bar.
+	let joined = $state('');
 	// Phones with a share sheet get Share link first; the rest copy.
 	const sharable = canShare(page.url.href);
 	// The game ended while this page watched it: the tally counts up, and the
@@ -92,14 +100,38 @@
 			endedLive = true;
 			cheer = wonHere(prev, next) && !instant && !reducedMotion();
 		}
-		const notice = joinNotice(prev, next, fromMatch);
-		if (notice) notify.info(notice, { id: 'join' });
+		const notice = joinNotice(prev, next, fromMatch, fromRematch);
+		if (notice && phone.current) joined = notice;
+		else if (notice) notify.info(notice, { id: 'join' });
 		anim.receive(next, { hidden: document.hidden });
 		if (unsent) resend();
 		// A rematch accepted while this page is open: players go to it. Replace,
 		// so Back returns to where they were before, not to a page that would
 		// forward them again. A full load gives the new game a fresh stream.
-		if (followsRematch(prev, next)) location.replace(`/game/${next.rematch.code}`);
+		if (followsRematch(prev, next)) goToRematch(next.rematch.code, true);
+	}
+
+	function goToRematch(to: string | undefined, replace = false) {
+		if (!to) return;
+		leaveRematchNote(to);
+		if (replace) location.replace(`/game/${to}`);
+		else location.assign(`/game/${to}`);
+	}
+	function leaveRematchNote(to: string) {
+		try {
+			sessionStorage.setItem(REMATCH_NOTE, to);
+		} catch {
+			// No storage (a private window): the notice just says "You joined".
+		}
+	}
+	function tookRematchNote(here: string): boolean {
+		try {
+			const to = sessionStorage.getItem(REMATCH_NOTE);
+			sessionStorage.removeItem(REMATCH_NOTE);
+			return to === here;
+		} catch {
+			return false;
+		}
 	}
 
 	onMount(() => {
@@ -407,35 +439,7 @@
 		};
 	}
 
-	let resultCard = $derived.by(() => {
-		const r = view?.result;
-		if (!view || !r || animating) return null;
-		const why = reasons[r.reason] ?? r.reason;
-		const winner = r.winner === 'white' ? 'White' : 'Black';
-		const loser = r.winner === 'white' ? 'Black' : 'White';
-		const lastSan = view.log.at(-1)?.san ?? '';
-		const toMove = view.turn === 'white' ? 'White' : 'Black';
-		let detail = `By ${why}.`;
-		let title = r.draw ? 'Draw' : `${winner} wins`;
-		if (r.reason === 'resignation') detail = `${loser} resigned.`;
-		if (r.reason === 'checkmate') detail = matedByRoll(view) ? `${winner} mated by a pothole after ${lastSan}.` : `${winner} mated with ${lastSan}.`;
-		if (r.reason === 'timeout') detail = `${loser} ran out of time.`;
-		if (r.reason === 'timeout_vs_insufficient')
-			detail = `${toMove} ran out of time; ${toMove === 'White' ? 'Black' : 'White'} couldn’t mate.`;
-		if (r.reason === 'aborted') {
-			title = 'Aborted';
-			detail = `${toMove} didn’t make a first move. Nobody wins.`;
-		}
-		if (r.reason === 'expired') {
-			title = 'Expired';
-			detail = 'Nobody joined within a day.';
-		}
-		return {
-			kicker: `${matedByRoll(view) ? `${why} · by a pothole` : why} · Move ${Math.max(1, Math.ceil(view.seq / 2))}`,
-			title,
-			detail
-		};
-	});
+	let resultCard = $derived(view && !animating ? resultCardOf(view) : null);
 </script>
 
 <svelte:head>
@@ -443,7 +447,7 @@
 </svelte:head>
 
 {#if phone.current && view && stage && !notFound}
-	<div class="phone">
+	<div class="phone" class:land={landscape.current}>
 		<header class="ph-head">
 			<a href="/" class="ph-logo">Mamdani Chess</a>
 			<span class="ph-meta">
@@ -464,6 +468,7 @@
 		<p class="sr-only" aria-live="polite">{status}</p>
 
 		<div class="ph-play">
+			<div class="ph-top">
 			<PlayerBar
 				compact
 				color={top}
@@ -478,6 +483,7 @@
 				ticking={view.clock.running === top && !pausedForDice}
 				offline={showsOffline(view, top)}
 			/>
+			</div>
 			<div class="ph-board">
 				<Board
 					{stage}
@@ -491,12 +497,13 @@
 					{repairs}
 					{quip}
 					{mated}
-					{pill}
+					pill={null}
 					{scan}
 					{reroll}
 					onmove={move}
 				/>
 			</div>
+			<div class="ph-me">
 			<PlayerBar
 				compact
 				color={bottom}
@@ -511,6 +518,7 @@
 				ticking={view.clock.running === bottom && !pausedForDice}
 				offline={showsOffline(view, bottom)}
 			/>
+			</div>
 		</div>
 
 		<!-- The card and the bottom bar keep one height whatever shows, so the
@@ -545,30 +553,33 @@
 				</div>
 			</section>
 		{:else if resultCard}
-			<section class="ph-card accent-line" role="status" aria-label="Game over" in:flipIn>
+			<section class="ph-card accent-line" class:quiet={resultCard.lost} role="status" aria-label="Game over" in:flipIn>
 				<span class="ph-result"><span class="ph-headline">{resultCard.title}</span><span class="ph-kicker">{resultCard.kicker}</span></span>
 				<span class="ph-detail">{rematchNote || resultCard.detail}</span>
 				<span class="ph-tally">
-					{#each tallyOf(view) as row, i (row.short)}<span><b {@attach countUp(row.value, i)}></b> {row.short}</span>{/each}
+					{#each tallyOf(view) as row, i (row.label)}{#if row.short}<span><b {@attach countUp(row.value, i)}></b> {row.short}</span>{/if}{/each}
 				</span>
 			</section>
 		{:else if error}
 			<p class="ph-card ph-error" role="alert">{error}</p>
 		{:else if unsent}
 			<p class="ph-card ph-detail" role="status">{status}</p>
+		{:else if joined && playing && view.seq === 0}
+			{@const [head, ...rest] = joined.split(' · ')}
+			<p class="ph-card notice" role="status"><span class="ph-notice-head">{head}</span><span>{rest.join(' · ')}</span></p>
 		{:else}
 			<DiceSummary {view} {shown} />
 		{/if}
 
 		{#if view.status !== 'waiting' && !confirmResign}
-			<nav class="ph-nav" aria-label="Game actions" class:single={!resultCard && !(isPlayer && playing)} class:three={!!rematchAction}>
+			<nav class="ph-nav" aria-label="Game actions" class:single={!resultCard && !(isPlayer && playing) && you !== 'spectator'} class:three={!!rematchAction}>
 				{#if rematchAction}
 					{#if rematchAction.kind === 'answer'}
 						<button type="button" class="primary" onclick={() => offerRematch()} disabled={busy}>Accept</button>
 						<button type="button" class="outline" onclick={() => offerRematch(true)} disabled={busy}>Decline</button>
 					{:else}
 						{#if rematchAction.kind === 'go'}
-							<button type="button" class="primary" onclick={() => location.assign(`/game/${view.rematch.code}`)}>{rematchAction.label}</button>
+							<button type="button" class="primary" onclick={() => goToRematch(view.rematch.code)}>{rematchAction.label}</button>
 						{:else}
 							<button type="button" class="primary" onclick={() => offerRematch()} disabled={busy || rematchAction.kind === 'offered'}
 								>{rematchAction.label}</button
@@ -579,8 +590,11 @@
 				{:else if resultCard}<button type="button" class="primary" onclick={newGame} disabled={busy}>New game</button>{/if}
 				<button type="button" class="solid" onclick={(e) => sheet?.open(e.currentTarget)}>
 					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
-					{rematchAction ? 'Moves' : 'Moves and rolls'}
+					<span>Moves{#if !rematchAction}<span class="and-rolls">{' and rolls'}</span>{/if}</span>
 				</button>
+				{#if you === 'spectator' && !resultCard}
+					<a class="primary" href="/">Play a game</a>
+				{/if}
 				{#if !resultCard && isPlayer && playing}
 					<button type="button" class="outline" onclick={() => (confirmResign = true)} disabled={busy}>
 						<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"></path><path d="M4 4h12l-2 4 2 4H4"></path></svg>
@@ -673,7 +687,7 @@
 						onmove={move}
 					/>
 					{#if resultCard}
-						<div class="result" role="status" in:flipIn={{ lift: 'translate(-50%, -50%)' }}>
+						<div class="result" class:won={resultCard.title === 'You win'} class:lost={resultCard.lost} role="status" in:flipIn={{ lift: 'translate(-50%, -50%)' }}>
 							<span class="kicker">{resultCard.kicker}</span>
 							<h1>{resultCard.title}</h1>
 							<p>{resultCard.detail}</p>
@@ -711,7 +725,7 @@
 						{@const offer = view.rematch.offer}
 						<div class="actions" aria-live="polite">
 							{#if view.rematch.code}
-								<a class="primary" href={`/game/${view.rematch.code}`} data-sveltekit-reload>Go to the rematch</a>
+								<a class="primary" href={`/game/${view.rematch.code}`} data-sveltekit-reload onclick={() => leaveRematchNote(view.rematch.code ?? '')}>Go to the rematch</a>
 							{:else if offer && offer !== you}
 								<span class="note">Your opponent wants a rematch.</span>
 								<button class="primary" onclick={() => offerRematch()} disabled={busy}>Accept</button>
@@ -769,6 +783,8 @@
 		padding: 0 4px 0 12px;
 	}
 	.ph-logo {
+		flex-shrink: 0;
+		white-space: nowrap;
 		font-family: var(--font-display);
 		font-size: 20px;
 		font-weight: 800;
@@ -858,6 +874,29 @@
 	}
 	.ph-card.danger-line {
 		border-color: var(--hazard);
+	}
+	/* The loser's result: no yellow. */
+	.ph-card.accent-line.quiet {
+		border-color: var(--line);
+	}
+	.quiet .ph-headline {
+		color: var(--text);
+	}
+	/* "… joined": in the dice card's place until the first move. */
+	.ph-card.notice {
+		gap: 2px;
+		margin-bottom: 0;
+		border-color: var(--accent-line);
+		background: var(--accent-wash);
+		font-size: 14px;
+	}
+	.ph-notice-head {
+		font-family: var(--font-display);
+		font-size: 22px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		color: var(--text);
 	}
 	.ph-title {
 		font-weight: 600;
@@ -1009,6 +1048,78 @@
 		border: 0;
 		background: var(--hazard);
 		color: var(--accent-text);
+	}
+	/* A link styled as a bottom-bar button ("Play a game"). */
+	.ph-nav a {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 44px;
+		border-radius: 10px;
+		font-weight: 600;
+		text-decoration: none;
+	}
+	/* The narrowest phones: "Moves", so the button keeps one line. */
+	@media (max-width: 379px) {
+		.and-rolls {
+			display: none;
+		}
+	}
+	/* A phone on its side: the board on the left at full height; the header,
+	   the players, the card and the buttons in a column beside it. */
+	.phone.land {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-rows: auto auto 1fr auto auto;
+		grid-template-areas: 'board head' 'board top' 'board card' 'board me' 'board nav';
+		column-gap: 14px;
+		padding: 0 12px 0 8px;
+	}
+	.land .ph-play,
+	.land .ph-bottom {
+		display: contents;
+	}
+	.land .ph-head {
+		grid-area: head;
+		height: 44px;
+		padding: 0;
+	}
+	.land .ph-top {
+		grid-area: top;
+	}
+	.land .ph-me {
+		grid-area: me;
+	}
+	/* As tall as the screen, but leaving the column at least 266 px, so a
+	   name, the Waiting pill and the clock fit side by side. */
+	.land .ph-board {
+		grid-area: board;
+		align-self: center;
+		width: min(calc(100dvh - 16px), calc(100vw - 300px));
+		margin: 0;
+	}
+	.land .ph-bottom > :global(:not(.ph-nav)) {
+		grid-area: card;
+		align-self: center;
+		margin: 0;
+	}
+	.land .ph-nav {
+		grid-area: nav;
+		margin: 0;
+		padding: 4px 0 8px;
+		border-top: 0;
+	}
+	/* The narrowest phones on their side (an iPhone SE): the invite's two
+	   buttons stack, so neither wraps. */
+	@media (max-width: 699px) {
+		.land .ph-row {
+			flex-direction: column;
+		}
+	}
+	.land .ph-lost {
+		grid-area: card;
+		align-self: start;
+		margin: 0;
 	}
 	.phone .ph-icon {
 		padding: 0;
@@ -1186,6 +1297,12 @@
 	}
 	.result p {
 		color: var(--text-body);
+	}
+	.result.won h1 {
+		color: var(--accent);
+	}
+	.result.lost .kicker {
+		color: var(--text-muted);
 	}
 	.stats {
 		margin: 0;
