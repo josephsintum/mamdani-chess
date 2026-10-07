@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import Header from '#lib/Header.svelte';
 	import MiniBoard from '#lib/MiniBoard.svelte';
+	import SiteFooter from '#lib/SiteFooter.svelte';
 	import { FriendGame } from '#lib/friend.svelte.ts';
 	import { boardFromFen, isCode, liveGames, me, normalizeCode, type LiveGame, type Me } from '#lib/lobby.ts';
 
@@ -116,6 +117,7 @@
 					<button class="code-link" type="button" onclick={() => (codeOpen = true)}>Have a game code?</button>
 				{/if}
 			{/if}
+			<p class="also">New here? <a href="/how-to-play">See how to play</a> or <a href="/practice">practice alone</a>.</p>
 		</div>
 		<div class="demo">
 			<MiniBoard
@@ -174,18 +176,13 @@
 		</figure>
 	</section>
 
-	<section class="live" aria-labelledby="live-heading">
-		<div class="live-head">
-			<h2 id="live-heading">Live now</h2>
-			{#if games && games.length > 0}
+	<!-- Only while someone is playing: an empty list says nothing useful. -->
+	{#if games && games.length > 0}
+		<section class="live" aria-labelledby="live-heading">
+			<div class="live-head">
+				<h2 id="live-heading">Live now</h2>
 				<span class="count"><span class="dot"></span>{games.length} {games.length === 1 ? 'game' : 'games'}</span>
-			{/if}
-		</div>
-		{#if games === null}
-			<p class="quiet">Loading games…</p>
-		{:else if games.length === 0}
-			<p class="quiet">No games right now. Start one: play online or invite a friend.</p>
-		{:else}
+			</div>
 			<ul class="cards">
 				{#each games as g (g.code)}
 					{@const white = g.white || 'White'}
@@ -215,10 +212,56 @@
 					</li>
 				{/each}
 			</ul>
-		{/if}
+		</section>
+	{/if}
+
+	<section class="faq" aria-labelledby="faq-heading">
+		<h2 id="faq-heading">Questions</h2>
+		<div class="qs">
+			<details>
+				<summary>Isn’t it all luck?</summary>
+				<p>Less than it looks. A roll only hurts the pieces it lands on, and where you keep the Mamdani decides which of yours it can save or shield. Kings never fall, so the dice finish a king only after play has trapped it.</p>
+			</details>
+			<details>
+				<summary>Why didn’t my king fall?</summary>
+				<p>Kings never fall. When the dice land on a king they roll again, and the target blinks twice to show it.</p>
+			</details>
+			<details>
+				<summary>Why can’t my rook go there?</summary>
+				<p>Bishops, rooks, queens and the Mamdani can’t slide across a pothole, and nothing can land on one. Pick up a piece and an × marks each square a pothole cuts it off from. Knights jump, so potholes never stop them.</p>
+			</details>
+			<details>
+				<summary>Who moves the Mamdani?</summary>
+				<p>Either player, on their turn, instead of a piece. It moves like a queen onto empty squares, never captures and can’t be captured, and repairs any pothole next to it.</p>
+			</details>
+			<details>
+				<summary>Do I need an account?</summary>
+				<p>No. You get a made-up name when you first play, kept with a cookie in this browser. Tap the die beside your name for a new one.</p>
+			</details>
+			<details>
+				<summary>What if my opponent leaves or my connection drops?</summary>
+				<p>The game goes on and the clock keeps running. Your tab reconnects by itself and keeps your seat. A player who doesn’t come back loses on time.</p>
+			</details>
+			<details>
+				<summary>Are games public?</summary>
+				<p>Yes. Anyone with a game’s link can watch, and games being played are listed under Live now.</p>
+			</details>
+			<details>
+				<summary>What happens when the site updates?</summary>
+				<p>Games pause, open tabs reconnect on their own, and the clock of the side to move starts again 10 seconds after.</p>
+			</details>
+			<details>
+				<summary>Can I play the computer?</summary>
+				<p>No, only people. To try things out alone, <a href="/practice">practice</a> and play both sides.</p>
+			</details>
+			<details>
+				<summary>Is this affiliated with Zohran Mamdani?</summary>
+				<p>No. It’s an unofficial, ad-free fan project. More on the <a href="/about">About</a> page.</p>
+			</details>
+		</div>
 	</section>
 
-	<footer>Based on Pot-Hole Chess by Peter Spicer and Michael Chamberlain (2001).</footer>
+	<SiteFooter />
 </main>
 
 <style>
@@ -362,6 +405,13 @@
 	.code-link:hover {
 		color: var(--text);
 	}
+	.also {
+		margin: -12px 0 0;
+		color: var(--text-muted);
+	}
+	.also a {
+		color: var(--accent);
+	}
 	.narrow {
 		display: none;
 	}
@@ -433,6 +483,8 @@
 		margin: 32px 0 0;
 	}
 	.learn a {
+		padding: 10px 0;
+		margin: -10px 0;
 		color: var(--accent);
 		font-weight: 600;
 		text-decoration: none;
@@ -472,10 +524,6 @@
 		width: 8px;
 		height: 8px;
 		background: var(--accent);
-	}
-	.quiet {
-		margin: 0;
-		color: var(--text-muted);
 	}
 	.cards {
 		display: grid;
@@ -618,11 +666,53 @@
 		font-size: 16px;
 		line-height: 1.55;
 	}
-	footer {
-		padding: 24px 0 40px;
+	.faq {
+		padding: 56px 0 72px;
 		border-top: 1px solid var(--surface-2);
-		color: var(--text-muted);
-		font-size: 13px;
+	}
+	.faq h2 {
+		margin-bottom: 24px;
+	}
+	.qs {
+		display: flex;
+		flex-direction: column;
+		max-width: 760px;
+	}
+	details {
+		border-bottom: 1px solid var(--surface-2);
+	}
+	summary {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		min-height: 56px;
+		padding: 12px 0;
+		color: var(--text);
+		font-weight: 600;
+		cursor: pointer;
+		list-style: none;
+	}
+	summary::-webkit-details-marker {
+		display: none;
+	}
+	summary::after {
+		content: '+';
+		flex-shrink: 0;
+		color: var(--accent);
+		font-family: var(--font-mono);
+		font-size: 22px;
+	}
+	details[open] summary::after {
+		content: '−';
+	}
+	details p {
+		margin: 0 0 18px;
+		max-width: 680px;
+		line-height: 1.6;
+	}
+	details a {
+		color: var(--accent);
 	}
 	.error {
 		margin: 0;
@@ -706,7 +796,8 @@
 		.how {
 			padding: 32px 0 40px;
 		}
-		.live {
+		.live,
+		.faq {
 			padding: 32px 0 40px;
 		}
 		.steps {

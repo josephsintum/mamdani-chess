@@ -10,17 +10,19 @@
 	import Confetti from '#lib/Confetti.svelte';
 	import DiceSummary from '#lib/DiceSummary.svelte';
 	import DiceTray from '#lib/DiceTray.svelte';
+	import GameHelp from '#lib/GameHelp.svelte';
 	import MoveLog from '#lib/MoveLog.svelte';
 	import MovesSheet, { LANDSCAPE } from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
-	import { dicePill, scanOf, type DicePill } from '#lib/dice.ts';
+	import { dicePill, playOutMs, scanOf, type DicePill } from '#lib/dice.ts';
 	import { checkSquare, endedHere, matedKing, pillFor, repairsShown, resultCardOf, stageAt, tallyOf, wonHere, type Stage } from '#lib/board.ts';
 	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import { BURST_HOLD_MS, countAt } from '#lib/feel.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
 	import { firstMoveLeft, paused, timeLeft } from '#lib/clock.ts';
 	import { notify } from '#lib/toast.ts';
+	import { markSeen, seenTips, setTipsOn, tipFor, TIPS, tipsOn } from '#lib/tips.ts';
 	import { retryDelay } from '#lib/reconnect.ts';
 	import { canShare, shareLink } from '#lib/share.ts';
 	import {
@@ -53,6 +55,9 @@
 	// upright, or on their side, where the board sits left of everything else.
 	const phone = new MediaQuery(`(max-width: 639px), ${LANDSCAPE}`);
 	const landscape = new MediaQuery(LANDSCAPE);
+	// The smallest phones on their side: the column beside the board is
+	// about 266 px, so the bars keep only what matters.
+	const narrowLand = new MediaQuery(`${LANDSCAPE} and (max-width: 699px)`);
 	// Arrived from a rematch: the page that sent us here left a note, so the
 	// start-of-game notice says "Rematch" rather than "You joined".
 	const REMATCH_NOTE = 'rematch';
@@ -87,6 +92,24 @@
 	let endedLive = $state(false);
 	let cheer = $state(false);
 
+	// A tip during your first games (tips.ts), once the turn has played out.
+	// At the start it waits a moment, behind the "… joined" notice.
+	const FIRST_TIP_MS = 1500;
+	let tipTimer: ReturnType<typeof setTimeout> | undefined;
+	function scheduleTip(next: View) {
+		clearTimeout(tipTimer);
+		if (instant || !tipsOn()) return;
+		const tip = tipFor(next, seenTips(), anim.animated);
+		if (!tip) return;
+		tipTimer = setTimeout(
+			() => {
+				markSeen(tip);
+				notify.info(TIPS[tip], { id: 'tip', duration: 6000, action: { label: 'No more tips', onClick: () => setTipsOn(false) } });
+			},
+			anim.animated ? playOutMs(next.last) : FIRST_TIP_MS
+		);
+	}
+
 	function receive(next: View) {
 		if (isStale(anim.view, next)) return; // a slow reply, overtaken by the stream
 		error = '';
@@ -106,6 +129,7 @@
 		if (notice && phone.current) joined = notice;
 		else if (notice) notify.info(notice, { id: 'join' });
 		anim.receive(next, { hidden: document.hidden });
+		if (prev?.seq !== next.seq || prev.status !== next.status) scheduleTip(next);
 		if (unsent) void resend();
 		// A rematch accepted while this page is open: players go to it. Replace,
 		// so Back returns to where they were before, not to a page that would
@@ -213,6 +237,7 @@
 			window.removeEventListener('online', backOnline);
 			clearTimeout(retry);
 			clearTimeout(resendTimer);
+			clearTimeout(tipTimer);
 			clearInterval(tick);
 			anim.stop();
 			document.removeEventListener('visibilitychange', finishOnReturn);
@@ -374,7 +399,8 @@
 	// on the pill of the side that has to move.
 	function phonePill(p: { text: string }, c: Color): string {
 		if (!p.text || firstMove === null || view?.turn !== c) return p.text;
-		return `${p.text} · ${Math.ceil(firstMove / 1000)}s`;
+		const left = `${Math.ceil(firstMove / 1000)}s`;
+		return narrowLand.current ? left : `${p.text} · ${left}`; // a name needs the room
 	}
 
 	// The phone's game-over bar: what its rematch button does, if anything.
@@ -502,6 +528,7 @@
 				{#if !connected && !lost}<span class="ph-chip warn">Reconnecting…</span>{/if}
 				{#if you === 'spectator'}<span class="ph-chip">Watching</span>{/if}
 				<span class="ph-code">{copyHint && view.status !== 'waiting' ? copyHint : code}</span>
+				<GameHelp compact />
 				<button type="button" class="ph-icon" aria-label="Copy game link" onclick={copyLink}>
 					<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
 				</button>
@@ -613,6 +640,7 @@
 		<a href="/" class="logo">Mamdani Chess</a>
 		<span class="code">{code}</span>
 		{#if view && !connected && !lost}<span class="warn">Reconnecting…</span>{/if}
+		<span class="help-slot"><GameHelp /></span>
 	</header>
 
 	{#if lost}
@@ -1066,6 +1094,20 @@
 		padding: 4px 0 8px;
 		border-top: 0;
 	}
+	/* The smallest phones on their side: the header's icons narrow so the
+	   code still shows, and "Moves" keeps one line. */
+	@media (max-width: 699px) {
+		.land .ph-code {
+			flex-shrink: 0;
+		}
+		.land .ph-icon,
+		.land :global(.help.compact) {
+			width: 36px;
+		}
+		.land .and-rolls {
+			display: none;
+		}
+	}
 	/* The narrowest phones on their side (an iPhone SE): the invite's two
 	   buttons stack, so neither wraps. */
 	@media (max-width: 699px) {
@@ -1101,6 +1143,10 @@
 	.code {
 		font-family: var(--font-mono);
 		color: var(--text-muted);
+	}
+	.help-slot {
+		align-self: center;
+		margin-left: auto;
 	}
 	.warn {
 		color: var(--hazard);

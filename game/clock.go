@@ -120,7 +120,7 @@ func newClock() clock {
 // running reports whether a side's clock is counting down: both sides have
 // made their first move and the game is on.
 func (g *Game) running() bool {
-	return g.status() == Playing && len(g.g.Turns) >= 2
+	return !g.practice && g.status() == Playing && len(g.g.Turns) >= 2
 }
 
 // startCounting starts the side to move's time from since, and sets the
@@ -128,7 +128,7 @@ func (g *Game) running() bool {
 func (g *Game) startCounting(since time.Time) {
 	g.clock.since = since
 	switch {
-	case g.status() != Playing:
+	case g.status() != Playing, g.practice:
 		g.clock.deadline = time.Time{}
 	case len(g.g.Turns) < 2:
 		g.clock.deadline = since.Add(FirstMoveTime)
@@ -193,7 +193,7 @@ func (g *Game) clockJSON(now time.Time) ClockJSON {
 	switch {
 	case g.running():
 		c.Running, c.Since = colorName(g.g.Pos.Turn), g.clock.since.UnixMilli()
-	case g.status() == Playing:
+	case g.status() == Playing && !g.clock.deadline.IsZero(): // a practice game has none
 		c.FirstMoveDeadline = g.clock.deadline.UnixMilli()
 	}
 	return c

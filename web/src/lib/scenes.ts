@@ -72,7 +72,9 @@ export const scenes = {
 	blocks: {
 		id: 'blocks',
 		start: () => ({ ...position('4k3/8/8/8/1b6/8/5PPP/4K2R', { mamdani: 'f4' }), check: true }),
-		steps: [{ show: 'f4' }, { show: 'b4' }, { move: m('f4', 'd2'), set: { check: false } }, { show: 'b4' }]
+		// The Mamdani's own reach isn't shown here: while in check, only the
+		// moves that answer it are legal, and the sandbox doesn't know that.
+		steps: [{ show: 'b4' }, { move: m('f4', 'd2'), set: { check: false } }, { show: 'b4' }]
 	},
 	/** The Mamdani repairs a pothole next to it, and one the dice open there. */
 	repairs: {

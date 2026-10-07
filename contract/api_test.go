@@ -110,6 +110,32 @@ func TestCreateGame(t *testing.T) {
 	}
 }
 
+// A practice game: one guest moves for both sides, the view says so, and
+// the live games list never shows it.
+func TestPractice(t *testing.T) {
+	c := newCheck(t, 5*time.Second)
+	p, other := c.players(2)[0], c.players(1)[0]
+	r := p.fetch(http.MethodPost, "/api/practice")
+	if r.status != 201 || !regexp.MustCompile(`^\{"code":"[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}"\}\n$`).MatchString(r.body) {
+		t.Fatalf("POST /api/practice: %d %q", r.status, r.body)
+	}
+	code := decode[struct{ Code string }](t, r.body).Code
+	move := "/api/games/" + code + "/move"
+	for i, m := range []string{`{"from":"e2","to":"e4","seq":0}`, `{"from":"e7","to":"e5","seq":1}`} {
+		if status, body := p.post(move, m); status != 204 {
+			t.Errorf("move %d: %d %q", i, status, body)
+		}
+	}
+	if status, body := other.post(move, `{"from":"g1","to":"f3","seq":2}`); status != 403 {
+		t.Errorf("another guest's move: %d %q", status, body)
+	}
+	_, view := p.get("/api/games/" + code)
+	expectKeys(t, "practice view", []byte(view), append(slices.Clone(viewKeys), "practice")...)
+	if _, list := p.get("/api/games"); strings.Contains(list, code) {
+		t.Errorf("listed: %s", list)
+	}
+}
+
 // A stream: headers, a random retry, then the state.
 func TestStreamFraming(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
@@ -575,6 +601,8 @@ func TestAppAndPreviews(t *testing.T) {
 		"/play":        "Quick match · Mamdani Chess",
 		"/how-to-play": "How to play · Mamdani Chess",
 		"/rules":       "Rules · Mamdani Chess",
+		"/practice":    "Practice · Mamdani Chess",
+		"/about":       "About · Mamdani Chess",
 	} {
 		if body := c.do(http.MethodGet, path, nil).body; !strings.Contains(body, "<title>"+title+"</title>") {
 			t.Errorf("%s lacks its title", path)

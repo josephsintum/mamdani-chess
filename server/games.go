@@ -19,6 +19,13 @@ func (s *Server) createGame(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"code": g.Code()})
 }
 
+// createPractice starts a practice game, the caller playing both sides,
+// and ends their previous one.
+func (s *Server) createPractice(w http.ResponseWriter, r *http.Request) {
+	g := s.games.CreatePractice(guestID(w, r))
+	writeJSON(w, http.StatusCreated, map[string]string{"code": g.Code()})
+}
+
 // liveGamesMax is how many games the home page lists.
 const liveGamesMax = 12
 

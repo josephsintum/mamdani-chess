@@ -64,6 +64,8 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 		"/play":        "Quick match · Mamdani Chess",
 		"/how-to-play": "How to play · Mamdani Chess",
 		"/rules":       "Rules · Mamdani Chess",
+		"/practice":    "Practice · Mamdani Chess",
+		"/about":       "About · Mamdani Chess",
 	} {
 		if got := meta(page(t, c, ts.URL+path), "og:title"); got != want {
 			t.Errorf("%s og:title %q, want %q", path, got, want)

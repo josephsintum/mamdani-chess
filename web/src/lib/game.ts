@@ -27,6 +27,13 @@ export async function createGame(): Promise<string> {
 	return ((await res.json()) as { code: string }).code;
 }
 
+/** Starts a practice game, the caller playing both sides; returns its code. */
+export async function createPractice(): Promise<string> {
+	const res = await fetch('/api/practice', { method: 'POST' });
+	if (!res.ok) throw new Error(`could not start a practice game (${res.status})`);
+	return ((await res.json()) as { code: string }).code;
+}
+
 /** A game as anyone sees it (GET never takes a seat); throws if it can't be had. */
 export async function fetchView(code: string): Promise<View> {
 	const res = await fetch(`/api/games/${code}`);

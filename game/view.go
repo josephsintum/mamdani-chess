@@ -43,6 +43,9 @@ type View struct {
 	Online   OnlineJSON  `json:"online"`  // which players have the game open
 	Players  PlayersJSON `json:"players"` // names; "" for a seat that is empty or was saved without one
 	Rematch  RematchJSON `json:"rematch"` // only once the game is over
+	// Practice is set for a practice game: one guest plays both sides,
+	// with no clock (absent otherwise).
+	Practice bool `json:"practice,omitempty"`
 
 	data []byte // the encoded view, set once before it is shared (see JSON)
 }

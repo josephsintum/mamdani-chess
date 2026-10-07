@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Header from '#lib/Header.svelte';
 	import Scene from '#lib/Scene.svelte';
+	import SiteFooter from '#lib/SiteFooter.svelte';
 	import { scenes, type Scene as SceneData } from '#lib/scenes.ts';
 	import { HOLE_CAP, HOLE_ROUNDS } from '#lib/wire.gen.ts';
 
@@ -126,10 +127,12 @@
 		</section>
 	{/each}
 
-	<footer>
+	<div class="cta">
 		<a class="action" href="/play">Play online</a>
+		<a class="more" href="/practice">Try it yourself →</a>
 		<a class="more" href="/rules">Read the full rules →</a>
-	</footer>
+	</div>
+	<SiteFooter />
 </main>
 
 <style>
@@ -138,7 +141,7 @@
 		flex-direction: column;
 		max-width: 1120px;
 		margin: 0 auto;
-		padding: 56px 32px 80px;
+		padding: 56px 32px 0;
 	}
 	.intro {
 		display: flex;
@@ -171,6 +174,8 @@
 	}
 	.more {
 		align-self: flex-start;
+		padding: 10px 0;
+		margin: -10px 0;
 		color: var(--accent);
 		font-weight: 600;
 		text-decoration: none;
@@ -187,6 +192,9 @@
 		padding: 56px 0;
 		border-top: 1px solid var(--surface-2);
 		scroll-margin-top: 16px;
+	}
+	.chapter.flip {
+		grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
 	}
 	.chapter.flip .text {
 		order: 2;
@@ -359,12 +367,12 @@
 		}
 	}
 
-	footer {
+	.cta {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 24px;
-		padding-top: 56px;
+		padding: 56px 0;
 		border-top: 1px solid var(--surface-2);
 	}
 	.action {
@@ -379,15 +387,24 @@
 		text-transform: uppercase;
 	}
 
+	/* A phone on its side: a scene as tall as the screen, so it plays and
+	   shows whole. */
+	@media (orientation: landscape) and (max-height: 500px) {
+		.stage {
+			justify-self: center;
+			width: min(100%, calc(100dvh - 140px));
+		}
+	}
 	/* Phones and narrow windows: the words, then the board. */
 	@media (max-width: 799px) {
 		main {
-			padding: 32px 16px 56px;
+			padding: 32px 16px 0;
 		}
 		.intro {
 			padding-bottom: 32px;
 		}
-		.chapter {
+		.chapter,
+		.chapter.flip {
 			grid-template-columns: minmax(0, 1fr);
 			gap: 24px;
 			padding: 40px 0;

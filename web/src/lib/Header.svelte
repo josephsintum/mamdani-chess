@@ -21,6 +21,12 @@
 	// browser's last visit shows, so it doesn't pop in a moment later.
 	let { me = $bindable(null) }: { me?: Me | null } = $props();
 	const remembered = rememberedName();
+	const links = [
+		{ href: '/how-to-play', label: 'How to play' },
+		{ href: '/rules', label: 'Rules' },
+		{ href: '/practice', label: 'Practice' },
+		{ href: '/about', label: 'About' }
+	];
 
 	let open = $state(false);
 	let offers = $state<string[] | null>(null);
@@ -147,10 +153,9 @@
 			<span class="title">Mamdani Chess</span>
 		</a>
 		<nav class="links" aria-label="Main">
-			<a href="/how-to-play" aria-current={page.url.pathname === '/how-to-play' ? 'page' : undefined}
-				>How to play</a
-			>
-			<a href="/rules" aria-current={page.url.pathname === '/rules' ? 'page' : undefined}>Rules</a>
+			{#each links as l (l.href)}
+				<a href={l.href} aria-current={page.url.pathname === l.href ? 'page' : undefined}>{l.label}</a>
+			{/each}
 		</nav>
 		{#if name}
 			<div class="me" bind:this={pill} onfocusout={onFocusOut}>
@@ -245,11 +250,12 @@
 		margin: 0 auto;
 		padding: 0 32px;
 	}
+	/* The logo never shrinks: a long name gives way instead. */
 	.brand {
 		display: flex;
+		flex-shrink: 0;
 		align-items: center;
 		gap: 12px;
-		min-width: 0;
 		color: var(--text);
 		text-decoration: none;
 	}
@@ -478,7 +484,7 @@
 			padding-bottom: 6px;
 		}
 		.links a {
-			height: 36px;
+			height: 40px;
 			padding: 0 8px;
 			font-size: 14px;
 		}

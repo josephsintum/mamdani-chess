@@ -25,6 +25,7 @@ type Live struct {
 	seats    [2]string   // guest IDs, for Active
 	plies    int         // turns played, for Summary
 	result   *ResultJSON // how it ended, or nil
+	practice bool        // never listed, and not a game a player is "in"
 }
 
 // publish replaces the game's Live with its current state.
@@ -44,6 +45,7 @@ func (g *Game) publish() {
 		seats:    g.seats,
 		plies:    len(g.g.Turns),
 		result:   resultJSON(g.g.Result),
+		practice: g.practice,
 	}
 	if n := len(g.g.Turns); n > 0 {
 		m := moveJSON(g.g.Turns[n-1].Move)
@@ -71,11 +73,11 @@ func (g *Game) Summary() Summary {
 }
 
 // watching counts the guests with the game open who aren't seated: two
-// tabs are one guest.
+// tabs are one guest, and so are a practice game's two seats.
 func (g *Game) watching() int {
 	n := len(g.streams)
-	for c := range g.seats {
-		if g.connected(rules.Color(c)) {
+	for c, id := range g.seats {
+		if g.connected(rules.Color(c)) && (c == 0 || id != g.seats[0]) {
 			n--
 		}
 	}
@@ -91,7 +93,7 @@ func (h *Hub) Active(guest string) string {
 	var newest *Live
 	for _, g := range h.games {
 		l := g.live.Load()
-		if l == nil || l.status != Playing || (l.seats[0] != guest && l.seats[1] != guest) {
+		if l == nil || l.status != Playing || l.practice || (l.seats[0] != guest && l.seats[1] != guest) {
 			continue
 		}
 		if newest == nil || l.created.After(newest.created) {
@@ -111,7 +113,7 @@ func (h *Hub) List(limit int) []*Live {
 	h.mu.Lock()
 	games := make([]*Live, 0, len(h.games))
 	for _, g := range h.games {
-		if l := g.live.Load(); l != nil && l.status == Playing {
+		if l := g.live.Load(); l != nil && l.status == Playing && !l.practice {
 			games = append(games, l)
 		}
 	}

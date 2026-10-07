@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Header from '#lib/Header.svelte';
 	import MiniBoard from '#lib/MiniBoard.svelte';
+	import SiteFooter from '#lib/SiteFooter.svelte';
 	import { boardFromFen } from '#lib/lobby.ts';
 	import { emptyView, freeMoves } from '#lib/sandbox.ts';
 	import { HOLE_CAP, HOLE_ROUNDS } from '#lib/wire.gen.ts';
@@ -263,24 +264,7 @@
 			</details>
 		</section>
 
-		<footer>
-			<p>
-				Based on <a href="https://www.chessvariants.com/boardrules.dir/potholechess.html" target="_blank" rel="noopener"
-					>Pot-Hole Chess</a
-				> by Peter Spicer and Michael Chamberlain (2001).
-			</p>
-			<p>
-				The Mamdani comes from
-				<a href="https://www.instagram.com/reel/Dd8tV_MxEQL/" target="_blank" rel="noopener">The Mamdani Patch</a>
-				by
-				<a href="https://www.instagram.com/bardelo_bardalini/" target="_blank" rel="noopener">@bardelo_bardalini</a>.
-			</p>
-			<p>
-				Pieces: the mpchess set by
-				<a href="https://github.com/chupinmaxime" target="_blank" rel="noopener">Maxime Chupin</a>, GPL-3.0, slightly
-				changed.
-			</p>
-		</footer>
+		<SiteFooter />
 	</article>
 </main>
 
@@ -292,7 +276,7 @@
 		align-items: start;
 		max-width: 1120px;
 		margin: 0 auto;
-		padding: 56px 32px 80px;
+		padding: 56px 32px 0;
 	}
 	.toc {
 		position: sticky;
@@ -384,6 +368,8 @@
 	}
 	.played {
 		align-self: flex-start;
+		padding: 10px 0;
+		margin: -10px 0;
 		color: var(--accent);
 		font-weight: 600;
 		text-decoration: none;
@@ -512,27 +498,12 @@
 	.full ul {
 		font-size: 16px;
 	}
-	footer {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding-top: 24px;
-		border-top: 1px solid var(--surface-2);
-	}
-	footer p {
-		color: var(--text-muted);
-		font-size: 13px;
-	}
-	footer a {
-		color: var(--text-body);
-	}
-
 	/* Phones and narrow windows: one column, the contents as wrapping chips. */
 	@media (max-width: 799px) {
 		main {
 			grid-template-columns: minmax(0, 1fr);
 			gap: 32px;
-			padding: 32px 16px 56px;
+			padding: 32px 16px 0;
 		}
 		.toc {
 			position: static;
@@ -545,9 +516,12 @@
 			margin-bottom: 0;
 		}
 		.toc a {
-			padding: 6px 12px;
+			display: inline-flex;
+			align-items: center;
+			min-height: 40px;
+			padding: 0 14px;
 			border: 1px solid var(--surface-2);
-			border-radius: 16px;
+			border-radius: 20px;
 			font-size: 14px;
 		}
 		article {
@@ -566,6 +540,12 @@
 		th,
 		td {
 			padding: 12px;
+		}
+	}
+	@media (max-width: 359px) {
+		th,
+		td {
+			padding: 10px 8px;
 		}
 	}
 </style>

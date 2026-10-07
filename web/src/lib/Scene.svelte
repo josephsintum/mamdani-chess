@@ -67,10 +67,15 @@
 
 	// Plays while on screen; reduced motion waits for Play.
 	function watch(node: HTMLElement) {
-		const seen = new IntersectionObserver(([e]) => {
-			if (!e.isIntersecting) stop();
-			else if (!playing && !reducedMotion()) void play();
-		}, { threshold: 0.5 });
+		// In view: half of it, or half the screen when it's taller than that.
+		const seen = new IntersectionObserver(
+			([e]) => {
+				const half = e.intersectionRatio >= 0.5 || e.intersectionRect.height >= (e.rootBounds?.height ?? Infinity) / 2;
+				if (!e.isIntersecting) stop();
+				else if (half && !playing && !reducedMotion()) void play();
+			},
+			{ threshold: [0, 0.25, 0.5, 0.75, 1] }
+		);
 		seen.observe(node);
 		return () => {
 			seen.disconnect();
@@ -83,7 +88,7 @@
 	{#key presses}
 		<div class="board" class:rewound={presses > 0} inert>
 			<ScriptedBoard {anim} {legal} {showing} id="scene-{scene.id}" ending={1} />
-			<DiceSummary view={anim.view!} shown={anim.shown} />
+			<DiceSummary view={anim.view!} shown={anim.shown} wrap />
 		</div>
 	{/key}
 	<button type="button" class="replay" onclick={replay}>

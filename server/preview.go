@@ -54,6 +54,10 @@ func (s *Server) preview(path string) preview {
 		return preview{Title: "How to play · Mamdani Chess", Description: "Potholes, dice and the Mamdani, played out on the board."}
 	case "/rules":
 		return preview{Title: "Rules · Mamdani Chess", Description: "Every rule of Mamdani Chess: potholes, the Mamdani and saving rolls."}
+	case "/practice":
+		return preview{Title: "Practice · Mamdani Chess", Description: "Play both sides and try the potholes out on your own."}
+	case "/about":
+		return preview{Title: "About · Mamdani Chess", Description: "An unofficial, ad-free fan project: credits and what the site keeps."}
 	}
 	code, ok := strings.CutPrefix(path, "/game/")
 	if !ok || strings.Contains(code, "/") {
