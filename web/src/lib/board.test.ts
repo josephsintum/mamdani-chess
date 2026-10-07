@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	blockedSquares,
+	resultCardOf,
 	CELEBRATION_MS,
 	celebratedSoFar,
 	checkSquare,
@@ -455,12 +456,16 @@ describe('repair celebrations', () => {
 });
 
 describe('tallyOf', () => {
+	it('says "saved" alone when no saving roll was made', () => {
+		const v = makeView({}, { stats: { savingRolls: 0, saved: 0, repaired: 0, mamdaniFell: false } });
+		expect(tallyOf(v).find((r) => r.label === 'Saved by the Mamdani')?.short).toBe('saved');
+	});
 	it("counts up the game's numbers for the result card", () => {
 		const v = makeView({}, { seq: 61, stats: { savingRolls: 6, saved: 4, repaired: 3, mamdaniFell: false }, lost: { white: ['wP', 'wN'], black: ['bP', 'bB', 'bQ'] } });
 		expect(tallyOf(v)).toEqual([
 			{ label: 'Moves', short: 'moves', value: 31 },
-			{ label: 'Saving rolls', short: 'rolls', value: 6 },
-			{ label: 'Saved by the Mamdani', short: 'saved', value: 4 },
+			{ label: 'Saving rolls', short: '', value: 6 },
+			{ label: 'Saved by the Mamdani', short: 'of 6 saved', value: 4 },
 			{ label: 'Potholes repaired', short: 'repaired', value: 3 },
 			{ label: 'Pieces lost to potholes', short: 'lost', value: 5 }
 		]);
@@ -497,5 +502,45 @@ describe('matedKing', () => {
 		const v = makeView({ e8: 'bK', e1: 'wK' }, { status: 'over', result: { winner: 'white', draw: false, reason: 'resignation' } });
 		expect(matedKing(v)).toBe('');
 		expect(matedKing(makeView({ e8: 'bK' }))).toBe('');
+	});
+});
+
+describe('resultCardOf', () => {
+	const players = { white: 'pizza-rat-astoria', black: 'bagel-soho' };
+	const over = (you: View['you'], result: View['result'], extra: Partial<View> = {}) =>
+		makeView({}, { you, result, status: 'over', seq: 33, players, ...extra });
+	const resigned = { reason: 'resignation', winner: 'black', draw: false } as View['result'];
+
+	it('tells each player how it went for them', () => {
+		expect(resultCardOf(over('black', resigned))).toMatchObject({ title: 'You win', detail: 'pizza-rat-astoria resigned.', lost: false });
+		expect(resultCardOf(over('white', resigned))).toMatchObject({ title: 'You lost', detail: 'You resigned.', lost: true });
+	});
+	it('gives spectators the colour, with names and colours in the detail', () => {
+		expect(resultCardOf(over('spectator', resigned))).toMatchObject({ title: 'Black wins', detail: 'pizza-rat-astoria (White) resigned.', lost: false });
+	});
+	it('names the mating move, and a mate by a pothole', () => {
+		const mate = { reason: 'checkmate', winner: 'white', draw: false } as View['result'];
+		const log = [{ san: 'Qxf7#' }] as View['log'];
+		expect(resultCardOf(over('white', mate, { log }))?.detail).toBe('You mated with Qxf7#.');
+		expect(resultCardOf(over('black', mate, { log }))?.detail).toBe('pizza-rat-astoria mated with Qxf7#.');
+		const byRoll = over('black', mate, { log: [{ san: 'e4' }] as View['log'], last: [{ kind: 'rolled_pothole' }] as View['last'] });
+		expect(resultCardOf(byRoll)).toMatchObject({ detail: 'pizza-rat-astoria mated by a pothole after e4.', kicker: 'checkmate · by a pothole · Move 17' });
+	});
+	it('says who ran out of time', () => {
+		const flag = { reason: 'timeout', winner: 'white', draw: false } as View['result'];
+		expect(resultCardOf(over('black', flag))).toMatchObject({ title: 'You lost', detail: 'You ran out of time.' });
+	});
+	it('keeps draws, aborted and expired games neutral', () => {
+		const draw = { reason: 'stalemate', draw: true } as View['result'];
+		expect(resultCardOf(over('white', draw))).toMatchObject({ title: 'Draw', detail: 'By stalemate.', lost: false });
+		const aborted = { reason: 'aborted', draw: true } as View['result'];
+		expect(resultCardOf(over('white', aborted, { seq: 0, turn: 'white' }))).toMatchObject({ title: 'Aborted', detail: 'You didn’t make a first move. Nobody wins.', lost: false });
+		expect(resultCardOf(over('spectator', { reason: 'expired', draw: true } as View['result']))).toMatchObject({ title: 'Expired', detail: 'Nobody joined within a day.' });
+	});
+	it('falls back to colours for a nameless seat', () => {
+		expect(resultCardOf(over('black', resigned, { players: { white: '', black: '' } }))?.detail).toBe('White resigned.');
+	});
+	it('is null before the game ends', () => {
+		expect(resultCardOf(makeView({}))).toBeNull();
 	});
 });

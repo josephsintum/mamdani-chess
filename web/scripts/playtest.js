@@ -258,7 +258,17 @@ async function playGame(browser, n) {
 			.catch(() => '');
 	const result = (await resultText(w)).replace(/\s*\n+\s*/g, ' · ');
 	const resultBlack = (await resultText(b)).replace(/\s*\n+\s*/g, ' · ');
-	if (result !== resultBlack) errors.push(`the two sides show different results: "${result}" / "${resultBlack}"`);
+	// Each player reads the result as themselves ("You win" / "You lost"), so
+	// the two cards agree on how and when the game ended, and on who won.
+	const outcome = (p) =>
+		p.evaluate(() => {
+			const text = (sel) => document.querySelector(sel)?.textContent?.trim() ?? '';
+			return { title: text('.ph-headline, .result h1'), kicker: text('.ph-kicker, .result .kicker') };
+		});
+	const [ow, ob] = [await outcome(w), await outcome(b)];
+	const pair = new Set([ow.title.toLowerCase(), ob.title.toLowerCase()]);
+	const agree = ow.kicker === ob.kicker && (ow.title === ob.title ? !/^you /i.test(ow.title) : pair.has('you win') && pair.has('you lost'));
+	if (!agree) errors.push(`the two sides disagree: "${result}" / "${resultBlack}"`);
 	const lost = await w.locator('.glyphs').evaluateAll((gs) => gs.map((g) => g.querySelectorAll('img').length));
 	await Promise.all(contexts.map((c) => c.close()));
 	return { game: n, url, plies, drags, resigned, result, lost, seconds: Math.round((Date.now() - started) / 1000), errors };

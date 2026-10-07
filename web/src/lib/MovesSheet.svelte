@@ -4,7 +4,8 @@
 	import { reducedMotion } from './motion.ts';
 	import MoveLog from './MoveLog.svelte';
 
-	// The phone's "Moves and rolls": a sheet over the game with the log, the
+	// The phone's "Moves and rolls": a sheet over the game (from the bottom,
+	// or from the right on a phone on its side) with the log, the
 	// current turn's dice step by step, and the stats once the game is over.
 	// A native <dialog>: showModal() traps focus and closes on Escape.
 	let { view, shown, rolling }: { view: View; shown: number; rolling: boolean } = $props();
@@ -137,6 +138,33 @@
 	.stats dd {
 		margin: 0;
 		color: var(--text);
+	}
+	/* A phone on its side: the sheet comes in from the right, over the
+	   column beside the board, so the board stays in view. */
+	@media (orientation: landscape) and (max-height: 499px) {
+		.sheet {
+			inset: 0 0 0 auto;
+			width: min(400px, 60vw);
+			height: 100%;
+			border-top: 0;
+			border-left: 1px solid var(--line);
+			border-radius: 16px 0 0 16px;
+			box-shadow: -12px 0 32px var(--hole);
+		}
+		.sheet[open] {
+			animation-name: slide-in;
+		}
+		.handle {
+			display: none;
+		}
+		.body {
+			padding-bottom: 16px;
+		}
+	}
+	@keyframes slide-in {
+		from {
+			transform: translateX(100%);
+		}
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.sheet[open] {
