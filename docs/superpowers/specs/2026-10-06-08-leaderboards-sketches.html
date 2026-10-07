@@ -664,7 +664,7 @@ for (const views of document.querySelectorAll('.views')) {
 		const view = document.createElement('div');
 		view.className = 'view ' + kind;
 		view.innerHTML = `<span class="caption">${kind === 'desk' ? 'Desktop' : 'Phone · 390 px'}</span>
-			<div class="frame">${kind === 'desk' ? '<div class="chrome"><i></i><i></i><i></i><span>mamdani-chess.up.railway.app/leaders</span></div>' : '<div class="chrome"><span>mamdani-chess.up.railway.app</span></div>'}
+			<div class="frame">${kind === 'desk' ? '<div class="chrome"><i></i><i></i><i></i><span>mamdanichess.com/leaders</span></div>' : '<div class="chrome"><span>mamdanichess.com</span></div>'}
 			<div class="${kind === 'phone' ? 'scroll ' : ''}site-host">${siteBar}<div class="page"></div></div></div>`;
 		const page = view.querySelector('.page');
 		page.appendChild(tpl.content.cloneNode(true));

@@ -9,7 +9,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 | Rules | Live doc: https://claude.ai/artifact/AvSPCQS42ggQGpTWQGoQRB. Its "Decisions to lock down" table records every rule choice and why. `RULES.md` is a copy; if they disagree, the doc wins and `RULES.md` should be re-synced. |
 | Design spec | `docs/superpowers/specs/2026-10-01-mamdani-chess-design.md`: stack, API, SSE events, clocks, rules engine, testing, visual tokens. |
 | Visual design | Canvas: https://claude.ai/artifact/XVJqVp283CoZEHpmHDrSih. Every artboard is the reference ("road works" look). |
-| Live app (playtest) | https://mamdani-chess.up.railway.app (Railway project `mamdani-chess`, service `web`, SQLite on volume `/data`). Deploys from `main` after CI passes. |
+| Live app (playtest) | https://mamdanichess.com (Railway project `mamdani-chess`, service `web`, SQLite on volume `/data`; it also answers on www.mamdanichess.com and the original mamdani-chess.up.railway.app). Deploys from `main` after CI passes. |
 
 ## Decisions that are settled (don't reopen without asking)
 

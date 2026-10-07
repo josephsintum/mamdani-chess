@@ -23,7 +23,7 @@ describe('normalizeCode', () => {
 		expect(normalizeCode('K7F3QZAB')).toBe('K7F3QZ');
 	});
 	it('takes the code out of a pasted game link', () => {
-		expect(normalizeCode('https://mamdani-chess.up.railway.app/game/K7F3QZ')).toBe('K7F3QZ');
+		expect(normalizeCode('https://mamdanichess.com/game/K7F3QZ')).toBe('K7F3QZ');
 		expect(normalizeCode('localhost:5173/game/k7f3qz?instant')).toBe('K7F3QZ');
 	});
 });
