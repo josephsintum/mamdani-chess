@@ -108,8 +108,9 @@ func (p *Position) repair(ev *[]Event) {
 	if p.Mamdani == NoSquare {
 		return
 	}
+	near := kingAttacks[p.Mamdani]
 	for i := range p.Potholes {
-		if s := p.Potholes[i].Sq; s != NoSquare && adjacent(s, p.Mamdani) {
+		if s := p.Potholes[i].Sq; near.Has(s) {
 			p.Potholes[i].Sq = NoSquare
 			emit(ev, Event{Kind: Repaired, Square: s})
 		}

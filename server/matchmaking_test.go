@@ -15,15 +15,7 @@ import (
 // queue opens the quick-match stream and reads its "queued" event.
 func (p *player) queue() (sseReader, int) {
 	p.t.Helper()
-	resp, err := p.c.Get(p.url + "/api/match")
-	if err != nil {
-		p.t.Fatal(err)
-	}
-	p.t.Cleanup(func() { resp.Body.Close() })
-	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
-		p.t.Fatalf("Content-Type = %q", ct)
-	}
-	r := sseReader{t: p.t, sc: bufio.NewScanner(resp.Body)}
+	r := p.open("/api/match")
 	ev, data := r.next()
 	var q struct{ Looking int }
 	if ev != "queued" || json.Unmarshal([]byte(data), &q) != nil {

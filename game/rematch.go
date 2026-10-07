@@ -37,11 +37,7 @@ func (g *Game) rematchJSON() RematchJSON {
 // decline) declines it. Accepting starts a new game with colors swapped;
 // its code arrives in everyone's view.
 func (g *Game) Rematch(guest string, decline bool) error {
-	var err error
-	if perr := g.do(func() { err = g.offerRematch(guest, decline) }); perr != nil {
-		return perr
-	}
-	return err
+	return g.try(func() error { return g.offerRematch(guest, decline) })
 }
 
 func (g *Game) offerRematch(guest string, decline bool) error {
@@ -69,7 +65,7 @@ func (g *Game) offerRematch(guest string, decline bool) error {
 			RematchOf: g.code,
 		})
 		if err != nil {
-			return fmt.Errorf("%w: create rematch: %v", ErrInternal, err)
+			return fmt.Errorf("%w: create rematch: %w", ErrInternal, err)
 		}
 		g.rematch = rematch{code: next.Code()}
 		slog.Info("rematch", "from", g.code, "to", next.Code())

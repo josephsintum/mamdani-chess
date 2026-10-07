@@ -29,10 +29,7 @@ func TestRestoreRebuildsAGameInProgress(t *testing.T) {
 	dice := &script{rolls: []int{2, 4, 4, 6, 3, 5, 1, 8, 2, 7, 1, 2, 5, 5, 3}}
 	h := NewHub(dice, st)
 	g, _, _ := seated(t, h)
-	for i, m := range []string{"e2e4", "e7e5", "g1f3", "b8c6", "f1c4"} {
-		guest := []string{"alice", "bob"}[i%2]
-		play(t, g, guest, m, i)
-	}
+	plays(t, g, "e2e4", "e7e5", "g1f3", "b8c6", "f1c4")
 	want := recvView(t, g, "bob")
 	opened := 0
 	for _, e := range want.Log {
@@ -72,7 +69,9 @@ func TestRestoreKeepsAFinishedGamesResult(t *testing.T) {
 	h := NewHub(odd{}, st)
 	g, _, _ := seated(t, h)
 	openings(t, g)
-	g.Resign("bob")
+	if err := g.Resign("bob"); err != nil {
+		t.Fatal(err)
+	}
 	want := recvView(t, g, "alice")
 
 	h2 := NewHub(odd{}, st)
@@ -107,13 +106,7 @@ func TestRestoreRestartsTheFirstMoveDeadline(t *testing.T) {
 // offer a second one, and spectators keep their link.
 func TestRestoreRemembersAnAcceptedRematch(t *testing.T) {
 	st := openStore(t)
-	g, _, _ := over(t, NewHub(odd{}, st))
-	g.Rematch("alice", false)
-	g.Rematch("bob", false)
-	next := recvView(t, g, "alice").Rematch.Code
-	if next == "" {
-		t.Fatal("test setup: no rematch")
-	}
+	g, next := rematched(t, NewHub(odd{}, st))
 	h2 := NewHub(odd{}, st)
 	h2.Restore(load(t, st))
 	g2, ok := h2.Get(g.Code())

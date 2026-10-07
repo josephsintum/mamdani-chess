@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 	"mamdani-chess/store"
 )
 
-// Errors returned by Move.
+// Errors returned by a game's methods.
 var (
 	ErrNotPlayer   = errors.New("you are not playing in this game")
 	ErrWaiting     = errors.New("waiting for an opponent")
@@ -115,7 +116,8 @@ func (g *Game) loop() {
 	idle := time.NewTimer(g.idle)
 	defer idle.Stop()
 	// deadline fires when the side to move runs out of time. Every change
-	// re-arms it, and a stale firing is ignored (see expire).
+	// re-arms it, which drops a firing not yet received; flagIfDue checks
+	// the clock again all the same.
 	deadline := time.NewTimer(0)
 	deadline.Stop()
 	defer deadline.Stop()
@@ -144,7 +146,7 @@ func (g *Game) loop() {
 			idle.Reset(g.idle)
 			arm()
 		case <-deadline.C:
-			if g.check(g.run(g.expire)) != nil {
+			if g.check(g.run(func() { g.flagIfDue(time.Now()) })) != nil {
 				g.stop()
 				return
 			}
@@ -164,19 +166,23 @@ func (g *Game) loop() {
 	}
 }
 
-// expire ends the game if the side to move's deadline has passed. The
-// timer can fire late or for a deadline a move has since replaced, so it
-// checks the clock again.
-func (g *Game) expire() {
-	if now := time.Now(); !g.g.Result.Over && g.expired(now) {
+// flagIfDue ends the game on time if the side to move's deadline has
+// passed. A call can arrive before the timer fires, so every call that acts
+// on the game checks the clock first.
+func (g *Game) flagIfDue(now time.Time) {
+	if !g.g.Result.Over && g.expired(now) {
 		g.flag(now)
 	}
 }
 
 // end finishes the game with r and stops the clock, saving the result
 // (with final, the move that ended it, if any) before anyone sees it.
+// Without a final move, nothing happened on the board, so no dice replay.
 func (g *Game) end(now time.Time, r rules.Result, final *store.Turn) {
 	g.g.Result = r
+	if final == nil {
+		g.last = nil
+	}
 	g.clock.deadline = time.Time{}
 	saved := savedResult(now, r)
 	g.save("result", func(ctx context.Context) error { return g.store.EndGame(ctx, g.code, saved, final) })
@@ -236,6 +242,15 @@ func (g *Game) do(f func()) error {
 	case <-g.done:
 		return ErrGone
 	}
+}
+
+// try is do for a function that can refuse: it returns do's error, or f's.
+func (g *Game) try(f func() error) error {
+	var err error
+	if perr := g.do(func() { err = f() }); perr != nil {
+		return perr
+	}
+	return err
 }
 
 // Code returns the game's share code.
@@ -330,26 +345,15 @@ func (g *Game) connected(c rules.Color) bool {
 // Move plays guest's move. seq must equal the number of turns played so far,
 // which rejects a move made from an out-of-date board.
 func (g *Game) Move(guest string, m rules.Move, seq int) error {
-	var err error
-	if perr := g.do(func() { err = g.move(guest, m, seq) }); perr != nil {
-		return perr
-	}
-	return err
+	return g.try(func() error { return g.move(guest, m, seq) })
 }
 
 func (g *Game) move(guest string, m rules.Move, seq int) error {
 	now := time.Now()
-	if !g.g.Result.Over && g.expired(now) {
-		g.flag(now) // the flag fell before this move arrived
-	}
-	color, seated := g.seatOf(guest)
+	color, err := g.player(guest, now)
 	switch {
-	case !seated:
-		return ErrNotPlayer
-	case g.g.Result.Over:
-		return ErrGameOver
-	case g.status() == Waiting:
-		return ErrWaiting
+	case err != nil:
+		return err
 	case color != g.g.Pos.Turn:
 		return ErrNotYourTurn
 	case seq != len(g.g.Turns):
@@ -370,7 +374,7 @@ func (g *Game) move(guest string, m rules.Move, seq int) error {
 	}
 	g.save("turn", func(ctx context.Context) error { return g.store.AddTurn(ctx, g.code, turn) })
 	if g.failed != nil {
-		return nil
+		return nil // the loop reports g.failed and retires the game
 	}
 	g.startCounting(now.Add(pauseFor(g.last)))
 	g.broadcast()
@@ -414,33 +418,36 @@ func (g *Game) tally(ev []rules.Event) {
 
 // Resign ends the game with guest's opponent as the winner.
 func (g *Game) Resign(guest string) error {
-	var err error
-	if perr := g.do(func() { err = g.resign(guest) }); perr != nil {
-		return perr
-	}
-	return err
+	return g.try(func() error { return g.resign(guest) })
 }
 
 func (g *Game) resign(guest string) error {
 	now := time.Now()
-	if !g.g.Result.Over && g.expired(now) {
-		g.flag(now)
-	}
-	color, seated := g.seatOf(guest)
-	switch {
-	case !seated:
-		return ErrNotPlayer
-	case g.g.Result.Over:
-		return ErrGameOver
-	case g.status() == Waiting:
-		return ErrWaiting
+	color, err := g.player(guest, now)
+	if err != nil {
+		return err
 	}
 	if g.running() && g.g.Pos.Turn == color {
 		g.charge(color, now) // the clock shows what they had left
 	}
-	g.last = nil
 	g.end(now, rules.Result{Over: true, Winner: color.Other(), Reason: Resignation}, nil)
 	return nil
+}
+
+// player returns guest's color in a game being played. It checks the clock
+// first: a flag that fell before the call ends the game.
+func (g *Game) player(guest string, now time.Time) (rules.Color, error) {
+	g.flagIfDue(now)
+	color, seated := g.seatOf(guest)
+	switch {
+	case !seated:
+		return 0, ErrNotPlayer
+	case g.g.Result.Over:
+		return 0, ErrGameOver
+	case g.status() == Waiting:
+		return 0, ErrWaiting
+	}
+	return color, nil
 }
 
 func (g *Game) seatOf(guest string) (rules.Color, bool) {
@@ -530,7 +537,7 @@ func shared[T any](s []T) []T {
 	if s == nil {
 		return []T{}
 	}
-	return s[:len(s):len(s)]
+	return slices.Clip(s)
 }
 
 // send replaces whatever is waiting on the sub with v. Only the game's
@@ -550,6 +557,7 @@ func (g *Game) viewFor(r role) *View {
 		Code:     g.code,
 		Status:   g.status(),
 		You:      "spectator",
+		Board:    boardJSON(p),
 		Mamdani:  squareName(p.Mamdani),
 		Potholes: potholesJSON(p),
 		Turn:     colorName(p.Turn),
@@ -564,13 +572,11 @@ func (g *Game) viewFor(r role) *View {
 		Online:   OnlineJSON{White: g.connected(rules.White), Black: g.connected(rules.Black)},
 		Players:  PlayersJSON{White: g.names[rules.White], Black: g.names[rules.Black]},
 		Rematch:  g.rematchJSON(),
+		Result:   resultJSON(g.g.Result),
 	}
 	color, seated := rules.Color(r), r != roleSpectator
 	if seated {
 		v.You = colorName(color)
-	}
-	for s, pc := range p.Board {
-		v.Board[s] = pieceCode(pc)
 	}
 	if v.Status == Playing && seated && color == p.Turn {
 		moves := p.LegalMoves()
@@ -581,9 +587,6 @@ func (g *Game) viewFor(r role) *View {
 	}
 	for _, e := range g.last {
 		v.Last = append(v.Last, eventJSON(e))
-	}
-	if r := g.g.Result; r.Over {
-		v.Result = &ResultJSON{Winner: winnerName(r), Draw: r.Draw, Reason: r.Reason}
 	}
 	return v
 }

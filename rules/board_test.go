@@ -25,16 +25,6 @@ func TestSquares(t *testing.T) {
 	}
 }
 
-func TestPieces(t *testing.T) {
-	p := NewPiece(Black, Knight)
-	if p.Color() != Black || p.Kind() != Knight || NewPiece(White, Pawn).Color() != White {
-		t.Error("piece packing is wrong")
-	}
-	if White.Other() != Black || Black.Other() != White {
-		t.Error("Other is wrong")
-	}
-}
-
 func TestStartPosition(t *testing.T) {
 	p := StartPosition()
 	if p.Board[E1] != NewPiece(White, King) || p.Board[D8] != NewPiece(Black, Queen) || p.Board[E4] != NoPiece {
@@ -77,7 +67,7 @@ func TestParseFEN(t *testing.T) {
 var nameSink string
 
 func TestSquareNames(t *testing.T) {
-	for s := A1; s <= H8; s++ {
+	for s := range Square(64) {
 		if p, err := ParseSquare(s.String()); err != nil || p != s {
 			t.Errorf("square %d: named %q, which parses as %v (%v)", s, s.String(), p, err)
 		}

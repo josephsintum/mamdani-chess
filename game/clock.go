@@ -164,7 +164,6 @@ func (g *Game) flag(now time.Time) {
 	if r.Reason != Aborted {
 		g.clock.remaining[side] = 0
 	}
-	g.last = nil
 	g.end(now, r, nil)
 }
 

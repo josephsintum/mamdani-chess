@@ -75,26 +75,16 @@ func TestGameViewDoesNotTakeASeat(t *testing.T) {
 	_, ts := newTestServer(t)
 	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
 	code := alice.create()
-	resp, err := bob.c.Get(ts.URL + "/api/games/" + code)
-	if err != nil {
-		t.Fatal(err)
-	}
+	status, body := bob.get("/api/games/" + code)
 	var v game.View
-	err = json.NewDecoder(resp.Body).Decode(&v)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || err != nil || v.You != "spectator" || v.Status != game.Waiting {
-		t.Fatalf("view: %d %v you=%s status=%s", resp.StatusCode, err, v.You, v.Status)
+	if err := json.Unmarshal([]byte(body), &v); status != http.StatusOK || err != nil || v.You != "spectator" || v.Status != game.Waiting {
+		t.Fatalf("view: %d %v you=%s status=%s", status, err, v.You, v.Status)
 	}
 	if v := bob.stream(code).state(); v.You != "black" {
 		t.Fatalf("bob's stream: you=%s; looking at the game shouldn't have used up the seat", v.You)
 	}
-	resp, err = bob.c.Get(ts.URL + "/api/games/NOPE99")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("unknown game: %d, want 404", resp.StatusCode)
+	if status, _ := bob.get("/api/games/NOPE99"); status != http.StatusNotFound {
+		t.Fatalf("unknown game: %d, want 404", status)
 	}
 }
 

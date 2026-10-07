@@ -189,8 +189,8 @@ export interface MeJSON {
 	changesLeft: number;
 	changesResetAt: number | null;
 	/**
-	 * Game is the code of the game the caller is playing right now, or
-	 * null, so a page can offer to take them back to it.
+	 * Game is the code of the game the caller is playing right now, absent
+	 * when they aren't, so a page can offer to take them back to it.
 	 */
 	game?: string;
 }

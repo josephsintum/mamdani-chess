@@ -6,6 +6,7 @@ package match
 import (
 	"log/slog"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"sync/atomic"
 )
@@ -128,11 +129,8 @@ func (q *Queue) pair() {
 // remove takes e out of line. The caller holds q.mu.
 func (q *Queue) remove(e *entry) {
 	delete(q.byGuest, e.guest)
-	for i, x := range q.line {
-		if x == e {
-			q.line = append(q.line[:i], q.line[i+1:]...)
-			break
-		}
+	if i := slices.Index(q.line, e); i >= 0 {
+		q.line = slices.Delete(q.line, i, i+1)
 	}
 	q.looking.Store(int64(len(q.line)))
 }

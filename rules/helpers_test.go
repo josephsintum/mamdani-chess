@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"cmp"
 	"slices"
 	"testing"
 )
@@ -32,7 +33,7 @@ func open(p Position) []Hole {
 			hs = append(hs, h)
 		}
 	}
-	slices.SortFunc(hs, func(a, b Hole) int { return int(a.Seq) - int(b.Seq) })
+	slices.SortFunc(hs, func(a, b Hole) int { return cmp.Compare(a.Seq, b.Seq) })
 	return hs
 }
 

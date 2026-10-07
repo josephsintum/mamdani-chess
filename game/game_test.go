@@ -47,6 +47,16 @@ func recv(t *testing.T, sub *Sub) *View {
 	}
 }
 
+// recvSeq drains sub up to the first view with at least seq turns played.
+func recvSeq(t *testing.T, sub *Sub, seq int) *View {
+	t.Helper()
+	for {
+		if v := recv(t, sub); v.Seq >= seq {
+			return v
+		}
+	}
+}
+
 // create starts a game with creator as White.
 func create(t *testing.T, h *Hub, creator string) *Game {
 	t.Helper()
@@ -199,24 +209,16 @@ func TestCheckmateEndsTheGame(t *testing.T) {
 	g := create(t, NewHub(odd{}, nil), "alice")
 	a := join(t, g, "alice")
 	join(t, g, "bob")
-	for i, m := range []string{"f2f3", "e7e5", "g2g4", "d8h4"} {
-		guest := []string{"alice", "bob"}[i%2]
-		if err := g.Move(guest, mv(t, m), i); err != nil {
-			t.Fatalf("%s: %v", m, err)
-		}
-	}
-	var v *View
-	for range 5 { // drain to the newest view
-		v = recv(t, a)
-		if v.Seq == 4 {
-			break
-		}
-	}
+	plays(t, g, "f2f3", "e7e5", "g2g4", "d8h4")
+	v := recvSeq(t, a, 4)
 	if v.Status != Over || v.Result == nil || v.Result.Winner != "black" || v.Result.Reason != rules.Checkmate {
 		t.Fatalf("status %s result %+v", v.Status, v.Result)
 	}
 	if err := g.Move("alice", mv(t, "a2a3"), 4); !errors.Is(err, ErrGameOver) {
 		t.Errorf("move after mate: %v", err)
+	}
+	if err := g.Resign("alice"); !errors.Is(err, ErrGameOver) {
+		t.Errorf("resign after checkmate: %v, want ErrGameOver", err)
 	}
 }
 
@@ -313,15 +315,8 @@ func TestStatsAndLostPieces(t *testing.T) {
 	a := join(t, g, "alice")
 	join(t, g, "bob")
 	recv(t, a)
-	for i, m := range []string{"e2e4", "e7e5", "g1f3"} {
-		if err := g.Move([]string{"alice", "bob"}[i%2], mv(t, m), i); err != nil {
-			t.Fatalf("%s: %v", m, err)
-		}
-	}
-	var v *View
-	for v == nil || v.Seq < 3 {
-		v = recv(t, a)
-	}
+	plays(t, g, "e2e4", "e7e5", "g1f3")
+	v := recvSeq(t, a, 3)
 	if !slices.Equal(v.Lost.White, []string{}) || !slices.Equal(v.Lost.Black, []string{"bN"}) {
 		t.Errorf("lost %+v, want white none and black [bN]", v.Lost)
 	}
@@ -330,19 +325,6 @@ func TestStatsAndLostPieces(t *testing.T) {
 	}
 	if want := (LogEntry{SAN: "e4", Color: "white", Dice: "d8 2 → g8 · bN falls"}); v.Log[0] != want {
 		t.Errorf("log[0] %+v, want %+v", v.Log[0], want)
-	}
-}
-
-func TestResignAfterMateIsRefused(t *testing.T) {
-	g := create(t, NewHub(odd{}, nil), "alice")
-	join(t, g, "bob")
-	for i, m := range []string{"f2f3", "e7e5", "g2g4", "d8h4"} {
-		if err := g.Move([]string{"alice", "bob"}[i%2], mv(t, m), i); err != nil {
-			t.Fatalf("%s: %v", m, err)
-		}
-	}
-	if err := g.Resign("alice"); !errors.Is(err, ErrGameOver) {
-		t.Errorf("resign after checkmate: %v, want ErrGameOver", err)
 	}
 }
 

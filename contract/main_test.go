@@ -9,9 +9,9 @@
 // builds ./cmd/server, runs it on a free port with a new database and
 // stops it at the end. BASE_URL=http://host:port tests a server that is
 // already running instead. CONTRACT_SLOW=1 adds the check that needs a real
-// minute (the first-move abort). The test binary doesn't depend on the
-// server's code, so pass -count=1: a cached pass says nothing about a
-// changed server.
+// minute (the first-move abort). The test binary doesn't import server or
+// cmd/server, so a cached pass misses changes to the handlers: pass
+// -count=1.
 package contract
 
 import (

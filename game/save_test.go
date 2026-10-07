@@ -21,22 +21,30 @@ func openStore(t *testing.T) *store.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return st
 }
 
 func load(t *testing.T, st *store.Store) []store.SavedGame {
 	t.Helper()
-	saved, err := st.LoadForRestore(context.Background(), time.Now().Add(-24*time.Hour))
+	saved, err := st.LoadForRestore(t.Context(), time.Now().Add(-24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return saved
 }
 
-// withCodes makes h draw the given codes in order.
+// withCodes makes h draw the given codes in order. Creates running at once
+// can share it.
 func withCodes(h *Hub, codes ...string) *Hub {
+	var mu sync.Mutex
 	h.newCode = func() string {
+		mu.Lock()
+		defer mu.Unlock()
 		c := codes[0]
 		codes = codes[1:]
 		return c
@@ -129,19 +137,9 @@ func TestCreateDoesNotBlockLookupsWhileSaving(t *testing.T) {
 }
 
 // Two creates running at once never get the same code, even when the code
-// generator offers it to both, and a code freed by a failed save can be
-// used again.
+// generator offers it to both.
 func TestCreatesNeverShareACode(t *testing.T) {
-	var mu sync.Mutex
-	draws := []string{"SAME00", "SAME00", "OTHER1"}
-	h := NewHub(odd{}, nil)
-	h.newCode = func() string {
-		mu.Lock()
-		defer mu.Unlock()
-		c := draws[0]
-		draws = draws[1:]
-		return c
-	}
+	h := withCodes(NewHub(odd{}, nil), "SAME00", "SAME00", "OTHER1")
 	var wg sync.WaitGroup
 	codes := make([]string, 2)
 	for i := range codes {
@@ -153,22 +151,31 @@ func TestCreatesNeverShareACode(t *testing.T) {
 	}
 }
 
+// failingCreate fails only CreateGame, while fail is set, so a create gets
+// as far as drawing a code.
+type failingCreate struct {
+	nopStore
+	fail bool
+}
+
+func (f *failingCreate) CreateGame(context.Context, store.Game) error {
+	if f.fail {
+		return errDiskFull
+	}
+	return nil
+}
+
+// A failed save fails the create with the store's error, and frees the code
+// it drew for the next create.
 func TestAFailedSaveFreesItsCode(t *testing.T) {
-	st := &failing{fail: true}
+	st := &failingCreate{fail: true}
 	h := withCodes(NewHub(odd{}, st), "RETRY1", "RETRY1")
-	if _, err := h.Create("alice"); err == nil {
-		t.Fatal("create should fail")
+	if _, err := h.Create("alice"); !errors.Is(err, errDiskFull) {
+		t.Fatalf("create: %v, want the store's error", err)
 	}
 	st.fail = false
 	if g := create(t, h, "bob"); g.Code() != "RETRY1" {
 		t.Fatalf("code %s, want RETRY1 reused", g.Code())
-	}
-}
-
-func TestCreateFailsWhenTheSaveFails(t *testing.T) {
-	h := NewHub(odd{}, &failing{fail: true})
-	if _, err := h.Create("alice"); !errors.Is(err, errDiskFull) {
-		t.Fatalf("create: %v, want the store's error", err)
 	}
 }
 

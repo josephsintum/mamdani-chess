@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // Move is one move. A Mamdani move has From set to the Mamdani's square.
@@ -13,13 +14,16 @@ type Move struct {
 	Promo    Kind
 }
 
-var promoLetters = map[Kind]byte{Knight: 'n', Bishop: 'b', Rook: 'r', Queen: 'q'}
+// promoLetters are the UCI promotion letters, one per Kind from Knight to
+// Queen.
+const promoLetters = "nbrq"
 
 // String returns the move in UCI form: "e2e4", "e7e8q".
 func (m Move) String() string {
 	s := m.From.String() + m.To.String()
-	if c, ok := promoLetters[m.Promo]; ok {
-		s += string(c)
+	if Knight <= m.Promo && m.Promo <= Queen {
+		i := m.Promo - Knight
+		s += promoLetters[i : i+1]
 	}
 	return s
 }
@@ -39,14 +43,11 @@ func ParseMove(s string) (Move, error) {
 	}
 	m := Move{From: from, To: to}
 	if len(s) == 5 {
-		for k, c := range promoLetters {
-			if c == s[4] {
-				m.Promo = k
-			}
-		}
-		if m.Promo == NoKind {
+		i := strings.IndexByte(promoLetters, s[4])
+		if i < 0 {
 			return Move{}, fmt.Errorf("bad promotion in %q", s)
 		}
+		m.Promo = Knight + Kind(i)
 	}
 	return m, nil
 }
@@ -83,12 +84,7 @@ func (p *Position) safe(m Move) bool {
 // stops at the first one, which is all mate and stalemate checks need.
 func (p *Position) hasLegalMove() bool {
 	var buf [maxMoves]Move
-	for _, m := range p.pseudoMoves(buf[:0]) {
-		if p.safe(m) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(p.pseudoMoves(buf[:0]), p.safe)
 }
 
 // isLegal reports whether m is one of LegalMoves, without building them all.
@@ -128,7 +124,7 @@ func (p *Position) pseudoMoves(moves []Move) []Move {
 	for b := p.pieces(us, King); b != 0; {
 		from := b.pop()
 		moves = appendTargets(moves, from, kingAttacks[from]&landable)
-		moves = p.castlingMoves(moves, from)
+		moves = p.castlingMoves(moves, from, blocked)
 	}
 	for b := p.pieces(us, Pawn); b != 0; {
 		moves = p.pawnMoves(moves, b.pop(), blocked)
@@ -136,7 +132,8 @@ func (p *Position) pseudoMoves(moves []Move) []Move {
 	return moves
 }
 
-// appendTargets appends a move from from to each square in targets.
+// appendTargets appends a move from the square from to each square in
+// targets.
 func appendTargets(moves []Move, from Square, targets Bitboard) []Move {
 	for targets != 0 {
 		moves = append(moves, Move{From: from, To: targets.pop()})
@@ -190,28 +187,26 @@ func appendPawnMove(moves []Move, from, to Square) []Move {
 	return append(moves, Move{From: from, To: to})
 }
 
-func (p *Position) castlingMoves(moves []Move, k Square) []Move {
-	c := p.Board[k].Color()
+func (p *Position) castlingMoves(moves []Move, k Square, blocked Bitboard) []Move {
+	c, them := p.Turn, p.Turn.Other()
 	home, ks, qs := E1, WhiteKingside, WhiteQueenside
 	if c == Black {
 		home, ks, qs = E8, BlackKingside, BlackQueenside
 	}
-	if k != home || p.Attacked(k, c.Other()) {
+	if k != home || p.Castling&(ks|qs) == 0 || p.attackedWith(k, them, blocked) {
 		return moves
 	}
 	rook := NewPiece(c, Rook)
 	// Every square between king and rook must be clear of pieces, the
 	// Mamdani and potholes; the king may not pass through or land on an
 	// attacked square.
-	if p.Castling&ks != 0 && p.Board[k.Offset(3, 0)] == rook &&
-		!p.Blocked(k.Offset(1, 0)) && !p.Blocked(k.Offset(2, 0)) &&
-		!p.Attacked(k.Offset(1, 0), c.Other()) && !p.Attacked(k.Offset(2, 0), c.Other()) {
-		moves = append(moves, Move{From: k, To: k.Offset(2, 0)})
+	if p.Castling&ks != 0 && p.Board[k+3] == rook && blocked&(bit(k+1)|bit(k+2)) == 0 &&
+		!p.attackedWith(k+1, them, blocked) && !p.attackedWith(k+2, them, blocked) {
+		moves = append(moves, Move{From: k, To: k + 2})
 	}
-	if p.Castling&qs != 0 && p.Board[k.Offset(-4, 0)] == rook &&
-		!p.Blocked(k.Offset(-1, 0)) && !p.Blocked(k.Offset(-2, 0)) && !p.Blocked(k.Offset(-3, 0)) &&
-		!p.Attacked(k.Offset(-1, 0), c.Other()) && !p.Attacked(k.Offset(-2, 0), c.Other()) {
-		moves = append(moves, Move{From: k, To: k.Offset(-2, 0)})
+	if p.Castling&qs != 0 && p.Board[k-4] == rook && blocked&(bit(k-1)|bit(k-2)|bit(k-3)) == 0 &&
+		!p.attackedWith(k-1, them, blocked) && !p.attackedWith(k-2, them, blocked) {
+		moves = append(moves, Move{From: k, To: k - 2})
 	}
 	return moves
 }

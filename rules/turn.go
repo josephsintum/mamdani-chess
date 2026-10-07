@@ -37,7 +37,7 @@ func Apply(p Position, m Move, dice Dice) (Position, []Event, error) {
 		return next, ev, nil
 	}
 	checked := &checkedDice{dice: dice}
-	ev = next.rollPothole(mover, checked, ev)
+	next.rollPothole(mover, checked, &ev)
 	if checked.err != nil {
 		return p, nil, checked.err
 	}
@@ -84,23 +84,24 @@ func (p *Position) threatened() bool {
 	return q.InCheck(q.Turn)
 }
 
-func (p *Position) rollPothole(mover Color, dice Dice, ev []Event) []Event {
+func (p *Position) rollPothole(mover Color, dice Dice, ev *[]Event) {
 	r := dice.D8()
-	ev = append(ev, Event{Kind: RolledPothole, Roll: r, Color: mover})
+	emit(ev, Event{Kind: RolledPothole, Roll: r, Color: mover})
 	if r%2 == 1 {
-		return ev
+		return
 	}
 	for range maxRerolls + 1 {
 		file, rank := dice.D8(), dice.D8()
 		s := Square((rank-1)*8 + file - 1)
-		ev = append(ev, Event{Kind: Target, Square: s})
+		emit(ev, Event{Kind: Target, Square: s})
 		if reason := p.rerollReason(s, mover); reason != "" {
-			ev = append(ev, Event{Kind: Reroll, Square: s, Reason: reason})
+			emit(ev, Event{Kind: Reroll, Square: s, Reason: reason})
 			continue
 		}
-		return p.resolve(s, mover, dice, ev)
+		p.resolve(s, mover, dice, ev)
+		return
 	}
-	return append(ev, Event{Kind: NoPothole})
+	emit(ev, Event{Kind: NoPothole})
 }
 
 // rerollReason returns why the placement dice must be rolled again for s,
@@ -133,8 +134,9 @@ func (p *Position) rerollReason(s Square, mover Color) RerollReason {
 	return ""
 }
 
+// nextToMamdani reports whether s touches the Mamdani, diagonals included.
 func (p *Position) nextToMamdani(s Square) bool {
-	return p.Mamdani != NoSquare && adjacent(s, p.Mamdani)
+	return p.Mamdani != NoSquare && kingAttacks[p.Mamdani].Has(s)
 }
 
 // remove takes whatever stands on s off the board.
@@ -146,47 +148,45 @@ func (p *Position) remove(s Square) {
 	p.take(s)
 }
 
-func (p *Position) resolve(s Square, mover Color, dice Dice, ev []Event) []Event {
+func (p *Position) resolve(s Square, mover Color, dice Dice, ev *[]Event) {
 	if p.nextToMamdani(s) {
-		return append(ev, Event{Kind: Repaired, Square: s})
+		emit(ev, Event{Kind: Repaired, Square: s})
+		return
 	}
 	switch {
 	case s == p.Mamdani:
 		// The Mamdani always gets a saving roll, made by the roller.
-		r := dice.D8()
-		saved := r%2 == 1
-		ev = append(ev, Event{Kind: SavingRoll, Square: s, Piece: MamdaniPiece, Roll: r, Saved: saved, Color: mover})
-		if saved {
-			return ev
+		if savingRoll(s, MamdaniPiece, mover, dice, ev) {
+			return
 		}
-		ev = append(ev, Event{Kind: Fell, Square: s, Piece: MamdaniPiece})
+		emit(ev, Event{Kind: Fell, Square: s, Piece: MamdaniPiece})
 		p.Mamdani = NoSquare
 	case p.Board[s] != NoPiece:
 		pc := p.Board[s]
-		if p.mamdaniReaches(s) {
-			r := dice.D8()
-			saved := r%2 == 1
-			ev = append(ev, Event{Kind: SavingRoll, Square: s, Piece: pc, Roll: r, Saved: saved, Color: pc.Color()})
-			if saved {
-				return ev
-			}
+		if p.mamdaniReaches(s) && savingRoll(s, pc, pc.Color(), dice, ev) {
+			return
 		}
-		ev = append(ev, Event{Kind: Fell, Square: s, Piece: pc})
+		emit(ev, Event{Kind: Fell, Square: s, Piece: pc})
 		p.take(s)
 		p.Halfmove = 0
 		p.Castling &^= rightsLost(s)
 	}
-	p.openHole(s, mover, &ev)
-	return ev
+	p.openHole(s, mover, ev)
+}
+
+// savingRoll rolls a d8 for pc on s, made by c, and reports whether it
+// saves the piece: an odd roll does.
+func savingRoll(s Square, pc Piece, c Color, dice Dice, ev *[]Event) bool {
+	r := dice.D8()
+	saved := r%2 == 1
+	emit(ev, Event{Kind: SavingRoll, Square: s, Piece: pc, Roll: r, Saved: saved, Color: c})
+	return saved
 }
 
 // mamdaniReaches reports whether the Mamdani has a clear queen line to s:
 // same rank, file or diagonal, nothing in between. That is all a saving
-// roll needs.
+// roll needs. A queen's attacks run up to and including the first blocked
+// square on each line, so s is among them exactly when the line is clear.
 func (p *Position) mamdaniReaches(s Square) bool {
-	if p.Mamdani == NoSquare || p.Mamdani == s {
-		return false
-	}
-	path, aligned := between(p.Mamdani, s)
-	return aligned && path&p.blocked() == 0
+	return p.Mamdani != NoSquare && queenAttacks(p.Mamdani, p.blocked()).Has(s)
 }

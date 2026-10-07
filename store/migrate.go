@@ -65,28 +65,34 @@ func (s *Store) migrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
 		return fmt.Errorf("create schema_version: %w", err)
 	}
-	var version int
-	if err := s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&version); err != nil {
+	version, err := s.Version(ctx)
+	if err != nil {
 		return fmt.Errorf("read schema_version: %w", err)
 	}
 	for i := version; i < len(migrations); i++ {
-		tx, err := s.db.BeginTx(ctx, nil)
-		if err != nil {
+		if err := s.apply(ctx, i+1, migrations[i]); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, migrations[i]); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("migration %d: %w", i+1, err)
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO schema_version (version) VALUES (?)`, i+1); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("record migration %d: %w", i+1, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %d: %w", i+1, err)
-		}
+	}
+	return nil
+}
+
+// apply runs migration version and records it, in one transaction.
+func (s *Store) apply(ctx context.Context, version int, migration string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, migration); err != nil {
+		return fmt.Errorf("migration %d: %w", version, err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO schema_version (version) VALUES (?)`, version); err != nil {
+		return fmt.Errorf("record migration %d: %w", version, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migration %d: %w", version, err)
 	}
 	return nil
 }

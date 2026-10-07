@@ -72,7 +72,7 @@ func (h *Hub) CreatePair(white, black string) (*Game, error) {
 
 // name returns the guest's name, creating it if they have none.
 func (h *Hub) name(guest string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
 	name, err := h.store.EnsureGuest(ctx, guest, names.Random)
 	if err != nil {
@@ -82,8 +82,8 @@ func (h *Hub) name(guest string) (string, error) {
 }
 
 // create saves and starts a game with sg's seats under a fresh code. A
-// game with both seats filled (a rematch) starts with White's first-move
-// deadline running.
+// game with both seats filled (quick match or a rematch) starts with
+// White's first-move deadline running.
 func (h *Hub) create(sg store.Game) (*Game, error) {
 	now := time.Now()
 	sg.CreatedAt = now
@@ -91,19 +91,17 @@ func (h *Hub) create(sg store.Game) (*Game, error) {
 	// request) don't wait for it; the code is reserved meanwhile.
 	for tries := 0; ; tries++ {
 		sg.Code = h.reserve()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 		err := h.store.CreateGame(ctx, sg)
 		cancel()
-		if err != nil {
-			h.unreserve(sg.Code)
+		if err == nil {
+			break
 		}
-		if errors.Is(err, store.ErrCodeTaken) && tries < 10 {
-			continue // an old saved game has this code
-		}
-		if err != nil {
+		h.unreserve(sg.Code)
+		if !errors.Is(err, store.ErrCodeTaken) || tries >= 10 {
 			return nil, fmt.Errorf("create game: %w", err)
 		}
-		break
+		// an old saved game has this code: draw another
 	}
 	h.mu.Lock()
 	delete(h.reserved, sg.Code)
@@ -140,13 +138,18 @@ func (h *Hub) unreserve(code string) {
 
 // add puts a new, not yet running game in the hub. The caller holds h.mu.
 func (h *Hub) add(sg store.Game) *Game {
-	g := newGame(h, sg, func() {
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		delete(h.games, sg.Code)
-	})
+	g := newGame(h, sg, h.forget(sg.Code))
 	h.games[sg.Code] = g
 	return g
+}
+
+// forget returns a game's onExit: it takes code out of the hub.
+func (h *Hub) forget(code string) func() {
+	return func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		delete(h.games, code)
+	}
 }
 
 // guestTag is a short one-way tag for a guest ID, for logs. The ID itself

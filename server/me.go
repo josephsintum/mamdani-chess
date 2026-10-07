@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -17,8 +16,8 @@ type MeJSON struct {
 	Name           *string `json:"name"`
 	ChangesLeft    int     `json:"changesLeft"`
 	ChangesResetAt *int64  `json:"changesResetAt"`
-	// Game is the code of the game the caller is playing right now, or
-	// null, so a page can offer to take them back to it.
+	// Game is the code of the game the caller is playing right now, absent
+	// when they aren't, so a page can offer to take them back to it.
 	Game *string `json:"game,omitempty"`
 }
 
@@ -39,14 +38,9 @@ func newMeJSON(name string, a store.Allowance) MeJSON {
 // they first play.
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	guest := guestID(w, r)
-	name, err := s.store.GuestName(r.Context(), guest)
+	name, a, err := s.store.Guest(r.Context(), guest, time.Now())
 	if err != nil {
 		s.internalError(w, "guest name", err)
-		return
-	}
-	a, err := s.store.Allowance(r.Context(), guest, time.Now())
-	if err != nil {
-		s.internalError(w, "name allowance", err)
 		return
 	}
 	out := newMeJSON(name, a)
@@ -79,9 +73,7 @@ type nameRequest struct {
 // changes are used.
 func (s *Server) chooseName(w http.ResponseWriter, r *http.Request) {
 	var req nameRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request body"})
+	if !decodeBody(w, r, &req) {
 		return
 	}
 	a, err := s.store.ChooseName(r.Context(), guestID(w, r), req.Name, time.Now())
@@ -102,14 +94,9 @@ func (s *Server) nameRefused(w http.ResponseWriter, a store.Allowance, err error
 			"error": err.Error(), "changesResetAt": a.ResetAt.UnixMilli(),
 		})
 	case errors.Is(err, store.ErrNoName), errors.Is(err, store.ErrNotOffered):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeError(w, http.StatusConflict, err.Error())
 	default:
 		s.internalError(w, "name change", err)
 	}
 	return true
-}
-
-func (s *Server) internalError(w http.ResponseWriter, what string, err error) {
-	s.log.Error(what, "err", err)
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 }

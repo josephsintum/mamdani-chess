@@ -111,15 +111,7 @@ func TestPieceCodes(t *testing.T) {
 // bob as Black.
 func playOpening(t *testing.T, g *Game) {
 	t.Helper()
-	for i, uci := range []string{"e2e4", "e7e5", "g1f3", "b8c6"} {
-		guest := "alice"
-		if i%2 == 1 {
-			guest = "bob"
-		}
-		if err := g.Move(guest, mv(t, uci), i); err != nil {
-			t.Fatalf("%s: %v", uci, err)
-		}
-	}
+	plays(t, g, "e2e4", "e7e5", "g1f3", "b8c6")
 }
 
 // Views share the game's log instead of copying it, so a view already sent

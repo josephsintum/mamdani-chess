@@ -68,10 +68,14 @@ func (s *Store) EnsureGuest(ctx context.Context, id string, draw func() string) 
 	return s.GuestName(ctx, id)
 }
 
-// Allowance returns how many name changes the guest has left at now.
-func (s *Store) Allowance(ctx context.Context, id string, now time.Time) (Allowance, error) {
+// Guest returns the guest's name ("" if they have none yet) and how many
+// name changes they have left at now, from one read.
+func (s *Store) Guest(ctx context.Context, id string, now time.Time) (string, Allowance, error) {
 	g, err := s.guest(ctx, id)
-	return g.allowance(now), err
+	if err != nil {
+		return "", Allowance{}, err
+	}
+	return g.name, g.allowance(now), nil
 }
 
 // NameOffers returns the names the guest may choose from. They stay the
@@ -155,13 +159,16 @@ func (s *Store) guest(ctx context.Context, id string) (guestRow, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return guestRow{}, nil
 	}
+	if err != nil {
+		return guestRow{}, err
+	}
 	if since.Valid {
 		g.since = time.UnixMilli(since.Int64)
 	}
 	if offers.String != "" {
 		g.offers = strings.Split(offers.String, ",")
 	}
-	return g, err
+	return g, nil
 }
 
 // allowance is the changes left at now: the window ends NameWindow after

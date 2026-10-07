@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -41,18 +40,6 @@ func meta(html, key string) string {
 	return ""
 }
 
-func myName(t *testing.T, p *player) string {
-	t.Helper()
-	resp, err := p.c.Get(p.url + "/api/me")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var me struct{ Name string }
-	json.NewDecoder(resp.Body).Decode(&me)
-	return me.Name
-}
-
 // A shared link shows a title, a line of text and the card image in
 // iMessage, WhatsApp, Slack and the like, which read the page's tags
 // without running its script.
@@ -83,7 +70,7 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
 	code := alice.create()
 	link := ts.URL + "/game/" + code
-	a := myName(t, alice)
+	a := alice.name()
 	waiting := page(t, c, link)
 	if got := meta(waiting, "og:title"); got != a+" invites you to Mamdani Chess" {
 		t.Errorf("waiting og:title %q", got)
@@ -96,7 +83,7 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	}
 
 	bob.stream(code).state() // takes Black
-	b := myName(t, bob)
+	b := bob.name()
 	playing := page(t, c, link)
 	if got := meta(playing, "og:title"); got != a+" vs "+b+" · Mamdani Chess" {
 		t.Errorf("playing og:title %q", got)

@@ -14,12 +14,8 @@ func startSSE(w http.ResponseWriter) (http.Flusher, bool) {
 	if !ok {
 		return nil, false
 	}
-	h := w.Header()
-	h.Set("Content-Type", "text/event-stream")
-	h.Set("Cache-Control", "no-cache")
-	h.Set("Connection", "keep-alive")
-	h.Set("X-Accel-Buffering", "no") // stop proxies buffering the stream
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Connection", "keep-alive")
+	sseHeaders(w)
 	// A deploy ends every stream at once. A random retry per stream spreads
 	// the browsers' own reconnects instead of sending them all back
 	// together.
@@ -33,11 +29,14 @@ func startSSE(w http.ResponseWriter) (http.Flusher, bool) {
 // joins (a game's seat, the quick-match line), so a HEAD must return
 // before that: a link checker or curl -I would otherwise take Black's seat
 // for good.
-func headSSE(w http.ResponseWriter) {
+func headSSE(w http.ResponseWriter) { sseHeaders(w) }
+
+// sseHeaders writes a stream's status and headers.
+func sseHeaders(w http.ResponseWriter) {
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
-	h.Set("X-Accel-Buffering", "no")
+	h.Set("X-Accel-Buffering", "no") // stop proxies buffering the stream
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -72,7 +71,7 @@ func writeLastEvent(w http.ResponseWriter, fl http.Flusher, event string, data [
 
 // writeHeartbeat writes an SSE comment so idle connections stay open.
 func writeHeartbeat(w http.ResponseWriter, fl http.Flusher) error {
-	if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+	if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
 		return err
 	}
 	fl.Flush()

@@ -14,17 +14,6 @@ func play(t *testing.T, g *Game, ucis ...string) {
 	}
 }
 
-func TestFoolsMate(t *testing.T) {
-	g := NewGame()
-	play(t, g, "f2f3", "e7e5", "g2g4", "d8h4")
-	if want := (Result{Over: true, Winner: Black, Reason: Checkmate}); g.Result != want {
-		t.Errorf("result %+v, want %+v", g.Result, want)
-	}
-	if _, err := g.Play(mv(t, "a2a3"), dice(1)); !errors.Is(err, ErrGameOver) {
-		t.Errorf("got %v, want ErrGameOver", err)
-	}
-}
-
 func TestMamdaniCanBlockMate(t *testing.T) {
 	const fen = "7k/8/8/8/8/8/6PP/r6K w - - 0 1" // back-rank check from a1
 	if g := NewGameFrom(setup(t, fen, D4)); g.Result.Over {
@@ -167,11 +156,14 @@ func TestBoardMateIsNotUndoneByDice(t *testing.T) {
 	if _, err := g.Play(mv(t, "d8h4"), d); err != nil {
 		t.Fatal(err)
 	}
-	if g.Result.Reason != Checkmate || g.Result.Winner != Black {
-		t.Fatalf("result %+v, want Black wins by checkmate", g.Result)
+	if want := (Result{Over: true, Winner: Black, Reason: Checkmate}); g.Result != want {
+		t.Fatalf("result %+v, want %+v", g.Result, want)
 	}
 	if d.Left() != 5 || len(g.Turns[len(g.Turns)-1].Dice) != 0 {
 		t.Errorf("no dice should be rolled after mate; %d left, recorded %v", d.Left(), g.Turns[len(g.Turns)-1].Dice)
+	}
+	if _, err := g.Play(mv(t, "a2a3"), dice(1)); !errors.Is(err, ErrGameOver) {
+		t.Errorf("got %v, want ErrGameOver", err)
 	}
 }
 

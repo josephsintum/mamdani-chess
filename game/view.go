@@ -135,29 +135,39 @@ type ResultJSON struct {
 	Reason rules.Reason `json:"reason"`
 }
 
+// resultJSON is r on the wire, or nil while the game is on.
+func resultJSON(r rules.Result) *ResultJSON {
+	if !r.Over {
+		return nil
+	}
+	return &ResultJSON{Winner: winnerName(r), Draw: r.Draw, Reason: r.Reason}
+}
+
+// boardJSON is p's board as piece codes, index 0 = a1.
+func boardJSON(p *rules.Position) (b [64]string) {
+	for s, pc := range p.Board {
+		b[s] = pieceCode(pc)
+	}
+	return b
+}
+
 var kindLetters = map[rules.Kind]string{
 	rules.Pawn: "P", rules.Knight: "N", rules.Bishop: "B",
 	rules.Rook: "R", rules.Queen: "Q", rules.King: "K",
 }
 
 // pieceCode returns "wP", "bK" and so on, "M" for the Mamdani, "" for none.
-func pieceCode(p rules.Piece) string {
-	switch {
-	case p == rules.NoPiece:
-		return ""
-	case p == rules.MamdaniPiece:
-		return "M"
-	}
-	return pieceCodes[p]
-}
+func pieceCode(p rules.Piece) string { return pieceCodes[p] }
 
 // pieceCodes holds every piece's code, so filling a board never allocates.
+// NoPiece's slot stays "".
 var pieceCodes = func() (codes [16]string) {
 	for k, letter := range kindLetters {
 		for _, c := range []rules.Color{rules.White, rules.Black} {
 			codes[rules.NewPiece(c, k)] = colorName(c)[:1] + letter
 		}
 	}
+	codes[rules.MamdaniPiece] = "M"
 	return codes
 }()
 
@@ -170,7 +180,9 @@ func squareName(s rules.Square) string {
 	return s.String()
 }
 
-var promoLetters = map[rules.Kind]string{
+// promoLetters is indexed by kind, not a map: moveJSON runs for every
+// legal move in a view.
+var promoLetters = [rules.Mamdani + 1]string{
 	rules.Queen: "q", rules.Rook: "r", rules.Bishop: "b", rules.Knight: "n",
 }
 
@@ -178,25 +190,14 @@ func moveJSON(m rules.Move) MoveJSON {
 	return MoveJSON{From: m.From.String(), To: m.To.String(), Promo: promoLetters[m.Promo]}
 }
 
-// ParseMove turns a wire move back into a rules.Move.
+// ParseMove turns a wire move back into a rules.Move. Each field is checked
+// for length first, so a square split across From and To isn't accepted.
 func ParseMove(m MoveJSON) (rules.Move, bool) {
-	from, err1 := rules.ParseSquare(m.From)
-	to, err2 := rules.ParseSquare(m.To)
-	if err1 != nil || err2 != nil {
+	if len(m.From) != 2 || len(m.To) != 2 || len(m.Promo) > 1 {
 		return rules.Move{}, false
 	}
-	mv := rules.Move{From: from, To: to}
-	if m.Promo != "" {
-		for k, l := range promoLetters {
-			if l == m.Promo {
-				mv.Promo = k
-			}
-		}
-		if mv.Promo == rules.NoKind {
-			return rules.Move{}, false
-		}
-	}
-	return mv, true
+	mv, err := rules.ParseMove(m.From + m.To + m.Promo)
+	return mv, err == nil
 }
 
 func eventJSON(e rules.Event) EventJSON {
@@ -210,17 +211,14 @@ func eventJSON(e rules.Event) EventJSON {
 		j.Sq, j.Piece = squareName(e.Square), pieceCode(e.Piece)
 	case rules.Repaired, rules.Target:
 		j.Sq = squareName(e.Square)
-	case rules.PotholeClosed:
+	case rules.PotholeClosed, rules.PotholeOpened:
 		j.Sq, j.Color = squareName(e.Square), colorName(e.Color)
 	case rules.RolledPothole:
 		j.Roll, j.Color = e.Roll, colorName(e.Color)
 	case rules.Reroll:
 		j.Sq, j.Reason = squareName(e.Square), e.Reason
 	case rules.SavingRoll:
-		saved := e.Saved
-		j.Sq, j.Piece, j.Roll, j.Saved, j.Color = squareName(e.Square), pieceCode(e.Piece), e.Roll, &saved, colorName(e.Color)
-	case rules.PotholeOpened:
-		j.Sq, j.Color = squareName(e.Square), colorName(e.Color)
+		j.Sq, j.Piece, j.Roll, j.Saved, j.Color = squareName(e.Square), pieceCode(e.Piece), e.Roll, new(e.Saved), colorName(e.Color)
 	}
 	return j
 }

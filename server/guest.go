@@ -35,7 +35,14 @@ func cookieValue(w http.ResponseWriter, r *http.Request) string {
 		MaxAge:   365 * 24 * 60 * 60,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		Secure:   isHTTPS(r),
 	})
 	return id
+}
+
+// isHTTPS reports whether the caller reached the site over HTTPS. Behind
+// Railway's proxy the request itself is plain HTTP, so X-Forwarded-Proto
+// says https.
+func isHTTPS(r *http.Request) bool {
+	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 }

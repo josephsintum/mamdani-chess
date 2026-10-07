@@ -51,10 +51,13 @@ func savedResult(now time.Time, r rules.Result) store.Result {
 	return store.Result{EndedAt: now, Reason: string(r.Reason), Winner: winnerName(r)}
 }
 
+// storeTimeout bounds each store call.
+const storeTimeout = 5 * time.Second
+
 // save runs one store call. A failure retires the game: what players see
 // must never get ahead of what is saved (see the loop).
 func (g *Game) save(what string, f func(ctx context.Context) error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
 	if err := f(ctx); err != nil && g.failed == nil {
 		g.failed = &saveError{what: what, err: err}
