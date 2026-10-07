@@ -6,6 +6,7 @@ import (
 	"html"
 	"io/fs"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,7 +35,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	}
 	tags := []byte(previewTags(s.preview(r.URL.Path), baseURL(r), r.URL.Path))
 	if i := bytes.Index(b, []byte("</head>")); i >= 0 {
-		b = append(b[:i:i], append(tags, b[i:]...)...)
+		b = slices.Concat(b[:i], tags, b[i:])
 	} else {
 		b = append(tags, b...)
 	}
@@ -98,20 +99,23 @@ func resultLine(sum game.Summary, white, black string) string {
 		if r.Winner == "black" {
 			winner = black
 		}
-		how := map[rules.Reason]string{rules.Checkmate: "checkmate", game.Resignation: "resignation", game.Timeout: "time"}[r.Reason]
-		if how == "" {
-			how = string(r.Reason)
-		}
-		return winner + " won by " + how + after
+		return winner + " won by " + reasonWords(r.Reason) + after
 	}
-	how := map[rules.Reason]string{
-		rules.Stalemate: "stalemate", rules.Repetition: "repetition",
-		rules.FiftyMoves: "the fifty-move rule", rules.InsufficientMaterial: "insufficient material",
-	}[r.Reason]
-	if how == "" {
-		how = string(r.Reason)
+	return "Drawn by " + reasonWords(r.Reason) + after
+}
+
+// reasonWords is how a result line says reason, e.g. "the fifty-move rule".
+func reasonWords(reason rules.Reason) string {
+	if words, ok := reasons[reason]; ok {
+		return words
 	}
-	return "Drawn by " + how + after
+	return string(reason)
+}
+
+var reasons = map[rules.Reason]string{
+	rules.Checkmate: "checkmate", game.Resignation: "resignation", game.Timeout: "time",
+	rules.Stalemate: "stalemate", rules.Repetition: "repetition",
+	rules.FiftyMoves: "the fifty-move rule", rules.InsufficientMaterial: "insufficient material",
 }
 
 func orColor(name, color string) string {
@@ -121,11 +125,10 @@ func orColor(name, color string) string {
 	return name
 }
 
-// baseURL is the site's address as the caller reached it. Behind Railway's
-// proxy the request itself is plain HTTP, so X-Forwarded-Proto says https.
+// baseURL is the site's address as the caller reached it.
 func baseURL(r *http.Request) string {
 	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+	if isHTTPS(r) {
 		scheme = "https"
 	}
 	return scheme + "://" + r.Host

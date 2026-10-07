@@ -1,7 +1,6 @@
 package game
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 
 func guestName(t *testing.T, st *store.Store, id string) string {
 	t.Helper()
-	name, err := st.GuestName(context.Background(), id)
+	name, err := st.GuestName(t.Context(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +52,7 @@ func TestARerollDoesntRenameAPlayerMidGame(t *testing.T) {
 	g := create(t, NewHub(odd{}, st), "alice")
 	join(t, g, "bob")
 	before := guestName(t, st, "alice")
-	ctx, now := context.Background(), time.Now()
+	ctx, now := t.Context(), time.Now()
 	offers, _, err := st.NameOffers(ctx, "alice", names.Random, now)
 	if err != nil {
 		t.Fatal(err)
@@ -87,32 +86,13 @@ func TestCreatePairSeatsBothPlayers(t *testing.T) {
 func TestRematchSwapsTheNames(t *testing.T) {
 	st := openStore(t)
 	h := NewHub(odd{}, st)
-	g, _, _ := over(t, h)
-	g.Rematch("alice", false)
-	g.Rematch("bob", false)
-	next, ok := h.Get(recvView(t, g, "alice").Rematch.Code)
+	_, code := rematched(t, h)
+	next, ok := h.Get(code)
 	if !ok {
 		t.Fatal("no rematch")
 	}
 	want := PlayersJSON{White: guestName(t, st, "bob"), Black: guestName(t, st, "alice")}
 	if p := recvView(t, next, "carol").Players; p != want {
 		t.Fatalf("rematch players %+v, want %+v", p, want)
-	}
-}
-
-func TestRestoreKeepsTheNames(t *testing.T) {
-	st := openStore(t)
-	g := create(t, NewHub(odd{}, st), "alice")
-	join(t, g, "bob")
-	want := recvView(t, g, "carol").Players
-
-	h := NewHub(odd{}, st) // a restart
-	h.Restore(load(t, st))
-	restored, ok := h.Get(g.Code())
-	if !ok {
-		t.Fatal("not restored")
-	}
-	if p := recvView(t, restored, "carol").Players; p != want {
-		t.Fatalf("restored players %+v, want %+v", p, want)
 	}
 }

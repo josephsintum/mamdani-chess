@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -16,15 +17,15 @@ import (
 	"mamdani-chess/game"
 )
 
-// check is one contract check: its deadline, and the streams it opened,
-// which close when it ends.
+// check is one contract check. Its context carries the deadline, and every
+// stream the check opens is tied to it, so they close when the check ends.
 type check struct {
 	t   *testing.T
 	ctx context.Context
 }
 
-// newCheck starts a check that must finish within timeout (bun test's
-// limit for the same check), or skips it when there is no server to test.
+// newCheck starts a check that must finish within timeout, or skips it when
+// there is no server to test.
 func newCheck(t *testing.T, timeout time.Duration) *check {
 	t.Helper()
 	if base == "" {
@@ -44,20 +45,32 @@ func (c *check) players(n int) []*player {
 	return ps
 }
 
-// do sends a request with no cookie and returns the response with its body
-// read: a plain fetch, as a link preview bot or curl makes.
-func (c *check) do(method, path string, header http.Header, body string) (*http.Response, string) {
-	c.t.Helper()
-	resp, err := send(c.ctx, method, path, header, body)
-	if err != nil {
-		c.t.Fatal(err)
-	}
+// reply is a response with its body read and closed.
+type reply struct {
+	status int
+	header http.Header
+	body   string
+}
+
+func readReply(t *testing.T, resp *http.Response) reply {
+	t.Helper()
 	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		c.t.Fatalf("%s %s: %v", method, path, err)
+		t.Fatalf("%s %s: %v", resp.Request.Method, resp.Request.URL.Path, err)
 	}
-	return resp, string(b)
+	return reply{status: resp.StatusCode, header: resp.Header, body: string(b)}
+}
+
+// do sends a request with no cookie and no body: a plain fetch, as a link
+// preview bot or curl makes.
+func (c *check) do(method, path string, header http.Header) reply {
+	c.t.Helper()
+	resp, err := send(c.ctx, method, path, header, "")
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	return readReply(c.t, resp)
 }
 
 // send sends one request to the server under test. A body is sent as JSON.
@@ -70,9 +83,7 @@ func send(ctx context.Context, method, path string, header http.Header, body str
 	if err != nil {
 		return nil, err
 	}
-	for k, vs := range header {
-		req.Header[k] = vs
-	}
+	maps.Copy(req.Header, header)
 	return http.DefaultClient.Do(req)
 }
 
@@ -104,36 +115,25 @@ func (p *player) send(ctx context.Context, method, path string, header http.Head
 	return resp
 }
 
-// fetch makes a request and returns the response with its body read.
-func (p *player) fetch(method, path string) (*http.Response, string) {
+// fetch makes a request with no body.
+func (p *player) fetch(method, path string) reply {
 	p.c.t.Helper()
-	resp := p.send(p.c.ctx, method, path, nil, "")
-	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		p.c.t.Fatalf("%s %s: %v", method, path, err)
-	}
-	return resp, string(b)
+	return readReply(p.c.t, p.send(p.c.ctx, method, path, nil, ""))
 }
 
 // get returns the status and the body as sent.
 func (p *player) get(path string) (int, string) {
 	p.c.t.Helper()
-	resp, body := p.fetch(http.MethodGet, path)
-	return resp.StatusCode, body
+	r := p.fetch(http.MethodGet, path)
+	return r.status, r.body
 }
 
 // post sends body as JSON and returns the status and the body without its
 // trailing newline.
 func (p *player) post(path, body string) (int, string) {
 	p.c.t.Helper()
-	resp := p.send(p.c.ctx, http.MethodPost, path, http.Header{"Content-Type": {"application/json"}}, body)
-	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		p.c.t.Fatalf("POST %s: %v", path, err)
-	}
-	return resp.StatusCode, strings.TrimSpace(string(b))
+	r := readReply(p.c.t, p.send(p.c.ctx, http.MethodPost, path, http.Header{"Content-Type": {"application/json"}}, body))
+	return r.status, strings.TrimSpace(r.body)
 }
 
 // create starts a friend game with the player as White.
@@ -270,14 +270,19 @@ func (r *sseReader) next() (string, string) {
 	}
 }
 
-// state reads the next "state" event.
+// state reads the next "state" event, past any heartbeats.
 func (r *sseReader) state() view {
 	r.t.Helper()
-	event, data := r.next()
-	if event != "state" {
+	for {
+		event, data := r.next()
+		switch event {
+		case "comment":
+			continue
+		case "state":
+			return parseView(r.t, data)
+		}
 		r.t.Fatalf("got %q %q, want a state event", event, data)
 	}
-	return parseView(r.t, data)
 }
 
 // until reads states until one matches: every view is delivered, so a
@@ -354,16 +359,16 @@ func lookup(raw []byte, path ...string) (json.RawMessage, bool) {
 
 // header is a response header as fetch's headers.get reads it: nil when
 // absent, else its values joined by ", ".
-func header(resp *http.Response, name string) any {
-	vs := resp.Header.Values(name)
+func header(r reply, name string) any {
+	vs := r.header.Values(name)
 	if len(vs) == 0 {
 		return nil
 	}
 	return strings.Join(vs, ", ")
 }
 
-// expectJSON fails unless got, encoded as JSON, equals the JSON want, as
-// bun's toEqual compares: objects by their keys and values, in any order.
+// expectJSON fails unless got, encoded as JSON, equals the JSON want,
+// comparing objects by their keys and values, in any order.
 // got may hold json.RawMessage values straight from a response.
 func expectJSON(t *testing.T, got any, want string) {
 	t.Helper()
@@ -390,6 +395,16 @@ func expectKeys(t *testing.T, what string, raw []byte, want ...string) {
 	if got := keys(t, raw); !reflect.DeepEqual(got, want) {
 		t.Errorf("%s keys = %q, want %q", what, got, want)
 	}
+}
+
+// decode reads text as JSON into a T, and fails the check if it isn't.
+func decode[T any](t *testing.T, text string) T {
+	t.Helper()
+	var v T
+	if err := json.Unmarshal([]byte(text), &v); err != nil {
+		t.Fatalf("%.200s: %v", text, err)
+	}
+	return v
 }
 
 // js quotes s as a JSON string, for building a want.

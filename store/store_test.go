@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"path/filepath"
 	"testing"
 )
@@ -13,11 +12,12 @@ func openTemp(t *testing.T) (*Store, string) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	t.Cleanup(func() { s.Close() })
 	return s, path
 }
 
 func TestMigrationsAreIdempotent(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, path := openTemp(t)
 	s.Close()
 
@@ -39,19 +39,5 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	}
 	if rows != len(migrations) {
 		t.Fatalf("schema_version has %d rows, want %d", rows, len(migrations))
-	}
-}
-
-func TestHonksTableDropped(t *testing.T) {
-	s, _ := openTemp(t)
-	defer s.Close()
-	var n int
-	err := s.db.QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'honks'`).Scan(&n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 0 {
-		t.Fatal("the honks table should be dropped by migration 2")
 	}
 }

@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -13,7 +12,7 @@ import (
 var t0 = time.UnixMilli(1_791_000_000_000)
 
 func TestGameRoundTrip(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, path := openTemp(t)
 	must(t, s.CreateGame(ctx, Game{Code: "ABC123", White: "alice", WhiteName: "pigeon-astoria", CreatedAt: t0}))
 	must(t, s.SeatBlack(ctx, "ABC123", "bob", "bagel-soho"))
@@ -38,9 +37,8 @@ func TestGameRoundTrip(t *testing.T) {
 }
 
 func TestEndGameSavesTheFinalTurnAndResult(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	must(t, s.CreateGame(ctx, Game{Code: "MATE01", White: "a", Black: "b", CreatedAt: t0, RematchOf: ""}))
 	final := Turn{Ply: 0, Move: "f2f3", Dice: []int{1}, WhiteMS: 1, BlackMS: 2, At: t0.Add(time.Second)}
 	r := Result{EndedAt: t0.Add(time.Second), Reason: "checkmate", Winner: "white"}
@@ -53,9 +51,8 @@ func TestEndGameSavesTheFinalTurnAndResult(t *testing.T) {
 }
 
 func TestEndGameWithoutAFinalTurn(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	must(t, s.CreateGame(ctx, Game{Code: "RESIGN", White: "a", Black: "b", CreatedAt: t0}))
 	must(t, s.EndGame(ctx, "RESIGN", Result{EndedAt: t0, Reason: "aborted"}, nil))
 	got, err := s.LoadForRestore(ctx, t0.Add(-time.Second))
@@ -67,16 +64,14 @@ func TestEndGameWithoutAFinalTurn(t *testing.T) {
 
 func TestEndGameFailsForAnUnknownGame(t *testing.T) {
 	s, _ := openTemp(t)
-	defer s.Close()
-	if err := s.EndGame(context.Background(), "NOPE00", Result{EndedAt: t0, Reason: "timeout"}, nil); err == nil {
+	if err := s.EndGame(t.Context(), "NOPE00", Result{EndedAt: t0, Reason: "timeout"}, nil); err == nil {
 		t.Fatal("ending a game that was never saved should fail")
 	}
 }
 
 func TestAddTurnRejectsADuplicatePly(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	must(t, s.CreateGame(ctx, Game{Code: "DUP001", White: "a", CreatedAt: t0}))
 	tn := Turn{Ply: 0, Move: "e2e4", At: t0}
 	must(t, s.AddTurn(ctx, "DUP001", tn))
@@ -86,9 +81,8 @@ func TestAddTurnRejectsADuplicatePly(t *testing.T) {
 }
 
 func TestCreateGameCodeTaken(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	must(t, s.CreateGame(ctx, Game{Code: "SAME00", White: "a", CreatedAt: t0}))
 	err := s.CreateGame(ctx, Game{Code: "SAME00", White: "b", CreatedAt: t0})
 	if !errors.Is(err, ErrCodeTaken) {
@@ -97,9 +91,8 @@ func TestCreateGameCodeTaken(t *testing.T) {
 }
 
 func TestLoadForRestoreSkipsOldFinishedGames(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	for _, c := range []string{"OLD000", "RECENT", "OPEN00"} {
 		must(t, s.CreateGame(ctx, Game{Code: c, White: "a", Black: "b", CreatedAt: t0}))
 	}
@@ -117,9 +110,8 @@ func TestLoadForRestoreSkipsOldFinishedGames(t *testing.T) {
 }
 
 func TestExpireWaiting(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	must(t, s.CreateGame(ctx, Game{Code: "STALE0", White: "a", CreatedAt: t0}))
 	must(t, s.CreateGame(ctx, Game{Code: "FRESH0", White: "a", CreatedAt: t0.Add(2 * time.Hour)}))
 	must(t, s.CreateGame(ctx, Game{Code: "SEATED", White: "a", Black: "b", CreatedAt: t0}))
@@ -149,7 +141,7 @@ func must(t *testing.T, err error) {
 // under the old rules. A game created afterwards is saved under the current
 // rules and loads.
 func TestMigration5RetiresOldGames(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	before := time.Now().UnixMilli()
 	s := openAt(t, 4,
 		fmt.Sprintf(`INSERT INTO games (code, white, black, created_at) VALUES ('OPEN01', 'a', 'b', %d)`, t0.UnixMilli()),

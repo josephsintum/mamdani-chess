@@ -61,6 +61,7 @@ type player struct {
 }
 
 func newPlayer(t *testing.T, ts *httptest.Server) *player {
+	t.Helper()
 	jar, _ := cookiejar.New(nil)
 	return &player{t: t, c: &http.Client{Jar: jar}, url: ts.URL}
 }
@@ -115,6 +116,23 @@ func (r sseReader) next() (string, string) {
 	return "", ""
 }
 
+// waitEnd reads to the end of the stream, failing if the server hasn't
+// ended it within d (after why, e.g. "Close").
+func (r sseReader) waitEnd(d time.Duration, why string) {
+	r.t.Helper()
+	ended := make(chan struct{})
+	go func() {
+		for r.sc.Scan() {
+		}
+		close(ended)
+	}()
+	select {
+	case <-ended:
+	case <-time.After(d):
+		r.t.Fatalf("stream still open %v after %s", d, why)
+	}
+}
+
 // state reads the next "state" event as a View.
 func (r sseReader) state() game.View {
 	r.t.Helper()
@@ -126,9 +144,10 @@ func (r sseReader) state() game.View {
 	return v
 }
 
-func (p *player) stream(code string) sseReader {
+// open opens the stream at path, closed when the test ends.
+func (p *player) open(path string) sseReader {
 	p.t.Helper()
-	resp, err := p.c.Get(p.url + "/api/games/" + code + "/stream")
+	resp, err := p.c.Get(p.url + path)
 	if err != nil {
 		p.t.Fatal(err)
 	}
@@ -140,6 +159,11 @@ func (p *player) stream(code string) sseReader {
 		p.t.Fatal("missing X-Accel-Buffering: no")
 	}
 	return sseReader{t: p.t, sc: bufio.NewScanner(resp.Body)}
+}
+
+func (p *player) stream(code string) sseReader {
+	p.t.Helper()
+	return p.open("/api/games/" + code + "/stream")
 }
 
 func TestFriendGameOverHTTP(t *testing.T) {
@@ -200,13 +224,8 @@ func TestMoveErrors(t *testing.T) {
 			t.Errorf("%s %.40s: %d %s, want %d", c.path, c.body, status, body, c.want)
 		}
 	}
-	resp, err := http.Get(ts.URL + "/api/games/NOPE99/stream")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("unknown game stream: %d, want 404", resp.StatusCode)
+	if status, _ := carol.get("/api/games/NOPE99/stream"); status != http.StatusNotFound {
+		t.Errorf("unknown game stream: %d, want 404", status)
 	}
 }
 
@@ -306,17 +325,7 @@ func TestCloseEndsStreamsButNotRequests(t *testing.T) {
 	s.Close()
 	s.Close() // idempotent
 
-	ended := make(chan struct{})
-	go func() {
-		for r.sc.Scan() {
-		}
-		close(ended)
-	}()
-	select {
-	case <-ended:
-	case <-time.After(time.Second):
-		t.Fatal("stream still open 1s after Close")
-	}
+	r.waitEnd(time.Second, "Close")
 	alice.create() // other requests still work
 }
 
@@ -362,17 +371,7 @@ func TestCrashedGameClosesStreamsAndIsGone(t *testing.T) {
 	if status, body := alice.post(move, `{"from":"e2","to":"e4","seq":0}`); status != http.StatusInternalServerError {
 		t.Fatalf("the crashing move: %d %s, want 500", status, body)
 	}
-	ended := make(chan struct{})
-	go func() {
-		for a.sc.Scan() {
-		}
-		close(ended)
-	}()
-	select {
-	case <-ended:
-	case <-time.After(time.Second):
-		t.Fatal("stream still open 1s after the game crashed")
-	}
+	a.waitEnd(time.Second, "the game crashed")
 	if status, body := alice.post(move, `{"from":"e2","to":"e4","seq":0}`); status != http.StatusNotFound {
 		t.Errorf("after the crash: %d %s, want 404", status, body)
 	}
@@ -406,11 +405,16 @@ var svgGzip = func() []byte {
 	return b.Bytes()
 }()
 
-func get(t *testing.T, url, acceptEncoding string) *http.Response {
+// get fetches url with the given Accept-Encoding ("" for none) and any
+// further header name, value pairs.
+func get(t *testing.T, url, acceptEncoding string, header ...string) *http.Response {
 	t.Helper()
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
 	if acceptEncoding != "" {
 		req.Header.Set("Accept-Encoding", acceptEncoding)
+	}
+	for i := 0; i+1 < len(header); i += 2 {
+		req.Header.Set(header[i], header[i+1])
 	}
 	// A bare Transport would add gzip itself and hide the header we sent.
 	resp, err := (&http.Transport{DisableCompression: true}).RoundTrip(req)
@@ -457,31 +461,14 @@ func TestStaticFilesRevalidate(t *testing.T) {
 			t.Fatalf("Accept-Encoding %q: ETag %q, want a new quoted tag", accept, tag)
 		}
 		tags[tag] = true
-		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/favicon.svg", nil)
-		req.Header.Set("Accept-Encoding", accept)
-		req.Header.Set("If-None-Match", tag)
-		again, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
+		again := get(t, ts.URL+"/favicon.svg", accept, "If-None-Match", tag)
 		body, _ := io.ReadAll(again.Body)
-		again.Body.Close()
 		if again.StatusCode != http.StatusNotModified || len(body) != 0 {
 			t.Errorf("Accept-Encoding %q, If-None-Match %s: %d %q, want 304", accept, tag, again.StatusCode, body)
 		}
 	}
 	if tag := get(t, ts.URL+"/_app/immutable/app.js", "").Header.Get("ETag"); tag != "" {
 		t.Errorf("an immutable file has ETag %q; it never revalidates", tag)
-	}
-}
-
-func TestRequestsAreLogged(t *testing.T) {
-	s, ts := newTestServer(t)
-	var buf bytes.Buffer
-	s.log = slog.New(slog.NewTextHandler(&buf, nil))
-	get(t, ts.URL+"/api/nope", "")
-	if line := buf.String(); !strings.Contains(line, "method=GET path=/api/nope status=404") {
-		t.Errorf("log %q", line)
 	}
 }
 

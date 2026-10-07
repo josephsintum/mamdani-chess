@@ -56,7 +56,7 @@ func (p *Position) disambiguate(m Move) string {
 	kind := p.Board[m.From].Kind()
 	var sameFile, sameRank, other bool
 	for _, o := range p.LegalMoves() {
-		if o.To != m.To || o.From == m.From || o.From == p.Mamdani || p.Board[o.From].Kind() != kind {
+		if o.To != m.To || o.From == m.From || p.Board[o.From].Kind() != kind {
 			continue
 		}
 		other = true

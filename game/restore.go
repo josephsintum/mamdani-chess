@@ -1,6 +1,7 @@
 package game
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -42,9 +43,9 @@ func (h *Hub) restore(sg store.SavedGame, now time.Time) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.games[sg.Code] != nil {
-		return fmt.Errorf("already running")
+		return errors.New("already running")
 	}
-	g := newGame(h, sg.Game, nil)
+	g := newGame(h, sg.Game, h.forget(sg.Code)) // a game that won't replay never runs, so never exits
 	for _, t := range sg.Turns {
 		if err := g.replay(t); err != nil {
 			return fmt.Errorf("ply %d (%s): %w", t.Ply, t.Move, err)
@@ -68,11 +69,6 @@ func (h *Hub) restore(sg store.SavedGame, now time.Time) error {
 		g.startCounting(now)
 	}
 	h.games[sg.Code] = g
-	g.onExit = func() {
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		delete(h.games, sg.Code)
-	}
 	slog.Debug("game restored", "code", sg.Code, "moves", len(sg.Turns), "phase", g.status())
 	g.publish()
 	go g.loop()

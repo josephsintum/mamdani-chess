@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -14,8 +13,7 @@ import (
 func (s *Server) createGame(w http.ResponseWriter, r *http.Request) {
 	g, err := s.games.Create(guestID(w, r))
 	if err != nil {
-		s.log.Error("create game", "err", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		s.internalError(w, "create game", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"code": g.Code()})
@@ -33,18 +31,27 @@ func (s *Server) liveGames(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// findGame returns the game named in the path, or answers 404 and reports
+// false.
+func (s *Server) findGame(w http.ResponseWriter, r *http.Request) (*game.Game, bool) {
+	g, ok := s.games.Get(r.PathValue("code"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "game not found")
+	}
+	return g, ok
+}
+
 // gameView returns the caller's view of the game without opening a stream
 // or taking a seat. The page uses it to tell "game not found" from a
 // server that is restarting.
 func (s *Server) gameView(w http.ResponseWriter, r *http.Request) {
-	g, ok := s.games.Get(r.PathValue("code"))
+	g, ok := s.findGame(w, r)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 		return
 	}
 	v, err := g.View(guestID(w, r))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
+		writeError(w, http.StatusNotFound, "game not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -54,9 +61,8 @@ func (s *Server) gameView(w http.ResponseWriter, r *http.Request) {
 // change. Opening it takes Black's seat if that is still free.
 func (s *Server) gameStream(w http.ResponseWriter, r *http.Request) {
 	guest := guestID(w, r)
-	g, ok := s.games.Get(r.PathValue("code"))
+	g, ok := s.findGame(w, r)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 		return
 	}
 	if r.Method == http.MethodHead {
@@ -65,7 +71,7 @@ func (s *Server) gameStream(w http.ResponseWriter, r *http.Request) {
 	}
 	sub, err := g.Join(guest)
 	if err != nil { // the game stopped since Get
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
+		writeError(w, http.StatusNotFound, "game not found")
 		return
 	}
 	defer g.Leave(sub)
@@ -105,20 +111,21 @@ type moveRequest struct {
 // gameMove plays the caller's move. The new state arrives on the stream.
 func (s *Server) gameMove(w http.ResponseWriter, r *http.Request) {
 	guest := guestID(w, r)
-	g, ok := s.games.Get(r.PathValue("code"))
+	g, ok := s.findGame(w, r)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 		return
 	}
 	var req moveRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Seq == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request body"})
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.Seq == nil {
+		writeError(w, http.StatusBadRequest, "bad request body")
 		return
 	}
 	m, ok := game.ParseMove(req.MoveJSON)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad move"})
+		writeError(w, http.StatusBadRequest, "bad move")
 		return
 	}
 	writeGameResult(w, g, guest, g.Move(guest, m, *req.Seq))
@@ -127,9 +134,8 @@ func (s *Server) gameMove(w http.ResponseWriter, r *http.Request) {
 // gameResign ends the game; the caller's opponent wins.
 func (s *Server) gameResign(w http.ResponseWriter, r *http.Request) {
 	guest := guestID(w, r)
-	g, ok := s.games.Get(r.PathValue("code"))
+	g, ok := s.findGame(w, r)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 		return
 	}
 	writeGameResult(w, g, guest, g.Resign(guest))
@@ -143,33 +149,31 @@ type rematchRequest struct {
 // it. The outcome (and the new game's code) arrives on the stream.
 func (s *Server) gameRematch(w http.ResponseWriter, r *http.Request) {
 	guest := guestID(w, r)
-	g, ok := s.games.Get(r.PathValue("code"))
+	g, ok := s.findGame(w, r)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 		return
 	}
 	var req rematchRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request body"})
+	if !decodeBody(w, r, &req) {
 		return
 	}
 	writeGameResult(w, g, guest, g.Rematch(guest, req.Decline))
 }
 
-// writeGameResult maps the outcome of a move or resignation to a response.
-// Success is 204: the new state arrives on the stream. A conflict carries
-// the caller's current view, so the client can resync at once.
+// writeGameResult maps the outcome of a move, resignation or rematch call
+// to a response. Success is 204: the new state arrives on the stream. A
+// conflict carries the caller's current view, so the client can resync at
+// once.
 func writeGameResult(w http.ResponseWriter, g *game.Game, guest string, err error) {
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, game.ErrNotPlayer):
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		writeError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, game.ErrGone):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
+		writeError(w, http.StatusNotFound, "game not found")
 	case errors.Is(err, rules.ErrBadDie), errors.Is(err, game.ErrInternal):
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		writeError(w, http.StatusInternalServerError, "internal error")
 	default:
 		body := map[string]any{"error": err.Error()}
 		if v, verr := g.View(guest); verr == nil {

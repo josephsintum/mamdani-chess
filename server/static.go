@@ -22,7 +22,8 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "index.html"
 	}
-	if info, err := fs.Stat(s.assets, name); err != nil || info.IsDir() {
+	info, err := fs.Stat(s.assets, name)
+	if err != nil || info.IsDir() {
 		if strings.HasPrefix(name, "_app/") {
 			// A missing build asset (an old chunk after a deploy, say) is a
 			// real 404: the app shell in its place can't run as a script.
@@ -36,14 +37,14 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		s.index(w, r) // with the page's link preview tags
 		return
 	}
-	file, encoding := s.compressed(r, name)
+	file, info, encoding := s.compressed(r, name, info)
 	if strings.HasPrefix(name, "_app/immutable/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")
 		// Embedded files have no modification time, so without a tag a
 		// revalidation downloads the whole file again.
-		if tag := s.etag(file); tag != "" {
+		if tag := s.etag(file, info); tag != "" {
 			w.Header().Set("ETag", tag)
 		}
 	}
@@ -58,24 +59,25 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 }
 
 // compressed picks the precompressed copy of name that the build has and
-// the browser accepts, brotli first, or name itself with no encoding.
-func (s *Server) compressed(r *http.Request, name string) (file, encoding string) {
+// the browser accepts, brotli first, or name itself (whose info is given)
+// with no encoding. It returns the chosen file's info too.
+func (s *Server) compressed(r *http.Request, name string, info fs.FileInfo) (string, fs.FileInfo, string) {
 	accept := r.Header.Get("Accept-Encoding")
 	for _, c := range []struct{ encoding, ext string }{{"br", ".br"}, {"gzip", ".gz"}} {
 		if !accepts(accept, c.encoding) {
 			continue
 		}
-		if _, err := fs.Stat(s.assets, name+c.ext); err == nil {
-			return name + c.ext, c.encoding
+		if ci, err := fs.Stat(s.assets, name+c.ext); err == nil {
+			return name + c.ext, ci, c.encoding
 		}
 	}
-	return name, ""
+	return name, info, ""
 }
 
 // accepts reports whether an Accept-Encoding header allows encoding. A
 // token with q=0 is a refusal.
 func accepts(header, encoding string) bool {
-	for _, part := range strings.Split(header, ",") {
+	for part := range strings.SplitSeq(header, ",") {
 		token, params, _ := strings.Cut(strings.TrimSpace(part), ";")
 		if !strings.EqualFold(strings.TrimSpace(token), encoding) {
 			continue
@@ -100,11 +102,7 @@ type etagKey struct {
 
 // etag returns a strong ETag for the file's bytes, hashed once per version,
 // or "" if it can't be read (ServeFileFS then reports the error).
-func (s *Server) etag(name string) string {
-	info, err := fs.Stat(s.assets, name)
-	if err != nil {
-		return ""
-	}
+func (s *Server) etag(name string, info fs.FileInfo) string {
 	key := etagKey{name, info.Size(), info.ModTime().UnixNano()}
 	if tag, ok := s.etags.Load(key); ok {
 		return tag.(string)

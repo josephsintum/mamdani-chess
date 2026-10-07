@@ -169,26 +169,9 @@ func Sq(name string) Square {
 	return s
 }
 
-// adjacent reports whether a and b are different squares that touch,
-// including diagonally.
-func adjacent(a, b Square) bool {
-	df, dr := abs(a.File()-b.File()), abs(a.Rank()-b.Rank())
-	return max(df, dr) == 1
-}
-
 func abs(x int) int {
 	if x < 0 {
 		return -x
 	}
 	return x
-}
-
-func sign(x int) int {
-	switch {
-	case x > 0:
-		return 1
-	case x < 0:
-		return -1
-	}
-	return 0
 }

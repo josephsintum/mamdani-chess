@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/url"
@@ -27,7 +26,7 @@ func TestOnlyTheCookiesHashIsStored(t *testing.T) {
 	}
 	sum := sha256.Sum256([]byte(cookie))
 	want := hex.EncodeToString(sum[:])
-	saved, err := s.store.LoadForRestore(context.Background(), time.Now().Add(-time.Hour))
+	saved, err := s.store.LoadForRestore(t.Context(), time.Now().Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

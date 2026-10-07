@@ -67,11 +67,13 @@ func generate(root string) (string, error) {
 	fmt.Fprintf(&b, "/** Where a game is in its life. */\nexport type Status = '%s' | '%s' | '%s';\n", game.Waiting, game.Playing, game.Over)
 	for _, v := range types {
 		t := reflect.TypeOf(v)
+		if docs[t.Name()] == "" {
+			return "", fmt.Errorf("no doc comment for %s: add its file to sources", t.Name())
+		}
 		b.WriteString("\n")
 		writeComment(&b, "", docs[t.Name()])
 		fmt.Fprintf(&b, "export interface %s {\n", t.Name())
-		for i := range t.NumField() {
-			f := t.Field(i)
+		for f := range t.Fields() {
 			name, optional, ok := jsonName(f)
 			if !ok {
 				continue
@@ -119,7 +121,7 @@ func jsonName(f reflect.StructField) (name string, omitempty, ok bool) {
 // tsTypeOf returns the TypeScript type for t, and whether the value can be
 // null (a pointer).
 func tsTypeOf(t reflect.Type) (string, bool) {
-	if t == reflect.TypeOf(game.Status("")) {
+	if t == reflect.TypeFor[game.Status]() {
 		return "Status", false
 	}
 	switch t.Kind() {

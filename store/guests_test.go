@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -24,9 +23,8 @@ func draws(t *testing.T, names ...string) func() string {
 }
 
 func TestGuestNameIsEmptyUntilEnsured(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	if name, err := s.GuestName(ctx, "alice"); err != nil || name != "" {
 		t.Fatalf("GuestName before any name = %q, %v", name, err)
 	}
@@ -38,9 +36,8 @@ func TestGuestNameIsEmptyUntilEnsured(t *testing.T) {
 }
 
 func TestEnsureGuestCreatesOnceThenKeepsTheName(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	name, err := s.EnsureGuest(ctx, "alice", draws(t, "pigeon-astoria"))
 	if err != nil || name != "pigeon-astoria" {
 		t.Fatalf("first EnsureGuest = %q, %v", name, err)
@@ -58,15 +55,14 @@ func TestEnsureGuestCreatesOnceThenKeepsTheName(t *testing.T) {
 // named gives alice the name pigeon-astoria.
 func named(t *testing.T, s *Store) {
 	t.Helper()
-	if _, err := s.EnsureGuest(context.Background(), "alice", draws(t, "pigeon-astoria")); err != nil {
+	if _, err := s.EnsureGuest(t.Context(), "alice", draws(t, "pigeon-astoria")); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestOffersStayTheSameUntilOneIsChosen(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	named(t, s)
 	// The current name is never offered, and offers don't repeat.
 	offers, left, err := s.NameOffers(ctx, "alice", draws(t, "pigeon-astoria", "bagel-soho", "bagel-soho", "knish-dumbo", "rook-harlem"), t0)
@@ -81,9 +77,8 @@ func TestOffersStayTheSameUntilOneIsChosen(t *testing.T) {
 }
 
 func TestChoosingAnOfferUsesAChange(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	named(t, s)
 	_, _, err := s.NameOffers(ctx, "alice", draws(t, "bagel-soho", "knish-dumbo", "rook-harlem"), t0)
 	must(t, err)
@@ -102,9 +97,8 @@ func TestChoosingAnOfferUsesAChange(t *testing.T) {
 }
 
 func TestOnlyAnOfferedNameCanBeChosen(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	named(t, s)
 	if _, err := s.ChooseName(ctx, "alice", "bagel-soho", t0); !errors.Is(err, ErrNotOffered) {
 		t.Fatalf("choosing with no offers: %v, want ErrNotOffered", err)
@@ -120,9 +114,8 @@ func TestOnlyAnOfferedNameCanBeChosen(t *testing.T) {
 }
 
 func TestThreeChangesADay(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	named(t, s)
 	change := func(at time.Time, a, b, c string) (Allowance, error) {
 		t.Helper()
@@ -142,11 +135,11 @@ func TestThreeChangesADay(t *testing.T) {
 	if !errors.Is(err, ErrNoChanges) || left.Left != 0 || !left.ResetAt.Equal(t0.Add(NameWindow)) {
 		t.Fatalf("fourth offers: %+v, %v; want ErrNoChanges, reset at 24 h", left, err)
 	}
-	if left, _ := s.Allowance(ctx, "alice", t0.Add(23*time.Hour)); left.Left != 0 {
+	if _, left, _ := s.Guest(ctx, "alice", t0.Add(23*time.Hour)); left.Left != 0 {
 		t.Fatalf("allowance at 23 h: %+v", left)
 	}
 	// 24 hours after the first change, three more.
-	if left, _ := s.Allowance(ctx, "alice", t0.Add(NameWindow)); left.Left != 3 || !left.ResetAt.IsZero() {
+	if _, left, _ := s.Guest(ctx, "alice", t0.Add(NameWindow)); left.Left != 3 || !left.ResetAt.IsZero() {
 		t.Fatalf("allowance at 24 h: %+v; want 3 and no reset time", left)
 	}
 	if left, err := change(t0.Add(NameWindow), "d-soho", "e-soho", "f-soho"); err != nil || left.Left != 2 {
@@ -156,16 +149,14 @@ func TestThreeChangesADay(t *testing.T) {
 
 func TestOffersNeedAName(t *testing.T) {
 	s, _ := openTemp(t)
-	defer s.Close()
-	if _, _, err := s.NameOffers(context.Background(), "bob", draws(t), t0); !errors.Is(err, ErrNoName) {
+	if _, _, err := s.NameOffers(t.Context(), "bob", draws(t), t0); !errors.Is(err, ErrNoName) {
 		t.Fatalf("offers for a guest without a name: %v, want ErrNoName", err)
 	}
 }
 
 func TestFreshNamesPreferUnusedOnes(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s, _ := openTemp(t)
-	defer s.Close()
 	_, err := s.EnsureGuest(ctx, "alice", draws(t, "pigeon-astoria"))
 	must(t, err)
 	name, err := s.EnsureGuest(ctx, "bob", draws(t, "pigeon-astoria", "bagel-soho"))
@@ -204,7 +195,7 @@ func openAt(t *testing.T, v int, seed ...string) *Store {
 // A database from milestone 05 (schema version 3, a game without names)
 // gains the guests table and name columns, and keeps its game.
 func TestMigration4KeepsOldGames(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	s := openAt(t, 3, fmt.Sprintf(
 		`INSERT INTO games (code, white, black, created_at) VALUES ('OLD123', 'alice', 'bob', %d)`, t0.UnixMilli()))
 	var name sql.NullString

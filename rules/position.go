@@ -182,7 +182,7 @@ func StartPosition() Position {
 
 // IsPothole reports whether s holds an open pothole.
 func (p *Position) IsPothole(s Square) bool {
-	return s != NoSquare && p.potholes().Has(s)
+	return p.potholes().Has(s)
 }
 
 // Blocked reports whether s stops a slider: a piece, the Mamdani or a pothole.
@@ -252,8 +252,7 @@ func ParseFEN(fen string) (Position, error) {
 	}
 	for i, row := range ranks {
 		r, f := 7-i, 0
-		for j := 0; j < len(row); j++ {
-			c := row[j]
+		for _, c := range []byte(row) {
 			if c >= '1' && c <= '8' {
 				f += int(c - '0')
 				continue

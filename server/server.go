@@ -142,11 +142,32 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiNotFound(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	writeError(w, http.StatusNotFound, "not found")
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// writeError writes {"error": msg}.
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// decodeBody reads a small JSON body into v, or answers 400 and reports
+// false.
+func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		writeError(w, http.StatusBadRequest, "bad request body")
+		return false
+	}
+	return true
+}
+
+func (s *Server) internalError(w http.ResponseWriter, what string, err error) {
+	s.log.Error(what, "err", err)
+	writeError(w, http.StatusInternalServerError, "internal error")
 }

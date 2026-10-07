@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"log/slog"
 	"os"
@@ -26,7 +25,7 @@ type odd struct{}
 func (odd) D8() int { return 1 }
 
 func TestRestoreAfterARestart(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "games.db")
 	st, err := store.Open(path)
 	if err != nil {

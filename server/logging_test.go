@@ -29,7 +29,7 @@ func (b *lockedBuffer) line(want string) string {
 		b.mu.Lock()
 		text := b.buf.String()
 		b.mu.Unlock()
-		for _, l := range strings.Split(text, "\n") {
+		for l := range strings.SplitSeq(text, "\n") {
 			if strings.Contains(l, want) {
 				return l
 			}

@@ -25,11 +25,19 @@ func play(t *testing.T, g *Game, guest, uci string, seq int) {
 	}
 }
 
+// plays makes moves in turn from the start, alice as White and bob as
+// Black. Each must succeed.
+func plays(t *testing.T, g *Game, ucis ...string) {
+	t.Helper()
+	for i, uci := range ucis {
+		play(t, g, [2]string{"alice", "bob"}[i%2], uci, i)
+	}
+}
+
 // openings plays both first moves, so White's clock starts ResolveDelay later.
 func openings(t *testing.T, g *Game) {
 	t.Helper()
-	play(t, g, "alice", "e2e4", 0)
-	play(t, g, "bob", "e7e5", 1)
+	plays(t, g, "e2e4", "e7e5")
 }
 
 // finish ends g if it is still on and lets it be evicted, so the synctest
@@ -242,14 +250,14 @@ func TestThePauseCoversTheDiceAnimation(t *testing.T) {
 		}
 		return out
 	}
-	odd := []rules.Event{{Kind: rules.Moved}, {Kind: rules.RolledPothole, Roll: 3}}
+	oddRoll := []rules.Event{{Kind: rules.Moved}, {Kind: rules.RolledPothole, Roll: 3}}
 	cases := []struct {
 		name string
 		ev   []rules.Event
 		want time.Duration
 	}{
 		{"checkmate, no roll", ev(rules.Moved), ResolveDelay},
-		{"odd roll", odd, ResolveDelay},
+		{"odd roll", oddRoll, ResolveDelay},
 		// The move glides, then each step plays in turn, then the margin.
 		{"pothole opens", ev(rules.Moved, rules.RolledPothole, rules.Target, rules.PotholeOpened),
 			MoveTime + 600*time.Millisecond + 1250*time.Millisecond + 550*time.Millisecond + PauseMargin},

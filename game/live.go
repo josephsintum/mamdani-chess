@@ -35,6 +35,7 @@ func (g *Game) publish() {
 		White:    g.names[rules.White],
 		Black:    g.names[rules.Black],
 		Move:     len(g.g.Turns)/2 + 1,
+		Board:    boardJSON(p),
 		Mamdani:  squareName(p.Mamdani),
 		Potholes: potholesJSON(p),
 		Watching: g.watching(),
@@ -42,12 +43,7 @@ func (g *Game) publish() {
 		created:  g.created,
 		seats:    g.seats,
 		plies:    len(g.g.Turns),
-	}
-	if r := g.g.Result; r.Over {
-		l.result = &ResultJSON{Winner: winnerName(r), Draw: r.Draw, Reason: r.Reason}
-	}
-	for s, pc := range p.Board {
-		l.Board[s] = pieceCode(pc)
+		result:   resultJSON(g.g.Result),
 	}
 	if n := len(g.g.Turns); n > 0 {
 		m := moveJSON(g.g.Turns[n-1].Move)
@@ -108,10 +104,10 @@ func (h *Hub) Active(guest string) string {
 	return newest.Code
 }
 
-// List returns up to max games being played, most watched first, then
+// List returns up to limit games being played, most watched first, then
 // newest. It reads each game's last published Live, so it never waits on
 // a game.
-func (h *Hub) List(max int) []*Live {
+func (h *Hub) List(limit int) []*Live {
 	h.mu.Lock()
 	games := make([]*Live, 0, len(h.games))
 	for _, g := range h.games {
@@ -126,5 +122,5 @@ func (h *Hub) List(max int) []*Live {
 		}
 		return b.created.Compare(a.created)
 	})
-	return games[:min(max, len(games))]
+	return games[:min(limit, len(games))]
 }

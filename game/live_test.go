@@ -102,7 +102,7 @@ func TestWatchingFollowsStreamsClosing(t *testing.T) {
 
 func TestActiveIsYourGameBeingPlayed(t *testing.T) {
 	h := NewHub(odd{}, nil)
-	waiting := create(t, h, "alice")
+	create(t, h, "alice") // waiting for a friend
 	if code := h.Active("alice"); code != "" {
 		t.Fatalf("a game still waiting for a friend counts as active: %s", code)
 	}
@@ -120,7 +120,6 @@ func TestActiveIsYourGameBeingPlayed(t *testing.T) {
 	if code := h.Active("bob"); code != "" {
 		t.Fatalf("a finished game counts as active: %s", code)
 	}
-	_ = waiting
 }
 
 func TestGetIgnoresCase(t *testing.T) {

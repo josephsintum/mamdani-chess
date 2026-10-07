@@ -20,6 +20,9 @@ import (
 // viewKeys is a view's keys, in the order the server sends them.
 var viewKeys = []string{"code", "status", "you", "board", "mamdani", "potholes", "turn", "check", "legal", "last", "log", "lost", "stats", "result", "seq", "clock", "online", "players", "rematch"}
 
+// apiError is an error response's message.
+type apiError struct{ Error string }
+
 // seated is a game between alice (White) and bob (Black), both with a
 // stream open, at the start.
 type seated struct {
@@ -43,12 +46,12 @@ func (c *check) seated() seated {
 
 func TestHealthz(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
-	resp, body := c.do(http.MethodGet, "/healthz", nil, "")
-	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/json" {
-		t.Errorf("/healthz: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	r := c.do(http.MethodGet, "/healthz", nil)
+	if r.status != 200 || r.header.Get("Content-Type") != "application/json" {
+		t.Errorf("/healthz: %d %q", r.status, r.header.Get("Content-Type"))
 	}
-	if !regexp.MustCompile(`^\{"status":"ok","version":"[^"]+"\}\n$`).MatchString(body) {
-		t.Errorf("/healthz body %q", body)
+	if !regexp.MustCompile(`^\{"status":"ok","version":"[^"]+"\}\n$`).MatchString(r.body) {
+		t.Errorf("/healthz body %q", r.body)
 	}
 }
 
@@ -61,27 +64,25 @@ func TestUnknownAPIPath(t *testing.T) {
 		{"GET", "/api/games/"},
 		{"POST", "/api/games/ABCDEF/stream"},
 	} {
-		resp, body := c.do(r.method, r.path, nil, "")
-		if resp.StatusCode != http.StatusNotFound || body != "{\"error\":\"not found\"}\n" {
-			t.Errorf("%s %s: %d %q", r.method, r.path, resp.StatusCode, body)
+		res := c.do(r.method, r.path, nil)
+		if res.status != 404 || res.body != "{\"error\":\"not found\"}\n" {
+			t.Errorf("%s %s: %d %q", r.method, r.path, res.status, res.body)
 		}
 	}
 }
 
 func TestGuestCookie(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
-	resp, _ := c.do(http.MethodGet, "/api/me", nil, "")
-	if set := resp.Header.Get("Set-Cookie"); !regexp.MustCompile(`^guest=[0-9a-f]{32}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax$`).MatchString(set) {
+	if set := c.do(http.MethodGet, "/api/me", nil).header.Get("Set-Cookie"); !regexp.MustCompile(`^guest=[0-9a-f]{32}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax$`).MatchString(set) {
 		t.Errorf("Set-Cookie = %q", set)
 	}
-	resp, _ = c.do(http.MethodGet, "/api/me", http.Header{"X-Forwarded-Proto": {"https"}}, "")
-	if set := resp.Header.Get("Set-Cookie"); !strings.HasSuffix(set, "; HttpOnly; Secure; SameSite=Lax") {
+	if set := c.do(http.MethodGet, "/api/me", http.Header{"X-Forwarded-Proto": {"https"}}).header.Get("Set-Cookie"); !strings.HasSuffix(set, "; HttpOnly; Secure; SameSite=Lax") {
 		t.Errorf("Set-Cookie behind https = %q", set)
 	}
 	p := c.players(1)[0]
 	p.get("/api/me")
-	if again, _ := p.fetch(http.MethodGet, "/api/me"); again.Header.Values("Set-Cookie") != nil {
-		t.Errorf("a guest with a cookie got another: %q", again.Header.Values("Set-Cookie")) // a guest keeps their cookie
+	if again := p.fetch(http.MethodGet, "/api/me"); again.header.Values("Set-Cookie") != nil {
+		t.Errorf("a guest with a cookie got another: %q", again.header.Values("Set-Cookie"))
 	}
 }
 
@@ -100,12 +101,12 @@ func TestMeBeforePlaying(t *testing.T) {
 func TestCreateGame(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
 	p := c.players(1)[0]
-	resp, body := p.fetch(http.MethodPost, "/api/games")
-	if resp.StatusCode != http.StatusCreated || resp.Header.Get("Content-Type") != "application/json" {
-		t.Errorf("POST /api/games: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	r := p.fetch(http.MethodPost, "/api/games")
+	if r.status != 201 || r.header.Get("Content-Type") != "application/json" {
+		t.Errorf("POST /api/games: %d %q", r.status, r.header.Get("Content-Type"))
 	}
-	if !regexp.MustCompile(`^\{"code":"[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}"\}\n$`).MatchString(body) {
-		t.Errorf("POST /api/games body %q", body)
+	if !regexp.MustCompile(`^\{"code":"[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}"\}\n$`).MatchString(r.body) {
+		t.Errorf("POST /api/games body %q", r.body)
 	}
 }
 
@@ -160,8 +161,8 @@ func TestBlackSitsDown(t *testing.T) {
 	if want := g.bob.name(); v.Players.Black != want {
 		t.Errorf("players.black = %q, want %q", v.Players.Black, want)
 	}
-	if game := g.alice.me().Game; game == nil || *game != g.code {
-		t.Errorf("alice's /api/me game = %v, want %s", game, g.code)
+	if code := g.alice.me().Game; code == nil || *code != g.code {
+		t.Errorf("alice's /api/me game = %v, want %s", code, g.code)
 	}
 	carol := c.players(1)[0]
 	if you := carol.stream(g.code).state().You; you != "spectator" {
@@ -215,20 +216,19 @@ func TestMoveErrors(t *testing.T) {
 			t.Errorf("%.30s: %d %s, want 400 %s", r.body, status, text, r.text)
 		}
 	}
-	for _, path := range []string{"/api/games/NOPE99/move", "/api/games/NOPE99/resign"} {
-		body := ""
-		if strings.HasSuffix(path, "/move") {
-			body = `{"from":"e2","to":"e4","seq":0}`
-		}
-		if status, text := g.alice.post(path, body); status != 404 || text != `{"error":"game not found"}` {
-			t.Errorf("POST %s: %d %s", path, status, text)
+	for _, r := range []struct{ path, body string }{
+		{"/api/games/NOPE99/move", `{"from":"e2","to":"e4","seq":0}`},
+		{"/api/games/NOPE99/resign", ""},
+	} {
+		if status, text := g.alice.post(r.path, r.body); status != 404 || text != `{"error":"game not found"}` {
+			t.Errorf("POST %s: %d %s", r.path, status, text)
 		}
 	}
 	if status, text := g.alice.get("/api/games/NOPE99"); status != 404 || text != "{\"error\":\"game not found\"}\n" {
 		t.Errorf("GET /api/games/NOPE99: %d %q", status, text)
 	}
-	if resp, _ := g.alice.fetch(http.MethodGet, "/api/games/NOPE99/stream"); resp.StatusCode != 404 {
-		t.Errorf("an unknown game's stream: %d, want 404", resp.StatusCode)
+	if status := g.alice.fetch(http.MethodGet, "/api/games/NOPE99/stream").status; status != 404 {
+		t.Errorf("an unknown game's stream: %d, want 404", status)
 	}
 }
 
@@ -299,7 +299,7 @@ func TestWholeGame(t *testing.T) {
 	path := "/api/games/" + g.code
 	players := []*player{g.alice, g.bob}
 	var v view
-	for seq := 0; seq < 400; seq++ {
+	for seq := range 400 {
 		who := players[seq%2]
 		_, text := who.get(path)
 		v = parseView(t, text)
@@ -336,9 +336,7 @@ func TestWholeGame(t *testing.T) {
 	}
 	expectJSON(t, v.get("legal"), `[]`)
 	status, text := g.alice.post(path+"/move", fmt.Sprintf(`{"from":"a2","to":"a3","seq":%d}`, v.Seq))
-	var out struct{ Error string }
-	json.Unmarshal([]byte(text), &out)
-	if status != 409 || out.Error != "game is over" {
+	if status != 409 || decode[apiError](t, text).Error != "game is over" {
 		t.Errorf("a move after the end: %d %s", status, text)
 	}
 }
@@ -360,9 +358,7 @@ func TestResigning(t *testing.T) {
 		t.Errorf("clock.running = %s after the end, want none", running)
 	}
 	status, text := g.bob.post(resign, "")
-	var out struct{ Error string }
-	json.Unmarshal([]byte(text), &out)
-	if status != 409 || out.Error != "game is over" {
+	if status != 409 || decode[apiError](t, text).Error != "game is over" {
 		t.Errorf("bob resigns after the end: %d %s", status, text)
 	}
 	if me := g.alice.me(); me.Game != nil {
@@ -378,9 +374,7 @@ func TestRematch(t *testing.T) {
 	g := c.seated()
 	rematch := "/api/games/" + g.code + "/rematch"
 	status, text := g.alice.post(rematch, "{}")
-	var out struct{ Error string }
-	json.Unmarshal([]byte(text), &out)
-	if status != 409 || out.Error != "the game isn't over" {
+	if status != 409 || decode[apiError](t, text).Error != "the game isn't over" {
 		t.Errorf("a rematch before the end: %d %s", status, text)
 	}
 	g.alice.post("/api/games/"+g.code+"/resign", "")
@@ -443,9 +437,7 @@ func TestQuickMatch(t *testing.T) {
 	if m == nil {
 		t.Fatalf("alice's stream ended with %q", rest)
 	}
-	var matched struct{ Code string }
-	json.Unmarshal([]byte(m[1]), &matched)
-	code := matched.Code
+	code := decode[struct{ Code string }](t, m[1]).Code
 	if rest := bobStream.rest(); !strings.Contains(rest, "event: matched\ndata: {\"code\":\""+code+"\"}\n\n") {
 		t.Errorf("bob's stream ended with %q, want the match to %s", rest, code)
 	}
@@ -463,10 +455,8 @@ func TestQuickMatch(t *testing.T) {
 	_, text := carol.get("/api/games")
 	expectKeys(t, "/api/games", []byte(text), "games", "looking")
 	games, _ := lookup([]byte(text), "games")
-	var entries []json.RawMessage
-	json.Unmarshal(games, &entries)
 	var entry json.RawMessage
-	for _, e := range entries {
+	for _, e := range decode[[]json.RawMessage](t, string(games)) {
 		var l game.Live
 		if json.Unmarshal(e, &l) == nil && l.Code == code {
 			entry = e
@@ -500,9 +490,7 @@ func TestNames(t *testing.T) {
 	getOffers := func() (int, offers, []byte) {
 		t.Helper()
 		status, text := p.get("/api/me/names")
-		var out offers
-		json.Unmarshal([]byte(text), &out)
-		return status, out, []byte(text)
+		return status, decode[offers](t, text), []byte(text)
 	}
 	status, first, raw := getOffers()
 	expectJSON(t, []any{status, keys(t, raw), len(first.Names), first.ChangesLeft}, `[200,["changesLeft","changesResetAt","names"],3,3]`)
@@ -519,18 +507,15 @@ func TestNames(t *testing.T) {
 		}
 		body, _ := json.Marshal(map[string]string{"name": o.Names[0]})
 		status, text := p.post("/api/me/name", string(body))
-		var out struct {
+		out := decode[struct {
 			Name        string
 			ChangesLeft int
-		}
-		json.Unmarshal([]byte(text), &out)
+		}](t, text)
 		expectJSON(t, []any{status, keys(t, []byte(text)), out.Name, out.ChangesLeft},
 			fmt.Sprintf(`[200,["name","changesLeft","changesResetAt"],%s,%d]`, js(o.Names[0]), 2-i))
 	}
 	status, text := p.get("/api/me/names")
-	var refused struct{ Error string }
-	json.Unmarshal([]byte(text), &refused)
-	expectJSON(t, []any{status, keys(t, []byte(text)), refused.Error}, `[429,["changesResetAt","error"],"no name changes left today"]`)
+	expectJSON(t, []any{status, keys(t, []byte(text)), decode[apiError](t, text).Error}, `[429,["changesResetAt","error"],"no name changes left today"]`)
 	if status, text := p.post("/api/me/name", `{"name":"x"}`); status != 429 {
 		t.Errorf("a fourth change: %d %s, want 429", status, text)
 	}
@@ -539,8 +524,9 @@ func TestNames(t *testing.T) {
 // The app, static files and link previews.
 func TestAppAndPreviews(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
-	home, html := c.do(http.MethodGet, "/", http.Header{"Accept-Encoding": {"br, gzip"}}, "")
-	expectJSON(t, []any{home.StatusCode, header(home, "Content-Type"), header(home, "Cache-Control"), header(home, "Content-Encoding")},
+	home := c.do(http.MethodGet, "/", http.Header{"Accept-Encoding": {"br, gzip"}})
+	html := home.body
+	expectJSON(t, []any{home.status, header(home, "Content-Type"), header(home, "Cache-Control"), header(home, "Content-Encoding")},
 		`[200,"text/html; charset=utf-8","no-cache",null]`)
 	for _, want := range []string{
 		"<title>Mamdani Chess</title>\n<meta name=\"description\" content=\"Chess where potholes open under your pieces.",
@@ -561,22 +547,22 @@ func TestAppAndPreviews(t *testing.T) {
 	}{{"br, gzip", "br"}, {"gzip", "gzip"}, {"identity", nil}} {
 		// An explicit Accept-Encoding also stops Go's client from
 		// decompressing, so the body is what the server sent.
-		res, _ := c.do(http.MethodGet, script, http.Header{"Accept-Encoding": {e.accept}}, "")
+		res := c.do(http.MethodGet, script, http.Header{"Accept-Encoding": {e.accept}})
 		want, _ := json.Marshal([]any{e.accept, 200, e.encoding, "text/javascript; charset=utf-8", "public, max-age=31536000, immutable", "Accept-Encoding"})
-		expectJSON(t, []any{e.accept, res.StatusCode, header(res, "Content-Encoding"), header(res, "Content-Type"), header(res, "Cache-Control"), header(res, "Vary")}, string(want))
+		expectJSON(t, []any{e.accept, res.status, header(res, "Content-Encoding"), header(res, "Content-Type"), header(res, "Cache-Control"), header(res, "Vary")}, string(want))
 	}
-	gone, body := c.do(http.MethodGet, "/_app/immutable/nope.js", nil, "")
-	expectJSON(t, []any{gone.StatusCode, body, header(gone, "Cache-Control")}, `[404,"404 page not found\n","no-cache"]`)
-	route, body := c.do(http.MethodGet, "/game/ABCDEF", nil, "")
-	if route.StatusCode != 200 || !strings.Contains(body, "og:title") {
-		t.Errorf("/game/ABCDEF: %d, og:title %v", route.StatusCode, strings.Contains(body, "og:title"))
+	gone := c.do(http.MethodGet, "/_app/immutable/nope.js", nil)
+	expectJSON(t, []any{gone.status, gone.body, header(gone, "Cache-Control")}, `[404,"404 page not found\n","no-cache"]`)
+	route := c.do(http.MethodGet, "/game/ABCDEF", nil)
+	if route.status != 200 || !strings.Contains(route.body, "og:title") {
+		t.Errorf("/game/ABCDEF: %d, og:title %v", route.status, strings.Contains(route.body, "og:title"))
 	}
-	if res, _ := c.do(http.MethodPost, "/", nil, ""); res.StatusCode != 405 {
-		t.Errorf("POST /: %d, want 405", res.StatusCode)
+	if status := c.do(http.MethodPost, "/", nil).status; status != 405 {
+		t.Errorf("POST /: %d, want 405", status)
 	}
 	alice := c.players(1)[0]
 	code := alice.create()
-	_, invite := c.do(http.MethodGet, "/game/"+code, nil, "")
+	invite := c.do(http.MethodGet, "/game/"+code, nil).body
 	for _, want := range []string{
 		`<meta property="og:title" content="` + alice.name() + ` invites you to Mamdani Chess" />`,
 		`<meta property="og:url" content="` + base + `/game/` + code + `" />`,
@@ -585,13 +571,14 @@ func TestAppAndPreviews(t *testing.T) {
 			t.Errorf("the invite page lacks %q", want)
 		}
 	}
-	if _, play := c.do(http.MethodGet, "/play", nil, ""); !strings.Contains(play, "<title>Quick match · Mamdani Chess</title>") {
+	if play := c.do(http.MethodGet, "/play", nil).body; !strings.Contains(play, "<title>Quick match · Mamdani Chess</title>") {
 		t.Error("/play lacks its title")
 	}
 }
 
 // A stream stays open through a quiet spell, with a heartbeat every 15 s.
 func TestHeartbeat(t *testing.T) {
+	t.Parallel() // a 15 s wait; before newCheck, whose deadline starts at once
 	c := newCheck(t, 25*time.Second)
 	p := c.players(1)[0]
 	r := p.stream(p.create())
@@ -607,13 +594,12 @@ func TestHeartbeat(t *testing.T) {
 
 // A missed first move aborts the game after a minute.
 func TestFirstMoveAbort(t *testing.T) {
-	c := newCheck(t, 70*time.Second)
 	if !slow {
 		t.Skip("takes a minute: set CONTRACT_SLOW=1")
 	}
+	t.Parallel() // a minute's wait; before newCheck, whose deadline starts at once
+	c := newCheck(t, 70*time.Second)
 	g := c.seated()
-	time.Sleep(61 * time.Second)
-	_, text := g.alice.get("/api/games/" + g.code)
-	v := parseView(t, text)
+	v := g.a.until(func(v view) bool { return v.Status == game.Over })
 	expectJSON(t, []any{v.Status, v.get("result")}, `["over",{"draw":false,"reason":"aborted"}]`)
 }

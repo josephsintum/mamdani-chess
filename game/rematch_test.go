@@ -16,6 +16,29 @@ func over(t *testing.T, h *Hub) (*Game, *Sub, *Sub) {
 	return g, a, b
 }
 
+// askRematch offers, accepts or (with decline) declines a rematch, which
+// must not fail.
+func askRematch(t *testing.T, g *Game, guest string, decline bool) {
+	t.Helper()
+	if err := g.Rematch(guest, decline); err != nil {
+		t.Fatalf("rematch by %s: %v", guest, err)
+	}
+}
+
+// rematched ends a game between alice and bob on h, and both ask for a
+// rematch. It returns the old game and the rematch's code.
+func rematched(t *testing.T, h *Hub) (*Game, string) {
+	t.Helper()
+	g, _, _ := over(t, h)
+	askRematch(t, g, "alice", false)
+	askRematch(t, g, "bob", false)
+	code := recvView(t, g, "alice").Rematch.Code
+	if code == "" {
+		t.Fatal("two offers should start the rematch")
+	}
+	return g, code
+}
+
 func TestRematchOfferAndAccept(t *testing.T) {
 	h := NewHub(odd{}, nil)
 	g, _, _ := over(t, h)
@@ -51,27 +74,17 @@ func TestRematchOfferAndAccept(t *testing.T) {
 	}
 }
 
-func TestRematchCrossingOffersAccept(t *testing.T) {
-	h := NewHub(odd{}, nil)
-	g, _, _ := over(t, h)
-	g.Rematch("alice", false)
-	g.Rematch("bob", false)
-	if recvView(t, g, "alice").Rematch.Code == "" {
-		t.Fatal("two offers should start the rematch")
-	}
-}
-
 func TestRematchDecline(t *testing.T) {
 	g, _, _ := over(t, NewHub(odd{}, nil))
-	g.Rematch("alice", false)
+	askRematch(t, g, "alice", false)
 	if err := g.Rematch("bob", true); err != nil {
 		t.Fatal(err)
 	}
 	if r := recvView(t, g, "alice").Rematch; r != (RematchJSON{Declined: true}) {
 		t.Fatalf("after bob declines: %+v", r)
 	}
-	g.Rematch("alice", true) // declining your own offer does nothing
-	g.Rematch("bob", false)  // a new offer after a decline
+	askRematch(t, g, "alice", true) // declining your own offer does nothing
+	askRematch(t, g, "bob", false)  // a new offer after a decline
 	if r := recvView(t, g, "alice").Rematch; r != (RematchJSON{Offer: "black"}) {
 		t.Fatalf("after bob offers: %+v", r)
 	}
@@ -80,7 +93,7 @@ func TestRematchDecline(t *testing.T) {
 func TestRematchOfferEndsWhenTheOffererLeaves(t *testing.T) {
 	g, a, _ := over(t, NewHub(odd{}, nil))
 	a2 := join(t, g, "alice") // a second tab
-	g.Rematch("alice", false)
+	askRematch(t, g, "alice", false)
 	g.Leave(a)
 	if r := recvView(t, g, "bob").Rematch; r.Offer != "white" {
 		t.Fatalf("offer gone while alice still has a tab open: %+v", r)
@@ -96,7 +109,9 @@ func TestRematchErrors(t *testing.T) {
 	if err := g.Rematch("alice", false); !errors.Is(err, ErrNotOver) {
 		t.Errorf("rematch during the game: %v, want ErrNotOver", err)
 	}
-	g.Resign("alice")
+	if err := g.Resign("alice"); err != nil {
+		t.Fatal(err)
+	}
 	if err := g.Rematch("carol", false); !errors.Is(err, ErrNotPlayer) {
 		t.Errorf("rematch by a spectator: %v, want ErrNotPlayer", err)
 	}

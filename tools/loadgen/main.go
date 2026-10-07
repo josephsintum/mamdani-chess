@@ -39,6 +39,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"mamdani-chess/game"
 )
 
 // config is one load run.
@@ -65,14 +67,10 @@ type result struct {
 
 // view is the part of a state event a player needs.
 type view struct {
-	Status string `json:"status"`
-	Turn   string `json:"turn"`
-	Seq    int    `json:"seq"`
-	Legal  []struct {
-		From  string `json:"from"`
-		To    string `json:"to"`
-		Promo string `json:"promo,omitempty"`
-	} `json:"legal"`
+	Status game.Status     `json:"status"`
+	Turn   string          `json:"turn"`
+	Seq    int             `json:"seq"`
+	Legal  []game.MoveJSON `json:"legal"`
 }
 
 // run holds the shared state of one load run.
@@ -215,7 +213,7 @@ func (r *run) stream(ctx context.Context, c *http.Client, code string, opened ch
 			return
 		}
 		on(v, time.Now())
-		if v.Status == "over" {
+		if v.Status == game.Over {
 			return
 		}
 	}
@@ -268,14 +266,16 @@ func (r *run) game(seed uint64) {
 	}
 	// Players join first: the first guest after the creator to open a
 	// stream takes Black's seat.
-	states := map[string]chan view{"white": make(chan view, 256), "black": make(chan view, 256)}
-	clients := map[string]*http.Client{"white": white, "black": black}
-	for _, color := range []string{"white", "black"} {
-		ch := states[color]
-		open(clients[color], func(v view, at time.Time) {
+	seats := [2]struct {
+		color  string
+		c      *http.Client
+		states chan view
+	}{{"white", white, make(chan view, 256)}, {"black", black, make(chan view, 256)}}
+	for _, s := range seats {
+		open(s.c, func(v view, at time.Time) {
 			seen(v, at)
 			select {
-			case ch <- v:
+			case s.states <- v:
 			default: // nobody is waiting on an old state; drop it
 			}
 		})
@@ -284,15 +284,12 @@ func (r *run) game(seed uint64) {
 		open(r.client(), seen)
 	}
 
-	for seq := 0; seq < r.cfg.plies; seq++ {
-		mover := "white"
-		if seq%2 == 1 {
-			mover = "black"
-		}
-		v, ok := r.waitTurn(states[mover], mover, seq)
+	for seq := range r.cfg.plies {
+		mover := seats[seq%2]
+		v, ok := r.waitTurn(mover.states, mover.color, seq)
 		if !ok {
-			if v.Status != "over" {
-				r.fail("game "+code, fmt.Errorf("no turn for %s at seq %d within %v", mover, seq, r.cfg.stall))
+			if v.Status != game.Over {
+				r.fail("game "+code, fmt.Errorf("no turn for %s at seq %d within %v", mover.color, seq, r.cfg.stall))
 			}
 			break
 		}
@@ -300,12 +297,15 @@ func (r *run) game(seed uint64) {
 			time.Sleep(time.Duration(rnd.Int64N(int64(2 * r.cfg.think))))
 		}
 		m := v.Legal[rnd.IntN(len(v.Legal))]
-		body, _ := json.Marshal(map[string]any{"from": m.From, "to": m.To, "promo": m.Promo, "seq": seq})
+		body, _ := json.Marshal(struct {
+			game.MoveJSON
+			Seq int `json:"seq"`
+		}{m, seq})
 		sentMu.Lock()
 		sent[seq+1] = time.Now()
 		sentMu.Unlock()
 		t0 := time.Now()
-		resp, err := r.post(clients[mover], "/api/games/"+code+"/move", body)
+		resp, err := r.post(mover.c, "/api/games/"+code+"/move", body)
 		if err != nil {
 			r.fail("move", err)
 			break
@@ -347,13 +347,11 @@ func (r *run) waitTurn(states <-chan view, mover string, seq int) (view, bool) {
 	defer stall.Stop()
 	for {
 		select {
-		case v, open := <-states:
+		case v := <-states:
 			switch {
-			case !open:
+			case v.Status == game.Over:
 				return v, false
-			case v.Status == "over":
-				return v, false
-			case v.Seq == seq && v.Status == "playing" && v.Turn == mover && len(v.Legal) > 0:
+			case v.Seq == seq && v.Status == game.Playing && v.Turn == mover && len(v.Legal) > 0:
 				return v, true
 			}
 		case <-stall.C:

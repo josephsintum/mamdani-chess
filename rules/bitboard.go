@@ -50,6 +50,8 @@ var (
 	bishopDirIdx = [4]int{2, 3, 6, 7}
 )
 
+var knightJumps = [][2]int{{1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}}
+
 // Attack tables, filled once at startup.
 var (
 	rays          [8][64]Bitboard // squares beyond each square in each direction
@@ -66,7 +68,7 @@ func init() {
 			}
 		}
 		knightAttacks[s] = leaper(s, knightJumps)
-		kingAttacks[s] = leaper(s, queenDirs)
+		kingAttacks[s] = leaper(s, dirSteps[:])
 		pawnAttacks[White][s] = leaper(s, [][2]int{{-1, 1}, {1, 1}})
 		pawnAttacks[Black][s] = leaper(s, [][2]int{{-1, -1}, {1, -1}})
 	}
@@ -115,19 +117,4 @@ func bishopAttacks(s Square, blocked Bitboard) Bitboard {
 
 func queenAttacks(s Square, blocked Bitboard) Bitboard {
 	return rookAttacks(s, blocked) | bishopAttacks(s, blocked)
-}
-
-// between returns the squares strictly between a and b, and false if they
-// don't share a rank, file or diagonal.
-func between(a, b Square) (Bitboard, bool) {
-	df, dr := sign(b.File()-a.File()), sign(b.Rank()-a.Rank())
-	if a == b || (b.File() != a.File() && b.Rank() != a.Rank() && abs(b.File()-a.File()) != abs(b.Rank()-a.Rank())) {
-		return 0, false
-	}
-	for d, step := range dirSteps {
-		if step[0] == df && step[1] == dr {
-			return (rays[d][a] ^ rays[d][b]) &^ bit(b), true
-		}
-	}
-	return 0, false
 }

@@ -14,6 +14,7 @@ func (d randDice) D8() int { return d.r.IntN(8) + 1 }
 // TestRandomGames plays thousands of seeded random games and checks the
 // invariants RULES.md promises after every turn.
 func TestRandomGames(t *testing.T) {
+	t.Parallel()
 	games := 10000
 	if testing.Short() {
 		games = 500

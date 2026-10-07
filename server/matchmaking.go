@@ -23,8 +23,7 @@ func (s *Server) matchStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.store.EnsureGuest(r.Context(), guest, names.Random); err != nil {
-		s.log.Error("guest name", "err", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		s.internalError(w, "guest name", err)
 		return
 	}
 	fl, ok := startSSE(w)

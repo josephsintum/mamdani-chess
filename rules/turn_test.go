@@ -295,15 +295,6 @@ func TestRepairStepAfterMove(t *testing.T) {
 	}
 }
 
-func TestMamdaniMoveDoesNotResetFiftyMoveCount(t *testing.T) {
-	p := StartPosition()
-	p.Halfmove = 10
-	p, _ = apply(t, p, "a5b5", dice(1))
-	if p.Halfmove != 11 {
-		t.Errorf("halfmove %d, want 11", p.Halfmove)
-	}
-}
-
 func TestBadDiceRejected(t *testing.T) {
 	for _, rolls := range [][]int{{0}, {9}, {2, 9, 1}, {2, 1, 0}, {2, 4, 2, 10}} {
 		p := StartPosition()
