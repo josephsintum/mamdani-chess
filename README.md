@@ -7,16 +7,10 @@ A browser chess variant to play with friends. It is [Pot-Hole Chess](https://www
 
 Chess comes first: the dice bring the chaos, and the Mamdani is how you fight back. The full rules, with every decision and why it was made, are in [RULES.md](RULES.md).
 
-## Status
-
-Early development. You can play a full game: press **Play a friend**, send the link, and play in two browsers. Every roll plays out in a dice tray, and the game ends with a result card. There is no clock yet, and games live in memory, so they vanish when the server restarts.
-
-| Done | Next |
-| --- | --- |
-| Rules engine (`rules/`): move generation, potholes, saving rolls, game end and replay. It is tested against published chess move counts (perft) and 10,000 random games. | A playtest with friends, then clocks and saved games |
-| App: Go server, live updates over Server-Sent Events, SvelteKit frontend with a tap-to-move board, CI and a Dockerfile. | Clocks, saved games, quick match, spectators and emoji reactions, then a public launch |
-
-The plan is in [docs/superpowers/plans/2026-10-03-00-roadmap.md](docs/superpowers/plans/2026-10-03-00-roadmap.md).
+<p align="center">
+  <img src="https://raw.githubusercontent.com/josephsintum/mamdani-chess/pr-screenshots/readme/gameplay-desktop.png" alt="A game on a laptop: three potholes are open, the Mamdani stands on a6, and the dice have just dropped a white pawn into a new pothole on e2" width="68%">
+  <img src="https://raw.githubusercontent.com/josephsintum/mamdani-chess/pr-screenshots/readme/gameplay-phone.png" alt="The same moment on Black's phone: the board turned for Black, and the dice card saying the white pawn falls into e2" width="26%">
+</p>
 
 ## How it will work
 
