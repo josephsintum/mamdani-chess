@@ -1,58 +1,9 @@
-// Types and calls for the game API. Mirrors game/view.go on the server.
+// Calls for the game API, and what the page says about a game. The JSON
+// types are generated from the server's Go types (wire.gen.ts, written by
+// go run ./cmd/wiregen), so they can't drift from it.
 
-import type { ClockJSON } from './clock.ts';
-
-export type Color = 'white' | 'black';
-
-export interface MoveJSON {
-	from: string;
-	to: string;
-	promo?: string;
-}
-
-export interface EventJSON {
-	kind: string;
-	sq?: string;
-	from?: string;
-	to?: string;
-	promo?: string;
-	piece?: string;
-	color?: Color;
-	roll?: number;
-	saved?: boolean;
-	reason?: string;
-}
-
-export interface View {
-	code: string;
-	status: 'waiting' | 'playing' | 'over';
-	you: Color | 'spectator';
-	board: string[]; // 64 entries, index 0 = a1; "" or "wP", "bQ", ...
-	mamdani: string; // "" once it has fallen
-	potholes: { sq: string; by: Color; left: number }[]; // left: the roller's moves until it closes (1 to 3)
-	turn: Color;
-	check: boolean;
-	legal: MoveJSON[];
-	last: EventJSON[];
-	log: LogEntry[];
-	lost: { white: string[]; black: string[] };
-	stats: { savingRolls: number; saved: number; repaired: number; mamdaniFell: boolean };
-	result: { winner?: Color; draw: boolean; reason: string } | null;
-	seq: number;
-	clock: ClockJSON;
-	/** Which players have the game open. */
-	online: { white: boolean; black: boolean };
-	/** Each player's name when they sat down; "" for an empty seat or an older game. */
-	players: { white: string; black: string };
-	/** Once the game is over: an offer waiting, a declined offer, or the new game's code. */
-	rematch: { offer?: Color; declined?: boolean; code?: string };
-}
-
-export interface LogEntry {
-	san: string;
-	color: Color;
-	dice: string;
-}
+export type { Color, EventJSON, LogEntry, MoveJSON, View } from './wire.gen.ts';
+import type { Color, EventJSON, MoveJSON, View } from './wire.gen.ts';
 
 export function squareName(index: number): string {
 	return 'abcdefgh'[index % 8] + (Math.floor(index / 8) + 1);
