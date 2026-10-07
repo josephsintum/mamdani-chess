@@ -14,6 +14,8 @@
 	let games = $state<LiveGame[] | null>(null); // null until the first answer
 	let looking = $state(0);
 	let code = $state('');
+	// Friends arrive by link, so the code field waits behind "Have a game code?".
+	let codeOpen = $state(false);
 	let busy = $state(false);
 	let error = $state('');
 
@@ -81,13 +83,6 @@
 <Header bind:me={user} />
 
 <main>
-	{#if user?.game}
-		<a class="rejoin" href="/game/{user.game}">
-			<span class="dot" aria-hidden="true"></span>
-			<span class="rejoin-text"><strong>You're in a game.</strong> Your opponent is waiting.</span>
-			<span class="rejoin-go">Rejoin</span>
-		</a>
-	{/if}
 	<section class="hero">
 		<div class="pitch">
 			<p class="eyebrow">A chess variant · 10+5 · No sign-up</p>
@@ -96,36 +91,51 @@
 				Every move rolls the dice. Potholes open and swallow pieces. The Mamdani, a neutral piece either player can
 				move, blocks lines and fixes the road.
 			</p>
-			<div class="actions">
-				<a class="action primary" href="/play">
-					<span class="label">Play online</span>
-					<span class="sub">Quick match · 10+5{#if looking > 0}{' · '}<strong>{looking} looking</strong>{/if}</span>
-				</a>
-				<button class="action" onclick={playFriend} disabled={busy}>
-					<span class="label">{busy ? 'Starting…' : 'Play a friend'}</span>
-					<span class="sub">Get a link to share</span>
-				</button>
-			</div>
-			{#if error}<p class="error" role="alert">{error}</p>{/if}
-			<form class="join" onsubmit={join}>
-				<label for="join-code">Have a game code?</label>
-				<div class="row">
-					<input
-						id="join-code"
-						type="text"
-						placeholder="K7F3QZ"
-						autocomplete="off"
-						autocapitalize="characters"
-						spellcheck="false"
-						value={code}
-						oninput={(e) => {
-							code = normalizeCode(e.currentTarget.value);
-							e.currentTarget.value = code;
-						}}
-					/>
-					<button type="submit" disabled={!isCode(code)}>Join</button>
+			{#if user?.game}
+				<!-- One game at a time: while you're in one, Rejoin takes the place of the ways to start another. -->
+				<div class="rejoin">
+					<p class="rejoin-head"><span class="dot" aria-hidden="true"></span>You're in a game</p>
+					<p class="rejoin-text">Your opponent is waiting.</p>
+					<a class="action primary" href="/game/{user.game}"><span class="label">Rejoin game</span></a>
 				</div>
-			</form>
+				<p class="note">One game at a time. Finish this one to start another.</p>
+			{:else}
+				<div class="actions">
+					<a class="action primary" href="/play">
+						<span class="label">Play online</span>
+						<span class="sub"><span class="wide">Quick match · </span>10+5{#if looking > 0}{' · '}<strong>{looking} looking</strong>{/if}</span>
+					</a>
+					<button class="action" onclick={playFriend} disabled={busy}>
+						<span class="label">{busy ? 'Starting…' : 'Invite a friend'}</span>
+						<span class="sub"><span class="wide">Send a link to your group chat</span><span class="narrow">Share a link</span></span>
+					</button>
+				</div>
+				{#if error}<p class="error" role="alert">{error}</p>{/if}
+				{#if codeOpen}
+					<form class="join" onsubmit={join}>
+						<label for="join-code" class="sr-only">Game code</label>
+						<div class="row">
+							<input
+								id="join-code"
+								type="text"
+								placeholder="K7F3QZ"
+								autocomplete="off"
+								autocapitalize="characters"
+								spellcheck="false"
+								value={code}
+								oninput={(e) => {
+									code = normalizeCode(e.currentTarget.value);
+									e.currentTarget.value = code;
+								}}
+								{@attach (input) => input.focus()}
+							/>
+							<button type="submit" disabled={!isCode(code)}>Join</button>
+						</div>
+					</form>
+				{:else}
+					<button class="code-link" type="button" onclick={() => (codeOpen = true)}>Have a game code?</button>
+				{/if}
+			{/if}
 		</div>
 		<div class="demo">
 			<MiniBoard
@@ -236,30 +246,36 @@
 	}
 	.rejoin {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
 		gap: 12px;
-		margin-top: 24px;
-		padding: 14px 18px;
+		max-width: 460px;
+		padding: 16px;
 		border: 1px solid var(--accent);
 		border-radius: 12px;
 		background: var(--accent-wash);
+	}
+	.rejoin-head {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin: 0;
 		color: var(--text);
-		text-decoration: none;
+		font-family: var(--font-display);
+		font-weight: 800;
+		font-size: 24px;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
 	}
 	.rejoin .dot {
 		background: var(--accent);
 	}
 	.rejoin-text {
-		flex-grow: 1;
-		min-width: 0;
+		margin: 0;
 	}
-	.rejoin-go {
-		flex-shrink: 0;
-		padding: 8px 16px;
-		border-radius: 8px;
-		background: var(--accent);
-		color: var(--accent-text);
-		font-weight: 600;
+	.note {
+		margin: -12px 0 0;
+		color: var(--text-muted);
+		font-size: 14px;
 	}
 	.hero {
 		display: grid;
@@ -347,9 +363,32 @@
 		gap: 8px;
 		max-width: 460px;
 	}
-	.join label {
+	.code-link {
+		align-self: flex-start;
+		height: 44px;
+		margin-top: -12px;
+		padding: 0 2px;
+		border: 0;
+		background: none;
 		color: var(--text-muted);
-		font-size: 14px;
+		font: inherit;
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		cursor: pointer;
+	}
+	.code-link:hover {
+		color: var(--text);
+	}
+	.narrow {
+		display: none;
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.row {
 		display: flex;
@@ -634,6 +673,19 @@
 		.label {
 			font-size: 26px;
 		}
+		/* The short lines under the buttons, so each fits beside its label. */
+		.wide {
+			display: none;
+		}
+		.narrow {
+			display: inline;
+		}
+		.code-link {
+			margin-top: -8px;
+		}
+		.note {
+			margin-top: -8px;
+		}
 		.live {
 			padding-bottom: 40px;
 		}
@@ -674,8 +726,22 @@
 			gap: 24px;
 		}
 	}
-	/* The narrowest phones: the line under each button goes below it. */
+	/* The narrowest phones: a smaller headline so both buttons sit above
+	   the fold at 320 x 568, and the line under each button goes below it. */
 	@media (max-width: 379px) {
+		.hero {
+			padding-top: 24px;
+		}
+		.pitch {
+			gap: 16px;
+		}
+		.eyebrow {
+			font-size: 11px;
+			letter-spacing: 0.1em;
+		}
+		h1 {
+			font-size: 44px;
+		}
 		.action {
 			flex-direction: column;
 			align-items: flex-start;

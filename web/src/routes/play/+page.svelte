@@ -182,7 +182,7 @@
 		{#if elapsed >= OFFER_FRIEND_MS}
 			<p class="friend">
 				Nobody yet.
-				<button onclick={playFriend} disabled={busy}>{busy ? 'Starting…' : 'Play a friend instead'}</button>
+				<button onclick={playFriend} disabled={busy}>{busy ? 'Starting…' : 'Invite a friend instead'}</button>
 			</p>
 		{/if}
 		{#if error}<p class="error" role="alert">{error}</p>{/if}

@@ -181,7 +181,7 @@ async function playGame(browser, n) {
 		url = w.url().split('?')[0] + '?instant';
 	} else {
 		await w.goto(`${opts.base}/`);
-		await w.getByRole('button', { name: 'Play a friend' }).click();
+		await w.getByRole('button', { name: 'Invite a friend' }).click();
 		await w.waitForURL(/\/game\//);
 		url = w.url().split('?')[0] + '?instant';
 	}
