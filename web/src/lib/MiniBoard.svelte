@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { squareName, type MoveJSON, type View } from './game.ts';
+	import { isDark } from './feel.ts';
+	import { squareName, type MoveJSON } from './game.ts';
+	import type { Pothole } from './wire.gen.ts';
 
 	// A board to look at, not to play on: the live games list and the home
 	// page's hero. No buttons, so a card that holds one stays one link.
@@ -11,7 +13,7 @@
 		label
 	}: {
 		board: string[]; // 64 entries, index 0 = a1
-		potholes?: View['potholes'];
+		potholes?: Pothole[];
 		mamdani?: string;
 		last?: MoveJSON | null;
 		/** What a screen reader hears instead of 64 squares. */
@@ -28,7 +30,7 @@
 		{@const sq = squareName(index)}
 		<span
 			class="square"
-			class:dark={(Math.floor(index / 8) + (index % 8)) % 2 === 0}
+			class:dark={isDark(index)}
 			class:last={last?.from === sq || last?.to === sq}
 		>
 			{#if holes.has(sq)}<span class="hole"></span>{/if}

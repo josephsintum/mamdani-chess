@@ -2,6 +2,7 @@
 // codes. The JSON types come from the server's Go types (wire.gen.ts).
 
 import type { Live, MeJSON } from './wire.gen.ts';
+import { jsonOf } from './api.ts';
 
 /** A game being played, as the home page lists it. */
 export type LiveGame = Live;
@@ -57,21 +58,21 @@ function remember(name: string | null) {
 export async function me(): Promise<Me> {
 	const res = await fetch('/api/me');
 	if (!res.ok) throw new Error(`could not load your name (${res.status})`);
-	const m: Me = await res.json();
+	const m = (await res.json()) as Me;
 	remember(m.name);
 	return m;
 }
 
 /** The names on offer, or none left today (with when they come back). */
-export type Offers = { names: string[]; changesLeft: number } | { resetAt: number };
+export type Offers = { names: string[] } | { resetAt: number };
 
 /** The names the caller may change to; the same ones until one is chosen. */
 export async function nameOffers(): Promise<Offers> {
 	const res = await fetch('/api/me/names');
-	const body = await res.json().catch(() => ({}));
-	if (res.status === 429) return { resetAt: body.changesResetAt };
+	const body = await jsonOf<{ names: string[]; changesResetAt: number; error: string }>(res);
+	if (res.status === 429) return { resetAt: body.changesResetAt ?? 0 };
 	if (!res.ok) throw new Error(body.error ?? `could not load names (${res.status})`);
-	return { names: body.names, changesLeft: body.changesLeft };
+	return { names: body.names ?? [] };
 }
 
 /** Changes the caller's name to one of their offers; returns the new state. */
@@ -81,10 +82,11 @@ export async function chooseName(name: string): Promise<Me> {
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({ name })
 	});
-	const body = await res.json().catch(() => ({}));
+	const body = await jsonOf<Me & { error: string }>(res);
 	if (!res.ok) throw new ApiError(body.error ?? `could not change your name (${res.status})`, res.status);
-	remember(body.name);
-	return body;
+	const m = body as Me;
+	remember(m.name);
+	return m;
 }
 
 /** How long until resetAt, for "New names again in 5 h": hours or minutes, rounded up. */
@@ -96,18 +98,18 @@ export function untilText(resetAt: number, now: number): string {
 export async function liveGames(): Promise<LiveGames> {
 	const res = await fetch('/api/games');
 	if (!res.ok) throw new Error(`could not load live games (${res.status})`);
-	return res.json();
+	return (await res.json()) as LiveGames;
 }
 
 /** Game codes use these characters: no lookalikes (0 O 1 I L). See game/dice.go. */
-export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
 /**
  * What a typed or pasted code becomes: upper case, only code characters, at
  * most 6. A pasted game link ("https://…/game/K7F3QZ") gives its code.
  */
 export function normalizeCode(input: string): string {
-	const link = input.match(/\/game\/([^/?#\s]*)/i);
+	const link = /\/game\/([^/?#\s]*)/i.exec(input);
 	return [...(link ? link[1] : input).toUpperCase()]
 		.filter((c) => CODE_ALPHABET.includes(c))
 		.join('')
@@ -128,7 +130,7 @@ export function initials(name: string): string {
 
 /** A board from a FEN's piece placement ("rnbqkbnr/pppppppp/8/…"), index 0 = a1. */
 export function boardFromFen(placement: string): string[] {
-	const board: string[] = Array(64).fill('');
+	const board = Array<string>(64).fill('');
 	placement.split('/').forEach((row, i) => {
 		let file = 0;
 		for (const ch of row) {

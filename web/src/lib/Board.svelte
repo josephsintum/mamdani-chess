@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, squareIndex, type Stage } from './board.ts';
-	import { pieceName, squareName, type MoveJSON } from './game.ts';
-	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, fitShift, GLIDE_EASE, knockOffset, rippleDelay, SHAKE, shakeFrames, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
+	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, pieceOn, squareIndex, type Repair, type Stage } from './board.ts';
+	import { pieceName, sideName, type MoveJSON } from './game.ts';
+	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, fitShift, GLIDE_EASE, isDark, knockOffset, rippleDelay, SHAKE, shakeFrames, squareAtCell, TEETER_MS, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
 	import { lineParts, spoken } from './catchphrases.ts';
-	import { BLINK_MS, scanFrames, SCAN_MS, type DicePill } from './dice.ts';
+	import { BLINK_MS, scanFrames, SCAN_MS, type DicePill, type Scan } from './dice.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { untrack } from 'svelte';
 	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
@@ -27,7 +27,7 @@
 	}: {
 		stage: Stage;
 		legal: MoveJSON[];
-		lastMove?: { from: string; to: string } | null;
+		lastMove?: Pick<MoveJSON, 'from' | 'to'> | null;
 		flipped?: boolean;
 		interactive?: boolean;
 		dim?: boolean;
@@ -40,7 +40,7 @@
 		 * when an open pothole is fixed by the Mamdani's move, false when the
 		 * dice land next to it and the pothole never opens. Each key plays once.
 		 */
-		repairs?: { sq: string; key: string; hole: boolean }[];
+		repairs?: Repair[];
 		/** A speech bubble for a big moment (catchphrases.ts); a new key pops a new one. */
 		quip?: { sq: string; emoji: string; line: string; key: string; delay?: number } | null;
 		/** The mated king's square, burst once per game (by key). */
@@ -48,7 +48,7 @@
 		/** The pill on the board's corner saying what the dice mean (dice.ts dicePill). */
 		pill?: DicePill | null;
 		/** The file and rank dice's scan for a target (dice.ts scanOf): it runs once per key. */
-		scan?: { sq: string; key: string; seed: number } | null;
+		scan?: Scan | null;
 		/** The dice hit a square they must re-roll: the target blinks. */
 		reroll?: boolean;
 		onmove: (move: MoveJSON) => void;
@@ -62,46 +62,40 @@
 	];
 
 	let selected = $state<string | null>(null);
-	let promoting = $state<{ from: string; to: string } | null>(null);
+	let promoting = $state.raw<{ from: string; to: string } | null>(null);
 	let hovered = $state<string | null>(null);
 	// x0, y0: where the press started; x, y: where the pointer is now; t: when
 	// it got there; tilt: how far the held piece leans toward the pull, in
 	// degrees.
-	let drag = $state<{ from: string; x0: number; y0: number; x: number; y: number; t: number; moved: boolean; pointer: number; tilt: number } | null>(null);
+	let drag = $state.raw<{ from: string; x0: number; y0: number; x: number; y: number; t: number; moved: boolean; pointer: number; tilt: number } | null>(null);
 	// Brings a dragged piece back upright once the pointer stops moving.
 	let tiltSettle: ReturnType<typeof setTimeout> | undefined;
 	// A dragged piece dropped on a square it can't go to settles back with a
 	// squash; n changes each time so the same square can bounce again.
-	let bounce = $state({ sq: '', n: 0 });
+	let bounce = $state.raw({ sq: '', n: 0 });
 	let boardEl: HTMLDivElement | undefined = $state();
 
 	// Without moves to make (not your turn, dice still rolling) nothing is selectable.
 	let active = $derived(interactive && legal.length > 0);
 	let current = $derived(active ? selected : null);
 	let pending = $derived(active ? promoting : null);
+	// The piece being dragged, once the drag has really started.
+	let held = $derived(drag?.moved ? drag.from : null);
 
-	let order = $derived.by(() => {
-		const squares: number[] = [];
-		for (let row = 0; row < 8; row++) {
-			for (let col = 0; col < 8; col++) {
-				const rank = flipped ? row : 7 - row;
-				const file = flipped ? 7 - col : col;
-				squares.push(rank * 8 + file);
-			}
-		}
-		return squares;
-	});
+	// The squares in screen order, from the top left.
+	let order = $derived(Array.from({ length: 64 }, (_, i) => squareAtCell(i % 8, Math.floor(i / 8), flipped)));
 	let targets = $derived(new Set(legal.filter((m) => m.from === current).map((m) => m.to)));
 	let movable = $derived(new Set(active ? legal.map((m) => m.from) : []));
 	let blocked = $derived(new Set(current ? blockedSquares(stage, current) : []));
 	let repairedSquares = $derived(new Set(repairs.map((r) => r.sq)));
+	let holes = $derived(new Map(stage.potholes.map((h) => [h.sq, h])));
 	// Repairs already celebrated on a board before this one mounted (the game
 	// page swaps boards at 640 px) don't play again.
 	const playedBefore = celebratedSoFar();
 	let fresh = $derived(repairs.filter((r) => !playedBefore.has(r.key)));
+	let freshMate = $derived(mated && !playedBefore.has(mated.key) ? mated : null);
 	// A pothole fixed by the Mamdani's move waits for the Mamdani to arrive.
-	let glide = $derived(lastMove && lastMove.to === stage.mamdani && !reducedMotion() ? moveDuration(lastMove.from, lastMove.to) : 0);
-	let sparks = Array.from({ length: 10 }, (_, i) => i * 36);
+	let glide = $derived(lastMove?.to === stage.mamdani && !reducedMotion() ? moveDuration(lastMove.from, lastMove.to) : 0);
 
 	// Each piece keeps an id across positions so it can glide (see pieces.ts).
 	// prevPieces is plain bookkeeping for the next reconcile, not state.
@@ -119,7 +113,7 @@
 
 	// The move you just dragged: that piece is already where you put it, so
 	// it gets no trail and no whiplash. Forgotten on your next press.
-	let dropped: { from: string; to: string } | null = null;
+	let dropped: Pick<MoveJSON, 'from' | 'to'> | null = null;
 	const isDropped = (p: { from?: string; sq: string }) => dropped !== null && p.from === dropped.from && p.sq === dropped.to;
 
 	// Trails behind the pieces that just moved. A dice step recalculates the
@@ -156,14 +150,14 @@
 			}
 			if (settled && node.dataset.bounce !== settled) {
 				node.dataset.bounce = settled;
-				node.animate(SQUASH, { duration: 140, easing: 'ease-out', composite: 'add' });
+				squash(node);
 				return;
 			}
 			const key = `${p.id}:${p.sq}`;
 			if (!p.from || p.from === p.sq || node.dataset.moved === key) return;
 			node.dataset.moved = key;
 			if (isDropped(p)) {
-				node.animate(SQUASH, { duration: 140, easing: 'ease-out', composite: 'add' });
+				squash(node);
 				return;
 			}
 			const w = whiplash(p.from, p.sq, flipped);
@@ -173,6 +167,7 @@
 	// Added on top of the piece's resting transform (composite: 'add'), so a
 	// piece that stays picked up at 112% squashes from there, not from 100%.
 	const SQUASH: Keyframe[] = [{ transform: 'scale(1.08, 0.92)' }, { transform: 'scale(1)' }];
+	const squash = (node: HTMLElement) => node.animate(SQUASH, { duration: 140, easing: 'ease-out', composite: 'add' });
 	const SAVE_HOP: Keyframe[] = [
 		{ transform: 'rotate(0)' },
 		{ transform: 'rotate(-14deg)', offset: 0.16 },
@@ -194,25 +189,22 @@
 	}
 
 	function pieceStyle(p: PieceRef & { dur: number }): string {
-		if (drag?.moved && drag.from === p.sq && boardEl) {
+		// Only the held piece reads the pointer, so a drag restyles one piece.
+		if (held === p.sq && drag && boardEl) {
 			const r = boardEl.getBoundingClientRect();
 			const size = r.width / 8;
-			return `transform: translate(${drag.x - r.left - size / 2}px, ${drag.y - r.top - size / 2}px); transition: none; z-index: 3; --tilt: ${drag.tilt.toFixed(1)}deg`;
+			return `transform: translate(${drag.x - r.left - size / 2}px, ${drag.y - r.top - size / 2}px); --tilt: ${drag.tilt.toFixed(1)}deg`;
 		}
 		return `${place(p.sq)}; --dur: ${p.dur}ms`;
 	}
 
-	function pieceAt(sq: string): string {
-		return sq === stage.mamdani ? 'M' : stage.board[squareIndex(sq)];
-	}
-
 	function label(sq: string): string {
-		const piece = pieceAt(sq);
+		const piece = pieceOn(stage, sq);
 		let text = sq;
 		if (piece) text += `, ${pieceName(piece)}`;
-		const hole = stage.potholes.find((h) => h.sq === sq);
+		const hole = holes.get(sq);
 		if (hole) {
-			text += `, pothole (${hole.by === 'white' ? 'White' : 'Black'}’s`;
+			text += `, pothole (${sideName(hole.by)}’s`;
 			text += hole.left === 1 ? ', closes after their next move' : `, ${hole.left} rounds left`;
 			text += ')';
 		}
@@ -243,9 +235,7 @@
 		const col = Math.floor(((x - r.left) / r.width) * 8);
 		const row = Math.floor(((y - r.top) / r.height) * 8);
 		if (col < 0 || col > 7 || row < 0 || row > 7) return null;
-		const rank = flipped ? row : 7 - row;
-		const file = flipped ? 7 - col : col;
-		return squareName(rank * 8 + file);
+		return squareAtCell(col, row, flipped);
 	}
 
 	function pointerDown(e: PointerEvent, sq: string) {
@@ -259,7 +249,7 @@
 	// and a plain tap would never select anything. After a drag the click
 	// lands on the board too, so no square's tap handler runs.
 	function pointerMove(e: PointerEvent) {
-		if (!drag || e.pointerId !== drag.pointer) return;
+		if (drag?.pointer !== e.pointerId) return;
 		if (e.buttons === 0) {
 			drag = null; // the button came up somewhere we didn't see
 			return;
@@ -285,7 +275,7 @@
 
 	function pointerUp(e: PointerEvent) {
 		clearTimeout(tiltSettle);
-		if (!drag || e.pointerId !== drag.pointer) return;
+		if (drag?.pointer !== e.pointerId) return;
 		const { from, moved } = drag;
 		drag = null;
 		if (!moved) return; // a tap: the square's click handler deals with it
@@ -358,16 +348,16 @@
 	 * then. A dropped piece is already there.
 	 */
 	function impact(): number {
-		if (!lastMove || reducedMotion() || (dropped && dropped.from === lastMove.from && dropped.to === lastMove.to)) return 0;
+		if (!lastMove || reducedMotion() || isDropped({ from: lastMove.from, sq: lastMove.to })) return 0;
 		return Math.round(moveDuration(lastMove.from, lastMove.to) / 2);
 	}
 
 	/**
-	 * A fall, `u` from 0 to 1 over 550 ms: two wobbles at the edge (180 ms),
-	 * then a drop into the hole, shrinking, tipping and darkening.
+	 * A fall, `u` from 0 to 1 over FALL_MS: two wobbles at the edge
+	 * (TEETER_MS), then a drop into the hole, shrinking, tipping and darkening.
 	 */
 	function fallFrame(u: number): string {
-		const teeter = 180 / 550;
+		const teeter = TEETER_MS / FALL_MS;
 		if (u < teeter) return `transform-origin: 50% 50%; transform: rotate(${(9 * Math.sin((u / teeter) * 2 * Math.PI)).toFixed(2)}deg)`;
 		const q = ((u - teeter) / (1 - teeter)) ** 2;
 		return `transform-origin: 50% 50%; transform: translateY(${10 * q}%) scale(${1 - 0.85 * q}) rotate(${40 * q}deg); filter: brightness(${1 - 0.75 * q}); opacity: ${1 - q}`;
@@ -383,7 +373,7 @@
 		// A taken piece waits under the mover, which lands on top of it.
 		if (!fell && node.parentElement) node.parentElement.style.zIndex = '1';
 		if (fell) {
-			shake(SHAKE.fall, ms(180));
+			shake(SHAKE.fall, ms(TEETER_MS));
 			return { duration: ms(FALL_MS), css: (_t: number, u: number) => fallFrame(u) };
 		}
 		const hit = impact();
@@ -417,10 +407,11 @@
 	/** Dust puffing off the rim as a piece drops in. */
 	function puff(_node: Element, { fell }: { fell: boolean }) {
 		if (!fell || reducedMotion()) return { duration: 1, css: () => 'opacity: 0' };
-		return { delay: 180, duration: 480, css: (_t: number, u: number) => `--p: ${u}; opacity: ${1 - u}` };
+		return { delay: TEETER_MS, duration: 480, css: (_t: number, u: number) => `--p: ${u}; opacity: ${1 - u}` };
 	}
 	const DUST = [190, 215, 240, 265, 290, 315, 340, 355];
 	const SHARDS = burstShards();
+	const SPARKS = Array.from({ length: 10 }, (_, i) => i * 36);
 
 	/** A pothole cracks open. */
 	function crack(_node: Element) {
@@ -446,8 +437,8 @@
 	function born(node: HTMLElement) {
 		node.dataset.born = String(performance.now());
 	}
-	function linger(node: Element) {
-		const age = performance.now() - Number((node as HTMLElement).dataset.born);
+	function linger(node: HTMLElement) {
+		const age = performance.now() - Number(node.dataset.born);
 		return { duration: exitMs(age, CELEBRATION_MS) };
 	}
 
@@ -475,10 +466,7 @@
 			}, f.at)
 		);
 		timers.push(
-			setTimeout(() => {
-				node.classList.add('landed');
-				landed = s.key;
-			}, SCAN_MS)
+			setTimeout(() => (landed = s.key), SCAN_MS)
 		);
 		timers.push(setTimeout(() => (lit = ''), SCAN_MS + 700));
 		return () => {
@@ -503,21 +491,20 @@
      label column and row are the same size, so the frame stays square. -->
 <div class="frame" class:dim {@attach (node) => void (frameEl = node)}>
 <div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span class:on={lit[1] === r}>{r}</span>{/each}</div>
-<div class="board" class:dim class:late={!!mated && !playedBefore.has(mated.key)} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms; --blink: {BLINK_MS}ms" {@attach dragArea}>
-	{#each order as index (index)}
-		{@const sq = squareName(index)}
-		{@const dark = (Math.floor(index / 8) + (index % 8)) % 2 === 0}
+<div class="board" class:dim class:late={!!freshMate} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms; --blink: {BLINK_MS}ms" {@attach dragArea}>
+	{#each order as sq (sq)}
+		{@const name = label(sq)}
 		<button
 			class="square"
-			class:dark
+			class:dark={isDark(squareIndex(sq))}
 			class:last={lastMove?.from === sq || lastMove?.to === sq}
 			class:legal={targets.has(sq)}
 			style={current && targets.has(sq) ? `--ripple: ${rippleDelay(current, sq)}ms` : undefined}
 			class:selected={current === sq}
 			class:movable={movable.has(sq)}
 			class:check={check === sq}
-			aria-label={label(sq)}
-			title={stage.potholes.some((h) => h.sq === sq) ? label(sq) : undefined}
+			aria-label={name}
+			title={holes.has(sq) ? name : undefined}
 			aria-pressed={current === sq}
 			onclick={() => tap(sq)}
 			onpointerdown={(e) => pointerDown(e, sq)}
@@ -538,8 +525,8 @@
 				<span class="slot" style={place(saved)}><span class="hole briefly"></span></span>
 			{/key}
 		{/if}
-		{#if mated && !playedBefore.has(mated.key)}
-			<span class="slot" style="{place(mated.sq)}; --delay: {impact()}ms"><span class="wash"></span></span>
+		{#if freshMate}
+			<span class="slot" style="{place(freshMate.sq)}; --delay: {impact()}ms"><span class="wash"></span></span>
 		{/if}
 		{#each stage.potholes as h (h.sq)}
 			<span class="slot" style={place(h.sq)}>
@@ -557,11 +544,11 @@
 		{/each}
 		{#if scan && !reducedMotion()}
 			{#key scan.key}
-				<span class="slot scan" {@attach scanner}></span>
+				<span class="slot scan" class:landed={landed === scan.key} {@attach scanner}></span>
 			{/key}
 		{/if}
 		<!-- The target waits for the scan to land on it. -->
-		{#if stage.target && !(scan && scan.sq === stage.target && landed !== scan.key && !reducedMotion())}
+		{#if stage.target && !(scan?.sq === stage.target && landed !== scan.key && !reducedMotion())}
 			{#key stage.target}
 				<span class="slot" style={place(stage.target)}><span class="target" class:blink={reroll} in:drop></span></span>
 			{/key}
@@ -576,9 +563,9 @@
 		{#each pieces as p (p.id)}
 			<span
 				class="slot piece-slot"
-				class:lifted={movable.has(p.sq) && (hovered === p.sq || current === p.sq) && !drag?.moved}
-				class:picked={current === p.sq && !drag?.moved}
-				class:dragging={drag?.moved && drag.from === p.sq}
+				class:lifted={movable.has(p.sq) && (hovered === p.sq || current === p.sq) && !held}
+				class:picked={current === p.sq && !held}
+				class:dragging={held === p.sq}
 				style={pieceStyle(p)}
 			>
 				<span class="ring" out:ringOut={{ fell: stage.target === p.sq }}></span>
@@ -614,7 +601,7 @@
 					{@render coneShape()}
 				</svg>
 				<span class="flash"></span>
-				{#each sparks as a, i (a)}<span class="spark" class:far={i % 2 === 0} style="--a: {a}deg"></span>{/each}
+				{#each SPARKS as a, i (a)}<span class="spark" class:far={i % 2 === 0} style="--a: {a}deg"></span>{/each}
 			</span>
 		{/each}
 		{#if quip}
@@ -624,18 +611,18 @@
 				</span>
 			{/key}
 		{/if}
-		{#if mated && !playedBefore.has(mated.key)}
-			{#key mated.key}
+		{#if freshMate}
+			{#key freshMate.key}
 				<span
 					class="slot fix burst"
-					class:bottom={cell(mated.sq).row === 7}
-					style="{place(mated.sq)}; --delay: {impact()}ms"
+					class:bottom={cell(freshMate.sq).row === 7}
+					style="{place(freshMate.sq)}; --delay: {impact()}ms"
 					{@attach (node) => {
 						// Once: a later update to the finished game (a rematch
 						// offer, say) re-runs this, and must not shake again.
 						if (node.dataset.burst) return;
 						node.dataset.burst = '1';
-						markCelebrated(mated.key);
+						markCelebrated(freshMate.key);
 						shake(SHAKE.mate, impact() + 500);
 					}}
 				>
@@ -668,14 +655,14 @@
 		<div class="promote" role="dialog" aria-label="Promote to" tabindex="-1" onkeydown={promoKey} {@attach focusFirst}>
 			{#each promoOptions as option (option.promo)}
 				<button aria-label={option.name} onclick={() => promote(option.promo)}>
-					<img src="/pieces/{pieceAt(pending.from)[0]}{option.kind}.svg" alt="" draggable="false" />
+					<img src="/pieces/{pieceOn(stage, pending.from)[0]}{option.kind}.svg" alt="" draggable="false" />
 				</button>
 			{/each}
 			<button class="cancel" onclick={() => (promoting = null)}>Cancel</button>
 		</div>
 	{/if}
 </div>
-<div class="files" aria-hidden="true">{#each labels.files as f (f)}<span class:on={lit[0] === f}>{f}</span>{/each}</div>
+<div class="files" aria-hidden="true">{#each labels.files as f (f)}<span class:on={lit.startsWith(f)}>{f}</span>{/each}</div>
 </div>
 
 <style>
@@ -745,6 +732,9 @@
 		touch-action: none;
 		user-select: none;
 		-webkit-touch-callout: none;
+		/* A piece's crisp outline: its own shape offset 2 px four ways, no blur. */
+		--outline-filter: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
+			drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
 	}
 	/* Game over: a shade darkens the squares and pieces (as a filter of
 	   saturate 0.6 and brightness 0.55 did), under the celebrate layer. */
@@ -788,9 +778,7 @@
 	.square.dark.last {
 		background: var(--board-last-dark);
 	}
-	.square.movable {
-		cursor: pointer;
-	}
+	.square.movable,
 	.square.legal {
 		cursor: pointer;
 	}
@@ -913,6 +901,7 @@
 	}
 	.piece-slot.dragging {
 		z-index: 3;
+		transition: none;
 	}
 	.piece {
 		display: grid;
@@ -936,13 +925,11 @@
 		transform: scale(1.12) rotate(var(--tilt, 0deg));
 		transition: transform 0.12s ease-out;
 	}
-	/* mpchess pieces at 90% of the square, centred, with a crisp
-	   white outline: their own shape offset 2 px four ways, no blur. */
+	/* mpchess pieces at 90% of the square, centred, with a crisp outline. */
 	.piece img {
 		width: 90%;
 		height: 90%;
-		filter: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
-			drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
+		filter: var(--outline-filter);
 	}
 	.piece .mamdani {
 		filter: none; /* its yellow border is its outline */
@@ -963,14 +950,12 @@
 		box-shadow:
 			0 0 0 3px var(--hazard),
 			inset 0 4px 10px var(--bg);
-	}
-	/* Rounds left: one traffic cone per round, standing on the hole's front
-	   edge; the last one blinks. */
-	.hole {
 		position: relative;
 		display: grid;
 		place-items: center;
 	}
+	/* Rounds left: one traffic cone per round, standing on the hole's front
+	   edge; the last one blinks. */
 	.cones {
 		position: absolute;
 		left: 50%;
@@ -1028,8 +1013,7 @@
 	.promote img {
 		width: 80%;
 		height: 80%;
-		filter: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
-			drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
+		filter: var(--outline-filter);
 	}
 	.promote .cancel {
 		grid-column: 1 / -1;
@@ -1244,17 +1228,12 @@
 				opacity: 0;
 			}
 		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.square.legal::after,
-		.trail {
+		.square.legal::after {
 			animation: none;
 		}
 		.trail {
 			display: none;
 		}
-	}
-	@media (prefers-reduced-motion: reduce) {
 		.shade,
 		.piece-slot,
 		.piece,
@@ -1499,14 +1478,6 @@
 			visibility: hidden;
 		}
 	}
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
 	/* Reduced motion: the bubble just shows, then goes. */
 	@media (prefers-reduced-motion: reduce) {
 		.bubble {
@@ -1528,7 +1499,7 @@
 		opacity: 0.85;
 		transition: opacity 0.25s ease;
 	}
-	.scan:global(.landed) {
+	.scan.landed {
 		opacity: 0;
 	}
 	.target.blink {

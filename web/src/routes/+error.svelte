@@ -4,17 +4,18 @@
 
 	// An address with no page (a mistyped link, say), or a page that failed.
 	let missing = $derived(page.status === 404);
+	let title = $derived(missing ? 'Page not found' : 'Something went wrong');
 </script>
 
 <svelte:head>
-	<title>{missing ? 'Page not found' : 'Something went wrong'} · Mamdani Chess</title>
+	<title>{title} · Mamdani Chess</title>
 </svelte:head>
 
 <Header />
 
 <main>
 	<section class="missing" role="alert">
-		<h1>{missing ? 'Page not found' : 'Something went wrong'}</h1>
+		<h1>{title}</h1>
 		{#if missing}
 			<p>There's nothing at <span class="path">{page.url.pathname}</span>. Check the link, or start from the home page.</p>
 		{:else}

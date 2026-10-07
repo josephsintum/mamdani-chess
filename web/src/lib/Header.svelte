@@ -115,13 +115,13 @@
 	}
 
 	function onPointer(e: PointerEvent) {
-		if (open && pill && !pill.contains(e.target as Node)) open = false;
+		if (open && pill && e.target instanceof Node && !pill.contains(e.target)) open = false;
 	}
 
 	// Tabbing out of the picker closes it.
 	function onFocusOut(e: FocusEvent) {
-		const to = e.relatedTarget as Node | null;
-		if (open && pill && to && !pill.contains(to)) open = false;
+		const to = e.relatedTarget;
+		if (open && pill && to instanceof Node && !pill.contains(to)) open = false;
 	}
 
 	const flip = (node: Element) => fly(node, { y: reducedMotion() ? 0 : -10, duration: reducedMotion() ? 0 : 180 });
@@ -130,7 +130,7 @@
 <svelte:window onkeydown={onKey} onpointerdown={onPointer} />
 <svelte:document
 	onvisibilitychange={() => {
-		if (!document.hidden && me?.name) refresh();
+		if (!document.hidden && me?.name) void refresh();
 	}}
 />
 
@@ -178,7 +178,7 @@
 							<p class="pick-title">{left === 0 ? 'No changes left' : 'Pick a new name'}</p>
 							<span class="left">
 								<span class="pips" aria-hidden="true">
-									{#each Array.from({ length: NAME_CHANGES }, (_, i) => i) as i (i)}
+									{#each { length: NAME_CHANGES }, i}
 										<span class="pip" class:used={i >= left}></span>
 									{/each}
 								</span>
@@ -208,7 +208,7 @@
 								</ul>
 							{:else if loadFailed}
 								<p class="error" role="alert">Could not load new names.</p>
-								<button type="button" class="offer retry" onclick={loadOffers}>Try again</button>
+								<button type="button" class="offer" onclick={loadOffers}>Try again</button>
 							{:else}
 								<p class="quiet">Drawing names…</p>
 							{/if}
@@ -269,6 +269,7 @@
 		background: var(--surface);
 		border: 1px solid var(--surface-2);
 		border-radius: 22px;
+		position: relative;
 	}
 	.badge {
 		display: grid;
@@ -314,9 +315,6 @@
 	}
 	.reroll:disabled {
 		cursor: default;
-	}
-	.me {
-		position: relative;
 	}
 	/* The name picker: under the pill on desktop, across the screen on phones. */
 	.picker {
@@ -417,14 +415,6 @@
 		color: var(--hazard-text);
 		font-size: 14px;
 	}
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
 	/* Phones and narrow windows (canvas "Home (phone)"): a smaller mark and
 	   the name as its initials; screen readers still hear the whole name.
 	   Wider than the page's 640 px phone layout, so a long name never
@@ -448,8 +438,6 @@
 		.me {
 			flex-shrink: 0;
 			gap: 6px;
-		}
-		.me {
 			position: static;
 		}
 		.picker {

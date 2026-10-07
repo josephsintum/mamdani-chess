@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { diceSteps } from './board.ts';
 	import Die from './Die.svelte';
-	import type { View } from './game.ts';
+	import { sideName, type View } from './game.ts';
 
 	let { view, shown }: { view: View; shown: number } = $props();
 
@@ -22,7 +22,7 @@
 
 <section class="tray" aria-labelledby="dice-heading" aria-live="polite">
 	<div class="head">
-		<h2 id="dice-heading">{mover ? `${mover === 'white' ? 'White' : 'Black'}'s roll` : 'Dice'}</h2>
+		<h2 id="dice-heading">{mover ? `${sideName(mover)}'s roll` : 'Dice'}</h2>
 		{#if resolving}<span class="status">Resolving</span>{/if}
 	</div>
 	{#if !mover}
@@ -44,7 +44,7 @@
 							{/each}
 						</span>
 					{/if}
-					<span class="text" class:late={step.revealAt} style="--late: {step.revealAt ?? 0}ms">
+					<span class="text" class:late={step.revealAt} style:--late="{step.revealAt ?? 0}ms">
 						<span class="title">{step.title}</span>
 						<span class="detail">{step.detail}</span>
 					</span>

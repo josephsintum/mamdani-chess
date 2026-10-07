@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { squareIndex } from './board.ts';
 import { applyMove, moveDuration, reconcile, settlesGuess, type PieceRef } from './pieces.ts';
-
-/** A board with the given pieces, e.g. { e1: 'wK' }. */
-function boardOf(pieces: Record<string, string>): string[] {
-	const b = Array<string>(64).fill('');
-	for (const [sq, p] of Object.entries(pieces)) b[squareIndex(sq)] = p;
-	return b;
-}
+import { boardOf } from './test-boards.ts';
 
 describe('moveDuration', () => {
 	it('uses One Million Chessboards’ timing: 350ms plus up to 400ms by distance', () => {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { bonusOf, formatClock } from './clock.ts';
-	import { pieceName, type Color } from './game.ts';
+	import { pieceName, sideName, type Color } from './game.ts';
+	import type { BarPill } from './board.ts';
 	import { reducedMotion } from './motion.ts';
 
 	let {
@@ -25,7 +26,7 @@
 		lost: string[];
 		/** "Your move", "In check", "Waiting…", or "" for none (see pillFor). */
 		pill?: string;
-		pillTone?: 'turn' | 'check' | 'muted';
+		pillTone?: BarPill['tone'];
 		/** The phone's one-row bar: lost pieces after the name, nothing when none. */
 		compact?: boolean;
 		/** Time left, in ms; no clock is shown without it (the sandbox). */
@@ -42,7 +43,7 @@
 		offline?: boolean;
 	} = $props();
 
-	let side = $derived(color === 'white' ? 'White' : 'Black');
+	let side = $derived(sideName(color));
 	let label = $derived(name || side);
 
 	// The "+5": when this player moves, the increment floats up from their
@@ -213,10 +214,8 @@
 		width: 18px;
 		height: 18px;
 		flex-shrink: 0;
-	}
-	/* The board's white outline, 1 px at this size, so black pieces show on
-	   the dark page. */
-	.glyphs img {
+		/* The board's white outline, 1 px at this size, so black pieces show
+		   on the dark page. */
 		filter: drop-shadow(1px 0 0 var(--piece-outline)) drop-shadow(-1px 0 0 var(--piece-outline))
 			drop-shadow(0 1px 0 var(--piece-outline)) drop-shadow(0 -1px 0 var(--piece-outline));
 	}

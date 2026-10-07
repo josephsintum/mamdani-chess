@@ -1,3 +1,8 @@
+<script module lang="ts">
+	/** A phone on its side; the sheet's @media below spells out the same query. */
+	export const LANDSCAPE = '(orientation: landscape) and (max-height: 499px)';
+</script>
+
 <script lang="ts">
 	import DiceTray from './DiceTray.svelte';
 	import type { View } from './game.ts';
@@ -21,11 +26,6 @@
 		dialog?.showModal();
 	}
 
-	function keep(node: HTMLDialogElement) {
-		dialog = node;
-		return () => (dialog = undefined);
-	}
-
 	function close() {
 		dialog?.close();
 	}
@@ -36,7 +36,7 @@
 	}
 </script>
 
-<dialog {@attach keep} class="sheet" class:still aria-labelledby="log-heading" onclick={backdrop} onclose={() => returnTo?.focus()}>
+<dialog bind:this={dialog} class="sheet" class:still aria-labelledby="log-heading" onclick={backdrop} onclose={() => returnTo?.focus()}>
 	<div class="body">
 		<span class="handle" aria-hidden="true"></span>
 		<button type="button" class="close" onclick={close}>Close</button>

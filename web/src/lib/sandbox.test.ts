@@ -155,18 +155,11 @@ describe('playTurn', () => {
 		expect(v.last[3]).toEqual({ kind: 'reroll', sq: 'e1', reason: 'king' });
 	});
 
-	it('captures, castles and promotes', () => {
-		let v = positions.castling();
-		v = playTurn(v, { from: 'e1', to: 'g1' }, odd);
-		expect(v.board[squareIndex('g1')]).toBe('wK');
-		expect(v.board[squareIndex('f1')]).toBe('wR');
-		expect(v.board[squareIndex('h1')]).toBe('');
-
-		v = playTurn(startView(), { from: 'd1', to: 'd7' }, odd); // playTurn itself doesn't check moves
+	it('sends a capture and a promotion as the server does', () => {
+		let v = playTurn(startView(), { from: 'd1', to: 'd7' }, odd); // playTurn itself doesn't check moves
 		expect(v.last[1]).toEqual({ kind: 'captured', sq: 'd7', piece: 'bP' });
 
 		v = playTurn(positions.promotion(), { from: 'b7', to: 'b8', promo: 'n' }, odd);
-		expect(v.board[squareIndex('b8')]).toBe('wN');
 		expect(v.last[0]).toMatchObject({ kind: 'moved', promo: 'n' });
 	});
 

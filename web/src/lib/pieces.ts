@@ -2,7 +2,7 @@
 // to where it is, the way One Million Chessboards does. Pure: no DOM.
 
 import { squareIndex } from './board.ts';
-import type { MoveJSON } from './game.ts';
+import { squareName, type MoveJSON, type View } from './game.ts';
 
 /** One piece on the board: a stable id, what it is ("wN", "M"), where it is. */
 export interface PieceRef {
@@ -11,13 +11,11 @@ export interface PieceRef {
 	sq: string;
 }
 
-const files = 'abcdefgh';
+/** A piece on a square, before it has an id. */
+type Placed = Omit<PieceRef, 'id'>;
 
-function squareName(index: number): string {
-	return files[index % 8] + (Math.floor(index / 8) + 1);
-}
-
-function distance(a: string, b: string): number {
+/** The distance between two squares, in squares (a diagonal step is √2). */
+export function distance(a: string, b: string): number {
 	return Math.hypot(a.charCodeAt(0) - b.charCodeAt(0), Number(a[1]) - Number(b[1]));
 }
 
@@ -37,7 +35,7 @@ export function moveDuration(a: string, b: string): number {
  * promotes, or the Mamdani moves. No legality check: callers pass moves the
  * server listed as legal, or the sandbox's moves.
  */
-export function applyMove(state: { board: string[]; mamdani: string }, move: MoveJSON): { board: string[]; mamdani: string } {
+export function applyMove(state: Pick<View, 'board' | 'mamdani'>, move: MoveJSON): Pick<View, 'board' | 'mamdani'> {
 	const board = [...state.board];
 	if (move.from === state.mamdani) return { board, mamdani: move.to };
 	const piece = board[squareIndex(move.from)];
@@ -63,7 +61,7 @@ export function applyMove(state: { board: string[]; mamdani: string }, move: Mov
  * reaction) keeps the guess, or the piece would glide back and forth.
  */
 export function settlesGuess(guess: { seq: number } | null, next: { seq: number }): boolean {
-	return guess === null || next.seq !== guess.seq;
+	return next.seq !== guess?.seq;
 }
 
 /**
@@ -83,7 +81,7 @@ export function reconcile(
 	nextId: () => number,
 	hint?: { from: string; to: string }
 ): PieceRef[] {
-	const targets: { code: string; sq: string }[] = [];
+	const targets: Placed[] = [];
 	board.forEach((code, i) => {
 		if (code) targets.push({ code, sq: squareName(i) });
 	});
@@ -91,15 +89,20 @@ export function reconcile(
 
 	const free = new Set(prev);
 	const out: PieceRef[] = [];
-	const unmatched: { code: string; sq: string }[] = [];
-	const take = (p: PieceRef, t: { code: string; sq: string }) => {
+	const unmatched: Placed[] = [];
+	const take = (p: PieceRef, t: Placed) => {
 		free.delete(p);
 		out.push({ id: p.id, code: t.code, sq: t.sq });
 	};
 
 	// 1. Unmoved pieces.
+	const stayed = new Map<string, PieceRef[]>();
+	for (const p of free) {
+		const key = `${p.code}@${p.sq}`;
+		stayed.set(key, [...(stayed.get(key) ?? []), p]);
+	}
 	for (const t of targets) {
-		const same = [...free].find((p) => p.code === t.code && p.sq === t.sq);
+		const same = stayed.get(`${t.code}@${t.sq}`)?.shift();
 		if (same) take(same, t);
 		else unmatched.push(t);
 	}
@@ -116,12 +119,12 @@ export function reconcile(
 	}
 
 	// 3. Nearest of the same kind, closest pairs first.
-	const pairs: { p: PieceRef; t: { code: string; sq: string }; d: number }[] = [];
+	const pairs: { p: PieceRef; t: Placed; d: number }[] = [];
 	for (const t of rest) {
 		for (const p of free) if (p.code === t.code) pairs.push({ p, t, d: distance(p.sq, t.sq) });
 	}
 	pairs.sort((a, b) => a.d - b.d);
-	const placed = new Set<{ code: string; sq: string }>();
+	const placed = new Set<Placed>();
 	for (const { p, t } of pairs) {
 		if (free.has(p) && !placed.has(t)) {
 			take(p, t);

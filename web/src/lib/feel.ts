@@ -1,12 +1,26 @@
 // How the board looks and moves: pure helpers for the board's frame and
 // effects (docs/superpowers/specs/2026-10-06-board-feel-design.md).
 
-const RANKS = ['8', '7', '6', '5', '4', '3', '2', '1'];
-const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+import { distance } from './pieces.ts';
+
+const RANKS = ['8', '7', '6', '5', '4', '3', '2', '1'] as const;
+const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
 
 /** The labels beside the board in screen order: ranks top to bottom, files left to right. */
-export function coordinates(flipped: boolean): { ranks: string[]; files: string[] } {
+export function coordinates(flipped: boolean): { ranks: readonly string[]; files: readonly string[] } {
 	return flipped ? { ranks: [...RANKS].reverse(), files: [...FILES].reverse() } : { ranks: RANKS, files: FILES };
+}
+
+/** The square at a column and row on screen, 0 to 7 from the top left: cellOf's inverse. */
+export function squareAtCell(col: number, row: number, flipped: boolean): string {
+	const file = flipped ? 7 - col : col;
+	const rank = flipped ? row : 7 - row;
+	return String.fromCharCode(97 + file) + (rank + 1);
+}
+
+/** A dark square, by index (0 = a1, which is dark). */
+export function isDark(index: number): boolean {
+	return (Math.floor(index / 8) + (index % 8)) % 2 === 0;
 }
 
 /** A square's column and row on screen, 0 to 7 from the top left. */
@@ -14,6 +28,19 @@ export function cellOf(sq: string, flipped: boolean): { col: number; row: number
 	const file = sq.charCodeAt(0) - 97;
 	const rank = Number(sq[1]) - 1;
 	return flipped ? { col: 7 - file, row: rank } : { col: file, row: 7 - rank };
+}
+
+/** How far `to` is from `from` on screen, in squares: right and down are positive. */
+function screenDelta(from: string, to: string, flipped: boolean): { dx: number; dy: number } {
+	const a = cellOf(from, flipped);
+	const b = cellOf(to, flipped);
+	return { dx: b.col - a.col, dy: b.row - a.row };
+}
+
+/** A seeded random number generator (Lehmer), so a seeded effect is the same every time. */
+function seeded(seed: number): () => number {
+	let s = seed;
+	return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
 }
 
 /** The glide's easing: a piece leaves fast and settles gently (easeOutQuart). */
@@ -30,9 +57,7 @@ export const WHIP_TAIL_MS = 160;
  */
 export function trailOf(from: string, to: string, flipped: boolean): { x: number; y: number; length: number; angle: number } {
 	const a = cellOf(from, flipped);
-	const b = cellOf(to, flipped);
-	const dx = b.col - a.col;
-	const dy = b.row - a.row;
+	const { dx, dy } = screenDelta(from, to, flipped);
 	return { x: a.col + 0.5, y: a.row + 0.5, length: Math.hypot(dx, dy), angle: (Math.atan2(dy, dx) * 180) / Math.PI };
 }
 
@@ -41,10 +66,8 @@ export function trailOf(from: string, to: string, flipped: boolean): { x: number
  * screen, positive moving right. A move straight up or down barely tilts.
  */
 export function whiplash(from: string, to: string, flipped: boolean): number {
-	const a = cellOf(from, flipped);
-	const b = cellOf(to, flipped);
-	const dx = b.col - a.col;
-	const dist = Math.hypot(dx, b.row - a.row);
+	const { dx, dy } = screenDelta(from, to, flipped);
+	const dist = Math.hypot(dx, dy);
 	return dist === 0 ? 0 : (5 * dx) / dist;
 }
 
@@ -74,13 +97,13 @@ export function trailColor(code: string): string {
  * up: 15 ms per square of distance, so the moves ripple out from the piece.
  */
 export function rippleDelay(from: string, to: string): number {
-	const df = to.charCodeAt(0) - from.charCodeAt(0);
-	const dr = Number(to[1]) - Number(from[1]);
-	return Math.round(15 * Math.hypot(df, dr));
+	return Math.round(15 * distance(from, to));
 }
 
 /** How long a fall into a pothole plays: a teeter, then the drop. It fits the fall's dice step (dice-timing.json). */
 export const FALL_MS = 550;
+/** The fall's teeter at the hole's edge, before the drop. */
+export const TEETER_MS = 180;
 
 /** A board shake: how far it moves and for how long. */
 export type Shake = { px: number; ms: number };
@@ -118,10 +141,7 @@ export function shakeFrames(px: number): Keyframe[] {
 
 /** Where a taken piece is knocked: a third of a square along the move, in % of a square. */
 export function knockOffset(from: string, to: string, flipped: boolean): { x: number; y: number } {
-	const a = cellOf(from, flipped);
-	const b = cellOf(to, flipped);
-	const dx = b.col - a.col;
-	const dy = b.row - a.row;
+	const { dx, dy } = screenDelta(from, to, flipped);
 	const d = Math.hypot(dx, dy) || 1;
 	const r = (v: number) => Math.round(v * 10) / 10 || 0;
 	return { x: r((33 * dx) / d), y: r((33 * dy) / d) };
@@ -133,8 +153,7 @@ export function knockOffset(from: string, to: string, flipped: boolean): { x: nu
  * burst is the same every time.
  */
 export function burstShards(count = 18, seed = 7): { angle: number; dist: number; spin: number; hazard: boolean }[] {
-	let s = seed;
-	const rand = () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
+	const rand = seeded(seed);
 	return Array.from({ length: count }, (_, i) => ({
 		angle: Math.round(((i + rand() * 0.6) / count) * 360),
 		dist: Math.round((2 + rand() * 3) * 10) / 10,
@@ -152,6 +171,8 @@ export const BURST_HOLD_MS = 1800;
 /** How long the winner's confetti falls, in ms. */
 export const CONFETTI_MS = 2500;
 
+const TONES = ['accent', 'hazard', 'cream'] as const;
+
 export type Confetto = {
 	/** Where it starts across the screen, 0 to 1. */
 	x: number;
@@ -164,7 +185,7 @@ export type Confetto = {
 	/** Its size (px); a cone is drawn in a box this size. */
 	w: number;
 	h: number;
-	tone: 'accent' | 'hazard' | 'cream';
+	tone: (typeof TONES)[number];
 	cone: boolean;
 };
 
@@ -174,9 +195,7 @@ export type Confetto = {
  * time; every piece is through the screen before CONFETTI_MS.
  */
 export function confetti(count = 80, seed = 11): Confetto[] {
-	let s = seed;
-	const rand = () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;
-	const tones = ['accent', 'hazard', 'cream'] as const;
+	const rand = seeded(seed);
 	return Array.from({ length: count }, (_, i) => {
 		const cone = i % 16 === 15;
 		const delay = Math.round(rand() * 500);
@@ -188,7 +207,7 @@ export function confetti(count = 80, seed = 11): Confetto[] {
 			spin: Math.round(rand() * 720 - 360),
 			w: cone ? 12 : Math.round(6 + rand() * 4),
 			h: cone ? 14 : Math.round(10 + rand() * 6),
-			tone: tones[i % 3],
+			tone: TONES[i % 3],
 			cone
 		};
 	});
