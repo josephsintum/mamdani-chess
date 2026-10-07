@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
+	import { page } from '$app/state';
 	import {
 		ApiError,
 		chooseName,
@@ -145,6 +146,12 @@
 			</svg>
 			<span class="title">Mamdani Chess</span>
 		</a>
+		<nav class="links" aria-label="Main">
+			<a href="/how-to-play" aria-current={page.url.pathname === '/how-to-play' ? 'page' : undefined}
+				>How to play</a
+			>
+			<a href="/rules" aria-current={page.url.pathname === '/rules' ? 'page' : undefined}>Rules</a>
+		</nav>
 		{#if name}
 			<div class="me" bind:this={pill} onfocusout={onFocusOut}>
 				<span class="badge" aria-hidden="true">{initials(name)}</span>
@@ -258,6 +265,28 @@
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		white-space: nowrap;
+	}
+	.links {
+		display: flex;
+		gap: 4px;
+		margin-left: auto;
+	}
+	.links a {
+		display: flex;
+		align-items: center;
+		height: 44px;
+		padding: 0 12px;
+		border-radius: 8px;
+		color: var(--text-muted);
+		font-size: 15px;
+		font-weight: 500;
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.links a:hover,
+	.links a[aria-current='page'] {
+		color: var(--text);
+		background: var(--surface);
 	}
 	.me {
 		display: flex;
@@ -420,10 +449,12 @@
 	   Wider than the page's 640 px phone layout, so a long name never
 	   squeezes the logo. */
 	@media (max-width: 799px) {
+		/* The links get their own row: beside a name they'd squeeze the logo. */
 		.inner {
-			height: 60px;
+			flex-wrap: wrap;
+			height: auto;
 			padding: 0 16px;
-			gap: 8px;
+			gap: 0 8px;
 		}
 		.brand {
 			gap: 8px;
@@ -434,6 +465,22 @@
 		}
 		.title {
 			font-size: 22px;
+		}
+		.brand,
+		.me {
+			min-height: 44px;
+			margin-block: 8px;
+		}
+		.links {
+			order: 3;
+			flex-basis: 100%;
+			margin: 0 -8px;
+			padding-bottom: 6px;
+		}
+		.links a {
+			height: 36px;
+			padding: 0 8px;
+			font-size: 14px;
 		}
 		.me {
 			flex-shrink: 0;

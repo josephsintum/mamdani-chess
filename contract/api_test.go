@@ -571,8 +571,14 @@ func TestAppAndPreviews(t *testing.T) {
 			t.Errorf("the invite page lacks %q", want)
 		}
 	}
-	if play := c.do(http.MethodGet, "/play", nil).body; !strings.Contains(play, "<title>Quick match · Mamdani Chess</title>") {
-		t.Error("/play lacks its title")
+	for path, title := range map[string]string{
+		"/play":        "Quick match · Mamdani Chess",
+		"/how-to-play": "How to play · Mamdani Chess",
+		"/rules":       "Rules · Mamdani Chess",
+	} {
+		if body := c.do(http.MethodGet, path, nil).body; !strings.Contains(body, "<title>"+title+"</title>") {
+			t.Errorf("%s lacks its title", path)
+		}
 	}
 }
 

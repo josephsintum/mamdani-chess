@@ -155,6 +155,7 @@
 					<p>If the Mamdani has a clear line to a doomed piece, roll a d8. Odd, and the piece is saved.</p>
 				</div>
 			</div>
+			<p class="learn"><a href="/how-to-play">See it played →</a><a href="/rules">Full rules →</a></p>
 		</div>
 		<figure class="reel">
 			<iframe
@@ -424,6 +425,21 @@
 		height: 10px;
 		border-radius: 50%;
 		background: var(--hazard);
+	}
+	.learn {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 24px;
+		margin: 32px 0 0;
+	}
+	.learn a {
+		color: var(--accent);
+		font-weight: 600;
+		text-decoration: none;
+	}
+	.learn a:hover {
+		text-decoration: underline;
+		text-underline-offset: 3px;
 	}
 	.live {
 		padding: 56px 0 88px;

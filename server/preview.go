@@ -47,8 +47,13 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 // preview describes the page at path. A game link reads the game's last
 // published state, so it never waits on the game.
 func (s *Server) preview(path string) preview {
-	if path == "/play" {
+	switch path {
+	case "/play":
 		return preview{Title: "Quick match · Mamdani Chess", Description: "Get paired with the next player looking for a game."}
+	case "/how-to-play":
+		return preview{Title: "How to play · Mamdani Chess", Description: "Potholes, dice and the Mamdani, played out on the board."}
+	case "/rules":
+		return preview{Title: "Rules · Mamdani Chess", Description: "Every rule of Mamdani Chess: potholes, the Mamdani and saving rolls."}
 	}
 	code, ok := strings.CutPrefix(path, "/game/")
 	if !ok || strings.Contains(code, "/") {
