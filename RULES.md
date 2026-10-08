@@ -17,7 +17,7 @@ Chess comes first; the dice bring chaos, and the Mamdani is how you fight back. 
 
 ## Decisions
 
-All sixteen are agreed. Rows 4, 10, 11 and 16 changed on 2026-10-05 (milestone 06c): potholes closed too fast in sandbox play, and a simulation of 2,000 games per variant found about 2.5 holes open on average, the cap closing about one hole a game, and mates by roll in about 1 game in 1,000.
+All seventeen are agreed. Rows 4, 10, 11 and 16 changed on 2026-10-05 (milestone 06c): potholes closed too fast in sandbox play, and a simulation of 2,000 games per variant found about 2.5 holes open on average, the cap closing about one hole a game, and mates by roll in about 1 game in 1,000. Row 17 changed on 2026-10-08.
 
 | # | Decision | Rule |
 | --- | --- | --- |
@@ -30,13 +30,14 @@ All sixteen are agreed. Rows 4, 10, 11 and 16 changed on 2026-10-05 (milestone 0
 | 7 | Saving rolls | Keep. It's the Mamdani's defensive job and the answer to a bad roll (goal 3). |
 | 8 | Sliders and potholes | Can't cross, with blocked lines shown on the board (goal 4). Knights can jump over a pothole but can't land on it. |
 | 9 | Stalling with the Mamdani | No rule. Either player may move it anywhere it can reach, including straight back. Threefold repetition ends any back-and-forth as a draw. |
-| 10 | Number of potholes | New pothole on every even roll (original), at most 5 open. When a pothole opens with 5 already open, the oldest closes first. Potholes never move. |
+| 10 | Number of potholes | New pothole on every even roll (original), unless it lands on an open one (#17), at most 5 open. When a pothole opens with 5 already open, the oldest closes first. Potholes never move. |
 | 11 | Pothole would checkmate | It stands: a roll can deliver checkmate. Kings still never fall (#6), so a roll can trap a king but never take it. (Was a re-roll; changed by choice, and it decides about 1 game in 1,000.) |
 | 12 | Saving-roll reach | Clear queen line. Nothing between the Mamdani and the square; nothing else is checked. |
 | 13 | Endless re-rolls | Cap at 64. After 64 re-rolls without a valid square, no pothole opens that turn. |
 | 14 | Pawns, castling, en passant | Blocks like a piece. No castling through or onto a pothole (rook's path included), no pawn double-step across one, and a pothole on the en passant square cancels that capture. |
 | 15 | Roll after a checkmating move | No roll. A move that checkmates ends the game at once, so the dice can't undo a mate made on the board (goal 2). |
 | 16 | Check held off only by your own pothole | Checkmate, if that pothole is on its last round: your next move closes it, so if the king would then be in check and no move fixes it, it is checkmate. |
+| 17 | Dice land on an open pothole | It resets. The pothole becomes the roller's, with three rounds again, and counts as the newest for the cap (#10). Nothing falls, and no other pothole opens or closes. (Was a re-roll; changed by choice.) |
 
 ## Setup
 
@@ -59,17 +60,17 @@ Every turn is one move followed by one pothole roll. Play these steps in order:
 2. **Count down.** Each pothole you rolled loses a round (take a marker off it). One with no rounds left closes now.
 3. **Repair.** Any open pothole next to the Mamdani (any of its 8 surrounding squares) is repaired and removed.
 4. **Roll for a pothole.** Roll a d8. Odd: nothing happens and the turn ends. Even: a pothole opens.
-5. **Place it.** Roll two d8s for file and rank. Resolve that square as described in Potholes and Saving rolls. If it opens with 5 already open, the oldest closes first. A new pothole has 3 rounds.
+5. **Place it.** Roll two d8s for file and rank. Resolve that square as described in Potholes and Saving rolls. If it opens with 5 already open, the oldest closes first. A new pothole has 3 rounds, and so does one the dice land on again.
 
 ## Potholes
 
-A pothole destroys whatever stands on its square, unless a saving roll succeeds. It then blocks that square for three rounds: it closes when the player who rolled it finishes their third move after opening it. Every even roll opens a new pothole; potholes never move. Up to 5 can be open at once, each closing on its own schedule; when a pothole opens with 5 already open, the oldest closes first.
+A pothole destroys whatever stands on its square, unless a saving roll succeeds. It then blocks that square for three rounds: it closes when the player who rolled it finishes their third move after opening it. Every even roll opens a new pothole, unless the dice land on an open one, which resets instead; potholes never move. Up to 5 can be open at once, each closing on its own schedule; when a pothole opens with 5 already open, the oldest closes first.
 
 When the d8s land on a square:
 
 - **King:** kings never fall. Re-roll both d8s.
 - **Next to the Mamdani:** the pothole is repaired the moment it opens. Nothing falls.
-- **Already a pothole:** re-roll both d8s.
+- **Already a pothole:** it resets. It becomes the roller's, with 3 rounds again (put its markers back), and counts as the newest pothole. Nothing falls, and no other pothole opens or closes.
 - **Would expose the roller's king:** if the piece falling would leave the player who just moved in check once the hole closes, or if the cap closing the oldest pothole would leave them in check, re-roll both d8s.
 - **Too many re-rolls:** after 64 re-rolls without a valid square, no pothole opens this turn.
 - **Empty square:** the pothole opens. Mark it with a checker and 3 markers for its rounds.

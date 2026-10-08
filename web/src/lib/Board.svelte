@@ -450,6 +450,19 @@
 		return { duration: ms(300), css: (t: number) => `opacity: ${t}; transform: translateY(${(1 - t) * -60}%)` };
 	}
 
+	/**
+	 * A reset hole gets its rounds back: the new cones drop onto its edge one
+	 * after another and bounce. Only added cones play it; a new hole's cones
+	 * come with the hole.
+	 */
+	function restack(_node: Element, { n }: { n: number }) {
+		return {
+			delay: ms(n * 90),
+			duration: ms(380),
+			css: (t: number) => `opacity: ${Math.min(1, t * 3)}; transform: translateY(${-90 * (1 - t) * (1 - t)}%) scale(${1 + 0.15 * Math.sin(t * Math.PI)})`
+		};
+	}
+
 	/** The target ring drops onto its square. */
 	function drop(_node: Element) {
 		return { duration: ms(260), css: (t: number) => `transform: scale(${1.5 - 0.5 * t}); opacity: ${t}` };
@@ -537,7 +550,7 @@
 					<!-- One cone per round left, on the hole's front edge. -->
 					<span class="cones">
 						{#each { length: h.left }, n (n)}
-							<svg class="mini-cone" class:last={h.left === 1} viewBox="0 0 40 40" out:liftCone>
+							<svg class="mini-cone" class:last={h.left === 1} viewBox="0 0 40 40" in:restack={{ n }} out:liftCone>
 								{@render coneShape()}
 							</svg>
 						{/each}

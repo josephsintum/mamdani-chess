@@ -54,7 +54,7 @@ export const scenes = {
 		start: () => position('6k1/5ppp/8/8/8/R7/3N1PPP/6K1', { mamdani: 'h4', potholes: [hole('d3', 'black', 3)] }),
 		steps: [{ show: 'a3' }, { show: 'd2' }, { move: m('d2', 'e4'), hold: 1400 }]
 	},
-	/** Cones count a pothole's rounds down; a sixth closes the oldest. */
+	/** Cones count a pothole's rounds down; a sixth closes the oldest; a roll onto a hole resets it. */
 	rounds: {
 		id: 'rounds',
 		start: () =>
@@ -65,7 +65,8 @@ export const scenes = {
 		steps: [
 			{ move: m('h2', 'h3'), roll: { pothole: 3 } },
 			{ move: m('h7', 'h6'), roll: { pothole: 6, target: 'a3' } },
-			{ move: m('g2', 'g3'), roll: { pothole: 4, target: 'h5' }, hold: 1600 }
+			{ move: m('g2', 'g3'), roll: { pothole: 4, target: 'h5' }, hold: 1600 },
+			{ move: m('g7', 'g5'), roll: { pothole: 2, target: 'f3' }, hold: 1600 }
 		]
 	},
 	/** The Mamdani blocks lines like a piece: here a bishop's check. */

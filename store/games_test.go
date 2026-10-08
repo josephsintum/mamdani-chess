@@ -175,12 +175,41 @@ func TestMigration5RetiresOldGames(t *testing.T) {
 	}
 
 	must(t, s.CreateGame(ctx, Game{Code: "NEW001", White: "a", CreatedAt: t0}))
-	if r := read("NEW001"); r.rules != 2 {
-		t.Errorf("NEW001 saved under rules %d, want 2", r.rules)
+	if r := read("NEW001"); r.rules != rulesVersion {
+		t.Errorf("NEW001 saved under rules %d, want %d", r.rules, rulesVersion)
 	}
 	got, err := s.LoadForRestore(ctx, t0)
 	must(t, err)
 	if len(got) != 1 || got[0].Code != "NEW001" {
 		t.Fatalf("loaded %+v, want only NEW001", got)
+	}
+}
+
+// Migration 6 retires an unfinished game saved under rules 2, whose turns
+// may have re-rolled off an open pothole, and leaves a finished one as it
+// was. Neither loads; a game created afterwards does.
+func TestMigration6RetiresRules2Games(t *testing.T) {
+	ctx := t.Context()
+	s := openAt(t, 5,
+		fmt.Sprintf(`INSERT INTO games (code, white, black, created_at, rules) VALUES ('OPEN02', 'a', 'b', %d, 2)`, t0.UnixMilli()),
+		fmt.Sprintf(`INSERT INTO games (code, white, black, created_at, ended_at, result, winner, rules)
+		 VALUES ('DONE02', 'a', 'b', %d, %d, 'checkmate', 'white', 2)`, t0.UnixMilli(), t0.Add(time.Minute).UnixMilli()),
+	)
+	result := func(code string) string {
+		var r string
+		must(t, s.db.QueryRowContext(ctx, `SELECT COALESCE(result, '') FROM games WHERE code = ?`, code).Scan(&r))
+		return r
+	}
+	if r := result("OPEN02"); r != "retired" {
+		t.Errorf("OPEN02 result %q, want retired", r)
+	}
+	if r := result("DONE02"); r != "checkmate" {
+		t.Errorf("DONE02 result %q, want checkmate", r)
+	}
+	must(t, s.CreateGame(ctx, Game{Code: "NEW002", White: "a", CreatedAt: t0}))
+	got, err := s.LoadForRestore(ctx, t0)
+	must(t, err)
+	if len(got) != 1 || got[0].Code != "NEW002" {
+		t.Fatalf("loaded %+v, want only NEW002", got)
 	}
 }

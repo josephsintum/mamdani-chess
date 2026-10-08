@@ -5,12 +5,13 @@
 import type { EventJSON, View } from './game.ts';
 import { HOLE_ROUNDS } from './wire.gen.ts';
 
-export type Tip = 'move' | 'roll' | 'opened' | 'fell' | 'saving' | 'repaired';
+export type Tip = 'move' | 'roll' | 'opened' | 'reset' | 'fell' | 'saving' | 'repaired';
 
 export const TIPS: Record<Tip, string> = {
 	move: 'Your move. You may move the Mamdani instead of a piece.',
 	roll: 'Every move ends with a d8. Even opens a pothole.',
 	opened: `A pothole stays ${HOLE_ROUNDS} of its roller's moves. The cones count down.`,
+	reset: `The dice landed on a pothole: it's the roller's now, with ${HOLE_ROUNDS} rounds again.`,
 	fell: 'A piece fell in. A clear line from the Mamdani gives a saving roll.',
 	saving: 'A saving roll: odd saves the piece.',
 	repaired: 'The Mamdani repairs any pothole next to it.'
@@ -19,13 +20,14 @@ export const TIPS: Record<Tip, string> = {
 const byEvent: Partial<Record<EventJSON['kind'], Tip>> = {
 	rolled_pothole: 'roll',
 	pothole_opened: 'opened',
+	pothole_reset: 'reset',
 	fell: 'fell',
 	saving_roll: 'saving',
 	repaired: 'repaired'
 };
 
 // The rarer moment first: a turn that saves a piece also rolled the dice.
-const rarestFirst: Tip[] = ['repaired', 'saving', 'fell', 'opened', 'roll'];
+const rarestFirst: Tip[] = ['repaired', 'reset', 'saving', 'fell', 'opened', 'roll'];
 
 /**
  * The tip for a view, or null: something the turn did that you haven't had

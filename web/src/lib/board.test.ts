@@ -169,6 +169,18 @@ describe('stageAt', () => {
 		expect(stageAt(v, 5).potholes).toEqual([{ sq: 'd4', by: 'white', left: 3 }]);
 	});
 
+	it('keeps a reset hole’s roller and rounds until the reset shows', () => {
+		const last: EventJSON[] = [
+			{ kind: 'moved', from: 'e7', to: 'e5', piece: 'bP', color: 'black' },
+			{ kind: 'rolled_pothole', roll: 6, color: 'black' },
+			{ kind: 'target', sq: 'd4' },
+			{ kind: 'pothole_reset', sq: 'd4', color: 'black', was: 'white', left: 1 }
+		];
+		const v = makeView({}, { last, potholes: [{ sq: 'd4', by: 'black', left: 3 }] });
+		expect(stageAt(v, 3).potholes).toEqual([{ sq: 'd4', by: 'white', left: 1 }]);
+		expect(stageAt(v, 4).potholes).toEqual([{ sq: 'd4', by: 'black', left: 3 }]);
+	});
+
 	it('closes a hole on its schedule before the roll at once', () => {
 		const last: EventJSON[] = [
 			{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' },
@@ -254,6 +266,24 @@ describe('diceSteps for the cap', () => {
 		]);
 		const sum = diceSummary(makeView({}, { last }), last.length);
 		expect(sum.chips.map((c) => c.text)).toEqual(['2', 'd4', 'opens', 'c4 closes']);
+	});
+
+	it('says a hole the dice land on resets, and whose it is now', () => {
+		const last: EventJSON[] = [
+			{ kind: 'moved', from: 'e7', to: 'e5', piece: 'bP', color: 'black' },
+			{ kind: 'rolled_pothole', roll: 6, color: 'black' },
+			{ kind: 'target', sq: 'd4' },
+			{ kind: 'pothole_reset', sq: 'd4', color: 'black', was: 'white', left: 1 }
+		];
+		const v = makeView({}, { last, potholes: [{ sq: 'd4', by: 'black', left: 3 }] });
+		expect(diceSteps(v, last.length).map((s) => [s.title, s.detail])).toEqual([
+			['Even. A pothole opens', 'd8 rolled 6'],
+			['Square d4', 'File 4 = d, rank 4. A pothole is there'],
+			['Pothole on d4 reset', 'Now Black’s: it closes after 3 of their moves']
+		]);
+		const sum = diceSummary(v, last.length);
+		expect(sum.chips.map((c) => c.text)).toEqual(['6', 'd4', 'reset']);
+		expect(sum.line).toBe('Pothole on d4 reset · Black’s now, 3 rounds');
 	});
 });
 

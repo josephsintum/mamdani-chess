@@ -126,6 +126,11 @@ export function stageAt(view: View, shown: number): Stage {
 		// sends the fall, the cap's close (with 5 open), then the new hole.
 		const withFall = () => fallsWith(view.last, i) < shown;
 		if (e.kind === 'pothole_opened' && !revealed && !withFall()) potholes = potholes.filter((p) => p.sq !== e.sq);
+		// A reset hole keeps its roller and rounds until the reset shows.
+		if (e.kind === 'pothole_reset' && !revealed && e.was && e.left) {
+			const { was, left } = e;
+			potholes = potholes.map((p) => (p.sq === e.sq ? { ...p, by: was, left } : p));
+		}
 		// The cap closes the oldest hole as a new one opens: until then it stays.
 		if (e.kind === 'pothole_closed' && !revealed && i > roll && e.sq && e.color && !withFall()) potholes = [...potholes, { sq: e.sq, by: e.color, left: 1 }];
 	});
@@ -191,7 +196,11 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 				const rank = Number(sq[1]);
 				const before = stageAt(view, i);
 				const occupant = pieceOn(before, sq);
-				const there = occupant ? `${capitalize(pieceName(occupant))} is there` : 'Empty square';
+				const there = before.potholes.some((p) => p.sq === sq)
+					? 'A pothole is there'
+					: occupant
+						? `${capitalize(pieceName(occupant))} is there`
+						: 'Empty square';
 				steps.push({ title: `Square ${sq}`, detail: `File ${file} = ${sq[0]}, rank ${rank}. ${there}`, dice: stepDice(view, i), tone: 'normal', revealAt: revealAt(e) });
 				break;
 			}
@@ -219,6 +228,14 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 				steps.push({
 					title: `Pothole opens on ${e.sq}`,
 					detail: `It closes after ${HOLE_ROUNDS} of ${colorTitle(e.color)}’s moves`,
+					dice: [],
+					tone: 'hazard'
+				});
+				break;
+			case 'pothole_reset':
+				steps.push({
+					title: `Pothole on ${e.sq} reset`,
+					detail: `Now ${colorTitle(e.color)}’s: it closes after ${HOLE_ROUNDS} of their moves`,
 					dice: [],
 					tone: 'hazard'
 				});
@@ -315,6 +332,10 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 					[line, tone] = [`Pothole on ${e.sq} · closes after ${HOLE_ROUNDS} of ${colorTitle(e.color)}’s moves`, 'hazard'];
 				}
 				if (capped) chips.push({ text: `${capped} closes`, kind: 'plain' });
+				break;
+			case 'pothole_reset':
+				chips.push({ text: 'reset', kind: 'bad' });
+				[line, tone] = [`Pothole on ${e.sq} reset · ${colorTitle(e.color)}’s now, ${HOLE_ROUNDS} rounds`, 'hazard'];
 				break;
 			case 'repaired':
 				if (square === e.sq) {

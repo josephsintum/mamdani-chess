@@ -96,6 +96,11 @@ describe('the board during a roll', () => {
 		expect(scanOf(v, 4)).toBeNull(); // the re-roll: no scan while the target blinks
 		expect(scanOf(v, 5)?.sq).toBe('b4');
 	});
+	it('says a reset, with no re-roll blink', () => {
+		const v = view([move, { kind: 'rolled_pothole', roll: 4 }, { kind: 'target', sq: 'd4' }, { kind: 'pothole_reset', sq: 'd4', color: 'white', was: 'black', left: 1 }]);
+		expect(dicePill(v, 4)).toEqual({ key: '7:3', text: 'Pothole reset: 3 rounds', tone: 'pot', last: true });
+		expect(scanOf(v, 4)?.sq).toBe('d4');
+	});
 	it('says nothing before the roll', () => {
 		expect(dicePill(view([move, { kind: 'rolled_pothole', roll: 3 }]), 1)).toBeNull();
 	});
