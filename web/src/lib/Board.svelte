@@ -770,9 +770,8 @@
 		aspect-ratio: 1;
 		border-radius: 8px;
 		overflow: hidden;
-		box-shadow:
-			0 0 0 1px var(--hole),
-			0 14px 36px var(--hole);
+		/* A thin ring, no drop shadow: one would fall on the coordinates below. */
+		box-shadow: 0 0 0 1px var(--hole);
 		touch-action: none;
 		user-select: none;
 		-webkit-touch-callout: none;
