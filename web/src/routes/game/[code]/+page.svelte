@@ -96,14 +96,16 @@
 	// At the start it waits a moment, behind the "… joined" notice.
 	const FIRST_TIP_MS = 1500;
 	let tipTimer: ReturnType<typeof setTimeout> | undefined;
+	let lastTipSeq: number | undefined; // the turn the last tip showed on
 	function scheduleTip(next: View) {
 		clearTimeout(tipTimer);
 		if (instant || !tipsOn()) return;
-		const tip = tipFor(next, seenTips(), anim.animated);
+		const tip = tipFor(next, seenTips(), anim.animated, lastTipSeq);
 		if (!tip) return;
 		tipTimer = setTimeout(
 			() => {
 				markSeen(tip);
+				lastTipSeq = next.seq;
 				notify.info(TIPS[tip], { id: 'tip', duration: 6000, action: { label: 'No more tips', onClick: () => setTipsOn(false) } });
 			},
 			anim.animated ? playOutMs(next.last) : FIRST_TIP_MS
