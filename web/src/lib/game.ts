@@ -135,7 +135,6 @@ export function pieceName(code = ''): string {
 /** Why the dice picked again (a reroll event's reason). */
 export const rerollReasons: Record<string, string> = {
 	king: 'kings never fall',
-	pothole: 'already a pothole',
 	exposes: 'would expose the roller’s king'
 };
 

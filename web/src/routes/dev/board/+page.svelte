@@ -5,7 +5,7 @@
 	import ScriptedBoard from '#lib/ScriptedBoard.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { dicePace } from '#lib/dice.ts';
-	import { pieceOn, pillFor, squareAt, squareIndex, stageAt } from '#lib/board.ts';
+	import { materialLead, pieceOn, pillFor, squareAt, squareIndex, stageAt } from '#lib/board.ts';
 	import { opponent, sideName, squareName, type Color, type MoveJSON, type View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
@@ -54,7 +54,7 @@
 
 	/**
 	 * Where the placement dice land: the typed square, or, with Random, two d8s
-	 * re-rolled past kings and open potholes as the server does.
+	 * re-rolled past kings as the server does (an open pothole resets).
 	 */
 	function placement(v: View): Pick<RollScript, 'rerolls' | 'target'> {
 		if (targetMode === 'square') return { target };
@@ -62,7 +62,6 @@
 		for (let i = 0; i < 64; i++) {
 			const sq = squareAt(d8() - 1, d8() - 1);
 			if (pieceOn(v, sq)[1] === 'K') rerolls.push({ sq, reason: 'king' });
-			else if (v.potholes.some((h) => h.sq === sq)) rerolls.push({ sq, reason: 'pothole' });
 			else return { rerolls, target: sq };
 		}
 		return { rerolls, target };
@@ -86,8 +85,7 @@
 			case 'mamdaniFalls':
 				return v.mamdani ? { pothole: 8, target: v.mamdani, save: 2 } : { pothole: 1 };
 			case 'random': {
-				const holes = new Set(v.potholes.map((p) => p.sq));
-				const squares = [...Array(64).keys()].map(squareName).filter((s, i) => !holes.has(s) && v.board[i][1] !== 'K');
+				const squares = [...Array(64).keys()].map(squareName).filter((_, i) => v.board[i][1] !== 'K');
 				const t = squares[Math.floor(Math.random() * squares.length)];
 				const occupied = t === v.mamdani || !!v.board[squareIndex(t)];
 				return { pothole: d8(), target: t, save: occupied && Math.random() < 0.5 ? d8() : undefined };
@@ -196,9 +194,9 @@
 		</div>
 
 		<div class="board-col">
-			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} pill={topPill.text} pillTone={topPill.tone} />
+			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} taken={view.taken[top]} lead={materialLead(stage.board)[top]} pill={topPill.text} pillTone={topPill.tone} />
 			<ScriptedBoard {anim} {legal} flipped={bottom === 'black'} interactive still={instant} id="sandbox" ending={endings} onmove={move} />
-			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={bottomPill.text} pillTone={bottomPill.tone} />
+			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} taken={view.taken[bottom]} lead={materialLead(stage.board)[bottom]} pill={bottomPill.text} pillTone={bottomPill.tone} />
 		</div>
 
 		<div class="side">

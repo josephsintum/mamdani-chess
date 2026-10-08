@@ -30,7 +30,10 @@
 		{ name: 'Count down.', text: 'Each pothole you rolled loses a round: a cone comes off. One with none left closes.' },
 		{ name: 'Repair.', text: 'Any pothole next to the Mamdani is repaired.' },
 		{ name: 'Roll a d8.', text: 'Odd: nothing happens. Even: a pothole opens.' },
-		{ name: 'Place it.', text: `Two d8s pick the file (1 = a … 8 = h) and the rank. With ${HOLE_CAP} already open, the oldest closes first.` }
+		{
+			name: 'Place it.',
+			text: `Two d8s pick the file (1 = a … 8 = h) and the rank. With ${HOLE_CAP} already open, the oldest closes first. If they land on an open pothole, it resets instead.`
+		}
 	];
 </script>
 
@@ -101,6 +104,7 @@
 					</li>
 					<li>It stays open for {HOLE_ROUNDS} of its roller's moves. The cones on its edge count them down.</li>
 					<li>At most {HOLE_CAP} are open at once. When another opens, the oldest closes.</li>
+					<li>If the dice land on an open pothole, it resets: it's the roller's now, with {HOLE_ROUNDS} rounds again.</li>
 				</ul>
 				{@render played('roads')}
 			</div>
@@ -203,7 +207,10 @@
 					<h3>When the dice land on a square</h3>
 					<ul>
 						<li><strong>A king:</strong> kings never fall. Both d8s roll again.</li>
-						<li><strong>A pothole:</strong> both d8s roll again.</li>
+						<li>
+							<strong>A pothole:</strong> it resets. It becomes the roller's, with {HOLE_ROUNDS} rounds again, and counts as
+							the newest. Nothing else opens or closes.
+						</li>
 						<li>
 							<strong>A square that would expose the roller's king:</strong> if the piece falling would leave the player
 							who just moved in check once the hole closes, or the cap closing the oldest pothole would, both d8s roll

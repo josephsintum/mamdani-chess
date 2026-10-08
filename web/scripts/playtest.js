@@ -269,7 +269,8 @@ async function playGame(browser, n) {
 	const pair = new Set([ow.title.toLowerCase(), ob.title.toLowerCase()]);
 	const agree = ow.kicker === ob.kicker && (ow.title === ob.title ? !/^you /i.test(ow.title) : pair.has('you win') && pair.has('you lost'));
 	if (!agree) errors.push(`the two sides disagree: "${result}" / "${resultBlack}"`);
-	const lost = await w.locator('.glyphs').evaluateAll((gs) => gs.map((g) => g.querySelectorAll('img').length));
+	// Each bar's pieces lost to potholes: icons on a computer, a count on a phone.
+	const lost = await w.locator('.bar').evaluateAll((bars) => bars.map((b) => b.querySelectorAll('.glyphs img').length || Number(b.querySelector('.pothole')?.textContent || 0)));
 	await Promise.all(contexts.map((c) => c.close()));
 	return { game: n, url, plies, drags, resigned, result, lost, seconds: Math.round((Date.now() - started) / 1000), errors };
 }

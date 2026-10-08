@@ -7,14 +7,14 @@
 import { HOLE_CAP, HOLE_ROUNDS } from './wire.gen.ts';
 import { squareAt, squareIndex } from './board.ts';
 import { applyMove } from './pieces.ts';
-import { rerollReasons, type Color, type EventJSON, type MoveJSON, type View } from './game.ts';
+import { rerollReasons, type Color, type EventJSON, type LogEntry, type MoveJSON, type View } from './game.ts';
 
 /** What the dice do on the next turn. */
 export interface RollScript {
 	/** The pothole d8: odd means nothing happens. */
 	pothole: number;
 	/** Squares re-rolled before the final target: a bare square is a king ("kings never fall"). */
-	rerolls?: (string | { sq: string; reason: 'king' | 'pothole' })[];
+	rerolls?: (string | { sq: string; reason: 'king' | 'exposes' })[];
 	/** The square the placement dice pick. */
 	target?: string;
 	/** A saving roll for a piece or the Mamdani on the target: odd saves. */
@@ -36,6 +36,7 @@ export function emptyView(): View {
 		last: [],
 		log: [],
 		lost: { white: [], black: [] },
+		taken: { white: [], black: [] },
 		stats: { savingRolls: 0, saved: 0, repaired: 0, mamdaniFell: false },
 		result: null,
 		seq: 0,
@@ -234,7 +235,10 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 	ev.push({ kind: 'moved', from: move.from, to: move.to, piece, color: mover, ...(move.promo ? { promo: move.promo } : {}) });
 	if (!isMamdani) {
 		const captured = v.board[squareIndex(move.to)];
-		if (captured) ev.push({ kind: 'captured', sq: move.to, piece: captured });
+		if (captured) {
+			ev.push({ kind: 'captured', sq: move.to, piece: captured });
+			v.taken[mover].push(captured);
+		}
 	}
 	Object.assign(v, applyMove(v, move));
 
@@ -266,14 +270,20 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 		let text = `→ ${t}`;
 		const occupant = t === v.mamdani ? 'M' : v.board[squareIndex(t)];
 		let opens = true;
-		const reroll = occupant?.[1] === 'K' ? 'king' : v.potholes.some((h) => h.sq === t) ? 'pothole' : null;
-		if (reroll) {
-			// Kings never fall, and a square holds one pothole: the server
-			// re-rolls both d8s. A scripted target would land here again, so the
-			// sandbox stops at the re-roll.
-			ev.push({ kind: 'reroll', sq: t, reason: reroll });
+		const hole = v.potholes.find((h) => h.sq === t);
+		if (hole) {
+			// A roll onto an open hole resets it: the mover's now, the newest,
+			// with every round to go. Nothing opens, so the cap closes nothing.
+			ev.push({ kind: 'pothole_reset', sq: t, color: mover, was: hole.by, left: hole.left });
+			v.potholes = [...v.potholes.filter((h) => h !== hole), { sq: t, by: mover, left: HOLE_ROUNDS }];
 			opens = false;
-			text += ` re-roll (${rerollReasons[reroll]})`;
+			text += ' reset';
+		} else if (occupant?.[1] === 'K') {
+			// Kings never fall: the server re-rolls both d8s. A scripted target
+			// would land here again, so the sandbox stops at the re-roll.
+			ev.push({ kind: 'reroll', sq: t, reason: 'king' });
+			opens = false;
+			text += ` re-roll (${rerollReasons.king})`;
 		} else if (v.mamdani && t !== v.mamdani && adjacent(t, v.mamdani)) {
 			ev.push({ kind: 'repaired', sq: t });
 			v.stats.repaired++;
@@ -319,7 +329,14 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 	}
 
 	v.last = ev;
-	v.log.push({ san: `${move.from}–${move.to}`, color: mover, dice: dice.join(' · ') });
+	// What the log marks, picked out of the events as the server's logEntry does.
+	const entry: LogEntry = { san: `${move.from}–${move.to}`, color: mover, piece, dice: dice.join(' · ') };
+	for (const e of ev) {
+		if (e.kind === 'pothole_opened') entry.opened = e.sq;
+		if (e.kind === 'fell' && e.piece) (entry.fell ??= []).push(e.piece);
+		if (e.kind === 'repaired') entry.repaired = true;
+	}
+	v.log.push(entry);
 	v.turn = mover === 'white' ? 'black' : 'white';
 	v.seq++;
 	return v;

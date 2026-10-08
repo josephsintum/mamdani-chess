@@ -62,6 +62,8 @@ func playTime(e rules.Event) time.Duration {
 		ms = 1250 // the file and rank dice, out of sync, with the scan
 	case rules.Reroll:
 		ms = 500 // the target blinks twice
+	case rules.PotholeReset:
+		ms = 600 // the cones restack
 	case rules.SavingRoll:
 		ms = 750
 	case rules.Fell:

@@ -65,7 +65,7 @@ describe('playTurn', () => {
 		expect(v.turn).toBe('black');
 		expect(v.seq).toBe(1);
 		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole']);
-		expect(v.log).toEqual([{ san: 'e2–e4', color: 'white', dice: 'd8 1' }]);
+		expect(v.log).toEqual([{ san: 'e2–e4', color: 'white', piece: 'wP', dice: 'd8 1' }]);
 	});
 
 	it('opens a pothole on an empty square and closes it after 3 of the roller’s moves', () => {
@@ -100,7 +100,14 @@ describe('playTurn', () => {
 	it('logs a repair made by the Mamdani’s move, as the server does', () => {
 		const v = playTurn(positions.repair(), { from: 'c3', to: 'e5' }, odd);
 		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'repaired', 'rolled_pothole']);
-		expect(v.log.at(-1)?.dice).toBe('repairs f6 · d8 1');
+		expect(v.log.at(-1)).toEqual({ san: 'c3–e5', color: 'white', piece: 'M', dice: 'repairs f6 · d8 1', repaired: true });
+	});
+
+	it('counts a capture as taken by the side that made it', () => {
+		let v = playTurn(startView(), { from: 'e2', to: 'e4' }, odd);
+		v = playTurn(v, { from: 'd7', to: 'd5' }, odd);
+		v = playTurn(v, { from: 'e4', to: 'd5' }, odd);
+		expect(v.taken).toEqual({ white: ['bP'], black: [] });
 	});
 
 	it('drops a piece without a saving roll and counts it as lost', () => {
@@ -108,6 +115,7 @@ describe('playTurn', () => {
 		expect(v.board[squareIndex('g8')]).toBe('');
 		expect(v.lost.black).toEqual(['bN']);
 		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole', 'target', 'fell', 'pothole_opened']);
+		expect(v.log.at(-1)).toMatchObject({ opened: 'g8', fell: ['bN'] });
 	});
 
 	it('saves a piece on an odd saving roll and drops it on an even one', () => {
@@ -133,13 +141,29 @@ describe('playTurn', () => {
 		expect(v.stats.repaired).toBe(1);
 	});
 
-	it('never opens a second pothole on a square that already has one (re-roll, as the rules say)', () => {
+	it('resets a pothole the dice land on: the roller’s now, newest, with every round', () => {
 		// The sandbox's default script: every even roll targets d4.
 		let v = playTurn(startView(), { from: 'e2', to: 'e4' }, { pothole: 2, target: 'd4' });
-		v = playTurn(v, { from: 'e7', to: 'e5' }, { pothole: 2, target: 'd4' });
-		expect(v.potholes).toEqual([{ sq: 'd4', by: 'white', left: 3 }]);
-		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole', 'target', 'reroll']);
-		expect(v.last.at(-1)).toEqual({ kind: 'reroll', sq: 'd4', reason: 'pothole' });
+		v = playTurn(v, { from: 'e7', to: 'e5' }, { pothole: 2, target: 'h6' });
+		v = playTurn(v, { from: 'g1', to: 'f3' }, odd);
+		v = playTurn(v, { from: 'b8', to: 'c6' }, { pothole: 2, target: 'd4' });
+		expect(v.potholes).toEqual([
+			{ sq: 'h6', by: 'black', left: 2 },
+			{ sq: 'd4', by: 'black', left: 3 }
+		]);
+		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole', 'target', 'pothole_reset']);
+		expect(v.last.at(-1)).toEqual({ kind: 'pothole_reset', sq: 'd4', color: 'black', was: 'white', left: 2 });
+		expect(v.log.at(-1)?.dice).toBe('d8 2 → d4 reset');
+	});
+
+	it('resets a pothole under the cap without closing the oldest', () => {
+		let v = startView();
+		const moves: [string, string][] = [['a2', 'a3'], ['a7', 'a6'], ['b2', 'b3'], ['b7', 'b6'], ['c2', 'c3']];
+		const holes = ['c4', 'd4', 'e4', 'f4', 'g4'];
+		moves.forEach(([from, to], i) => (v = playTurn(v, { from, to }, { pothole: 2, target: holes[i] })));
+		v = playTurn(v, { from: 'c7', to: 'c6' }, { pothole: 2, target: 'e4' });
+		expect(v.potholes.map((h) => h.sq)).toEqual(['c4', 'd4', 'f4', 'g4', 'e4']);
+		expect(v.last.some((e) => e.kind === 'pothole_closed')).toBe(false);
 	});
 
 	it('re-rolls a typed target on a king instead of dropping the king', () => {

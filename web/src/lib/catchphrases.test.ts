@@ -7,7 +7,7 @@ const roll: EventJSON[] = [{ kind: 'moved', from: 'e2', to: 'e4' }, { kind: 'rol
 /** Kings on e1 and e8, two pawns each. */
 const base = boardOf({ e1: 'wK', a2: 'wP', b2: 'wP', a7: 'bP', b7: 'bP', e8: 'bK' });
 /** A game's move log, White first. */
-const log = (...sans: string[]) => sans.map((san, i) => ({ san, color: (i % 2 ? 'black' : 'white') as Color, dice: '' }));
+const log = (...sans: string[]) => sans.map((san, i) => ({ san, color: (i % 2 ? 'black' : 'white') as Color, piece: '', dice: '' }));
 
 describe('quipFor', () => {
 	it('finds the Mamdani falling in, once that step is revealed', () => {

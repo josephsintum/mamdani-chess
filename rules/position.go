@@ -135,19 +135,40 @@ func (p *Position) openHole(s Square, c Color, ev *[]Event) {
 	if i := p.capVictim(); i >= 0 {
 		p.closeHole(i, ev)
 	}
-	var seq uint32
 	free := -1
 	for i, h := range p.Potholes {
 		if h.Sq == NoSquare {
-			if free < 0 {
-				free = i
-			}
-		} else if h.Seq > seq {
+			free = i
+			break
+		}
+	}
+	p.Potholes[free] = Hole{Sq: s, By: c, Left: HoleRounds, Seq: p.nextSeq()}
+	emit(ev, Event{Kind: PotholeOpened, Square: s, Color: c})
+}
+
+// resetHole gives the open hole on s to c, rolled again onto it, with every
+// round to go. It counts as the newest hole, but no hole opens, so the cap
+// closes nothing.
+func (p *Position) resetHole(s Square, c Color, ev *[]Event) {
+	for i, h := range p.Potholes {
+		if h.Sq == s {
+			p.Potholes[i] = Hole{Sq: s, By: c, Left: HoleRounds, Seq: p.nextSeq()}
+			emit(ev, Event{Kind: PotholeReset, Square: s, Color: c, Was: h.By, Left: h.Left})
+			return
+		}
+	}
+}
+
+// nextSeq returns the Seq for a hole that is newest from now: one more
+// than the newest still open.
+func (p *Position) nextSeq() uint32 {
+	var seq uint32
+	for _, h := range p.Potholes {
+		if h.Sq != NoSquare && h.Seq > seq {
 			seq = h.Seq
 		}
 	}
-	p.Potholes[free] = Hole{Sq: s, By: c, Left: HoleRounds, Seq: seq + 1}
-	emit(ev, Event{Kind: PotholeOpened, Square: s, Color: c})
+	return seq + 1
 }
 
 // closeHole closes the hole in slot i as it reaches the end of its rounds
@@ -212,7 +233,7 @@ type Key struct {
 // slots last, so the same holes match whichever slots they sit in. Seq is
 // left out: it only says which hole is oldest, and that already follows
 // from each hole's roller and rounds left, since at most one hole opens
-// per move.
+// or resets per move.
 func (p *Position) Key() Key {
 	holes := noHoles()
 	n := 0

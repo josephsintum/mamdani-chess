@@ -18,7 +18,7 @@ import (
 )
 
 // viewKeys is a view's keys, in the order the server sends them.
-var viewKeys = []string{"code", "status", "you", "board", "mamdani", "potholes", "turn", "check", "legal", "last", "log", "lost", "stats", "result", "seq", "clock", "online", "players", "rematch"}
+var viewKeys = []string{"code", "status", "you", "board", "mamdani", "potholes", "turn", "check", "legal", "last", "log", "lost", "taken", "stats", "result", "seq", "clock", "online", "players", "rematch"}
 
 // apiError is an error response's message.
 type apiError struct{ Error string }

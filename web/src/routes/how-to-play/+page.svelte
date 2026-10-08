@@ -35,8 +35,8 @@
 		{
 			scene: scenes.rounds,
 			title: `${HOLE_ROUNDS} rounds, ${HOLE_CAP} at most`,
-			text: `A pothole stays open for ${HOLE_ROUNDS} of its roller's moves, and the cones on its edge count them down. At most ${HOLE_CAP} are open at once: when another opens, the oldest closes.`,
-			label: 'Each move takes a cone off the mover’s potholes, and the one on c4 closes. Black opens a pothole on a3, making five. White opens one on h5, and the oldest, on e5, closes.',
+			text: `A pothole stays open for ${HOLE_ROUNDS} of its roller's moves, and the cones on its edge count them down. At most ${HOLE_CAP} are open at once: when another opens, the oldest closes. If the dice land on an open pothole, it resets: it's the roller's now, with ${HOLE_ROUNDS} rounds again.`,
+			label: 'Each move takes a cone off the mover’s potholes, and the one on c4 closes. Black opens a pothole on a3, making five. White opens one on h5, and the oldest, on e5, closes. Then Black’s dice land on White’s f3, down to its last cone: it resets to Black’s, with three cones.',
 			rules: 'potholes'
 		},
 		{

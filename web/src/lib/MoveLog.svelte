@@ -1,9 +1,14 @@
 <script lang="ts">
+	import { moveRows, type Ply } from './board.ts';
 	import type { LogEntry } from './game.ts';
+	import LogMark from './LogMark.svelte';
+	import MoveText from './MoveText.svelte';
 
 	// rolling: the newest turn's dice are still playing out, so its result
 	// stays hidden until the dice tray has shown it.
 	let { log, rolling = false }: { log: LogEntry[]; rolling?: boolean } = $props();
+
+	let rows = $derived(moveRows(log));
 
 	// Keep the newest move in view. Reading log.length makes the attachment
 	// run again whenever a move is added.
@@ -12,26 +17,38 @@
 	}
 </script>
 
+{#snippet ply(p: Ply | undefined)}
+	{#if p}
+		{@const hidden = rolling && p.i === log.length - 1}
+		{@const dice = hidden ? 'rolling…' : p.dice || 'no roll'}
+		<span class="ply" class:current={p.i === log.length - 1} title={dice}>
+			<span class="sr-only">{p.san}, {dice}</span>
+			<MoveText entry={p} rolling={hidden} />
+		</span>
+	{:else}
+		<span></span>
+	{/if}
+{/snippet}
+
 <section class="log" aria-labelledby="log-heading">
 	<h2 id="log-heading">Moves and rolls</h2>
 	{#if log.length === 0}
 		<p class="muted">No moves yet.</p>
 	{:else}
 		<ol {@attach follow}>
-			{#each log as entry, i (i)}
-				<li class:current={i === log.length - 1}>
-					<span class="n">{i % 2 === 0 ? `${i / 2 + 1}.` : ''}</span>
-					<span class="move">
-						<span class="san">{entry.san}</span>
-						{#if rolling && i === log.length - 1}
-							<span class="dice">rolling…</span>
-						{:else}
-							<span class="dice" class:hazard={entry.dice.includes('→')}>{entry.dice || 'no roll'}</span>
-						{/if}
-					</span>
+			{#each rows as row, n (n)}
+				<li>
+					<span class="n">{n + 1}.</span>
+					{@render ply(row.white)}
+					{@render ply(row.black)}
 				</li>
 			{/each}
 		</ol>
+		<p class="legend" aria-hidden="true">
+			<span><LogMark kind="hole" /> pothole</span>
+			<span><LogMark kind="fell" piece="wP" /> fell</span>
+			<span><LogMark kind="repair" /> repaired</span>
+		</p>
 	{/if}
 </section>
 
@@ -60,50 +77,52 @@
 		font-size: 14px;
 	}
 	ol {
-		margin: 0;
+		margin: 0 -8px;
 		padding: 0;
 		list-style: none;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		max-height: 520px;
+		/* With the legend, as tall as the old list's 520 px. */
+		max-height: 488px;
 		overflow-y: auto;
 	}
 	li {
 		display: grid;
-		grid-template-columns: 36px minmax(0, 1fr);
-		gap: 8px;
-		padding: 8px 10px;
-		border-radius: 8px;
+		grid-template-columns: 30px minmax(0, 1fr) minmax(0, 1fr);
+		align-items: center;
+		min-height: 32px;
+		padding: 0 4px 0 8px;
 	}
-	li.current {
-		background: var(--accent-wash);
-		box-shadow: inset 0 0 0 1px var(--accent-line);
+	li:nth-child(even) {
+		background: var(--surface-2);
 	}
 	.n {
 		font-family: var(--font-mono);
 		font-size: 13px;
 		color: var(--text-muted);
 	}
-	.move {
+	.ply {
 		display: flex;
-		flex-direction: column;
-		gap: 2px;
+		align-items: center;
+		gap: 5px;
+		justify-self: start;
+		min-width: 0;
+		padding: 3px 6px;
+		border-radius: 6px;
 	}
-	.san {
-		font-family: var(--font-mono);
-		font-weight: 600;
-		font-size: 15px;
-		color: var(--text);
+	.ply.current {
+		background: var(--accent-wash);
+		box-shadow: inset 0 0 0 1px var(--accent-line);
 	}
-	.dice {
-		font-size: 13px;
+	.legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 14px;
+		margin: 0;
+		font-size: 12px;
 		color: var(--text-muted);
 	}
-	.dice.hazard {
-		color: var(--hazard-text);
-	}
-	li.current .dice {
-		color: var(--accent);
+	.legend span {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
 	}
 </style>

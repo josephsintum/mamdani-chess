@@ -20,7 +20,7 @@ var ErrBadDie = errors.New("die roll outside 1..8")
 const maxRerolls = 64
 
 // Apply plays one full turn: move, countdown, repair, pothole roll,
-// placement and resolution. It returns the new position and what happened,
+// placement and resolution (or the reset of a hole already there). It returns the new position and what happened,
 // in order. A move that checkmates ends the game at once: no pothole roll
 // follows, so the dice can't undo a mate made on the board. The roll itself
 // may leave the next player mated; the game sees that like any other mate.
@@ -94,6 +94,10 @@ func (p *Position) rollPothole(mover Color, dice Dice, ev *[]Event) {
 		file, rank := dice.D8(), dice.D8()
 		s := Square((rank-1)*8 + file - 1)
 		emit(ev, Event{Kind: Target, Square: s})
+		if p.IsPothole(s) {
+			p.resetHole(s, mover, ev)
+			return
+		}
 		if reason := p.rerollReason(s, mover); reason != "" {
 			emit(ev, Event{Kind: Reroll, Square: s, Reason: reason})
 			continue
@@ -109,9 +113,6 @@ func (p *Position) rollPothole(mover Color, dice Dice, ev *[]Event) {
 func (p *Position) rerollReason(s Square, mover Color) RerollReason {
 	if p.Board[s].Kind() == King {
 		return ReasonKing
-	}
-	if p.IsPothole(s) {
-		return ReasonPothole
 	}
 	if p.nextToMamdani(s) {
 		return "" // repaired the moment it opens; nothing changes

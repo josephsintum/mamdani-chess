@@ -14,6 +14,7 @@ const (
 	SavingRoll    EventKind = "saving_roll"    // Square, Piece, Roll, Saved, Color = who rolls
 	Fell          EventKind = "fell"           // Square, Piece
 	PotholeOpened EventKind = "pothole_opened" // Square, Color = roller
+	PotholeReset  EventKind = "pothole_reset"  // Square, Color = roller; Was and Left = the hole's roller and rounds before
 	NoPothole     EventKind = "no_pothole"     // re-roll cap reached
 )
 
@@ -22,7 +23,6 @@ type RerollReason string
 
 const (
 	ReasonKing    RerollReason = "king"    // kings never fall
-	ReasonPothole RerollReason = "pothole" // already a pothole
 	ReasonExposes RerollReason = "exposes" // the fall, or the cap's close, would leave the roller in check
 )
 
@@ -37,4 +37,6 @@ type Event struct {
 	Roll   int
 	Saved  bool
 	Reason RerollReason
+	Was    Color
+	Left   int8
 }
