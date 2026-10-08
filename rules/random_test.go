@@ -105,12 +105,12 @@ func checkInvariants(t *testing.T, seed, ply int, before Position, m Move, ev []
 // checkHoles accounts for every hole across one turn: each of the mover's
 // holes loses a round and closes at zero, the other player's stay as they
 // were, and any other close is a repair or the cap pushing out the oldest
-// to make room for a new hole. At most one hole opens, the mover's, with
-// every round to go.
+// to make room for a new hole. At most one hole opens or resets, and it is
+// then the mover's, the newest, with every round to go.
 func checkHoles(before Position, ev []Event, after *Position) error {
 	mover := before.Turn
 	rolled := false
-	var counted, repaired, capped, opened []Square
+	var counted, repaired, capped, opened, reset []Square
 	for _, e := range ev {
 		switch e.Kind {
 		case RolledPothole:
@@ -125,10 +125,12 @@ func checkHoles(before Position, ev []Event, after *Position) error {
 			repaired = append(repaired, e.Square)
 		case PotholeOpened:
 			opened = append(opened, e.Square)
+		case PotholeReset:
+			reset = append(reset, e.Square)
 		}
 	}
-	if len(opened) > 1 || len(capped) > 1 {
-		return fmt.Errorf("opened %v and capped %v in one turn", opened, capped)
+	if len(opened)+len(reset) > 1 || len(capped) > 1 {
+		return fmt.Errorf("opened %v, reset %v and capped %v in one turn", opened, reset, capped)
 	}
 	if len(capped) == 1 && len(opened) == 0 {
 		return fmt.Errorf("the cap closed %v but nothing opened", capped[0])
@@ -150,6 +152,7 @@ func checkHoles(before Position, ev []Event, after *Position) error {
 		case slices.Contains(counted, h.Sq):
 			return fmt.Errorf("%v closed with %d rounds left", h.Sq, want.Left)
 		case slices.Contains(repaired, h.Sq):
+		case slices.Contains(reset, h.Sq):
 		case slices.Contains(capped, h.Sq):
 			if count < HoleCap || h != before.Potholes[oldest] {
 				return fmt.Errorf("the cap closed %v, not the oldest of %d", h.Sq, count)
@@ -158,18 +161,18 @@ func checkHoles(before Position, ev []Event, after *Position) error {
 			return fmt.Errorf("%v went from %+v to missing or changed", h.Sq, h)
 		}
 	}
-	for _, s := range opened {
+	for _, s := range append(opened, reset...) {
 		i := slices.IndexFunc(after.Potholes[:], func(h Hole) bool { return h.Sq == s })
 		if i < 0 {
-			return fmt.Errorf("%v opened but is not in the list", s)
+			return fmt.Errorf("%v opened or reset but is not in the list", s)
 		}
 		h := after.Potholes[i]
 		if h.By != mover || h.Left != HoleRounds {
-			return fmt.Errorf("the new hole %+v is not the mover's with every round", h)
+			return fmt.Errorf("the new or reset hole %+v is not the mover's with every round", h)
 		}
 		for _, o := range after.Potholes {
 			if o.Sq != NoSquare && o.Sq != s && o.Seq >= h.Seq {
-				return fmt.Errorf("the new hole %+v is not the newest: %+v", h, o)
+				return fmt.Errorf("the new or reset hole %+v is not the newest: %+v", h, o)
 			}
 		}
 	}

@@ -160,12 +160,34 @@ func TestRerollKing(t *testing.T) {
 	}
 }
 
-func TestRerollExistingPothole(t *testing.T) {
+func TestRollOnPotholeResetsIt(t *testing.T) {
+	// Black's d4 is on its last round and older than White's h3. White's
+	// roll lands on d4: it becomes White's, with every round to go, and the
+	// newest hole, so the cap now closes h3 before it.
 	p := StartPosition()
-	p.Potholes[0] = hole(D4, Black, 2)
-	_, ev := apply(t, p, "e2e4", dice(6, 4, 4, 8, 3)) // d4, then h3
-	if e, ok := find(ev, Reroll); !ok || e.Reason != ReasonPothole {
-		t.Errorf("want a pothole re-roll: %v", ev)
+	p.Potholes[0] = Hole{Sq: D4, By: Black, Left: 1, Seq: 1}
+	p.Potholes[1] = Hole{Sq: H3, By: White, Left: 2, Seq: 2}
+	p, ev := apply(t, p, "e2e4", dice(6, 4, 4))
+	if want := []EventKind{Moved, RolledPothole, Target, PotholeReset}; !slices.Equal(kinds(ev), want) {
+		t.Fatalf("events %v, want %v", kinds(ev), want)
+	}
+	if e := ev[3]; e.Square != D4 || e.Color != White || e.Was != Black || e.Left != 1 {
+		t.Errorf("reset %+v, want d4 by White, was Black's with 1 left", e)
+	}
+	want := []Hole{{Sq: H3, By: White, Left: 1, Seq: 2}, {Sq: D4, By: White, Left: HoleRounds, Seq: 3}}
+	if got := open(p); !slices.Equal(got, want) {
+		t.Errorf("holes %v, want %v", got, want)
+	}
+}
+
+func TestResetUnderCapClosesNothing(t *testing.T) {
+	before := fiveHoles()
+	p, ev := apply(t, before, "e2e4", dice(2, 6, 4)) // f4, White's
+	if _, ok := find(ev, PotholeClosed); ok {
+		t.Errorf("a hole closed: %v", ev)
+	}
+	if got, want := openSquares(p), []Square{D5, C6, H4, G5, F4}; !slices.Equal(got, want) {
+		t.Errorf("holes %v, want %v", got, want)
 	}
 }
 

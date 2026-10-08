@@ -11,6 +11,7 @@
 		"saving_roll": 750,
 		"fell": 600,
 		"pothole_opened": 550,
+		"pothole_reset": 600,
 		"repaired": 550,
 		"pothole_closed": 400,
 		"no_pothole": 550,

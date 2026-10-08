@@ -90,6 +90,17 @@ func TestDescribeShowsOnlyTheCapClosing(t *testing.T) {
 	}
 }
 
+func TestPotholeReset(t *testing.T) {
+	e := rules.Event{Kind: rules.PotholeReset, Square: rules.D4, Color: rules.White, Was: rules.Black, Left: 1}
+	if got, want := eventJSON(e), (EventJSON{Kind: rules.PotholeReset, Sq: "d4", Color: "white", Was: "black", Left: 1}); got != want {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+	ev := []rules.Event{{Kind: rules.Moved}, {Kind: rules.RolledPothole, Roll: 6}, {Kind: rules.Target, Square: rules.D4}, e}
+	if got, want := describe(ev), "d8 6 → d4 reset"; got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}
+
 func TestPieceCodes(t *testing.T) {
 	want := map[rules.Piece]string{rules.NoPiece: "", rules.MamdaniPiece: "M"}
 	for c, prefix := range map[rules.Color]string{rules.White: "w", rules.Black: "b"} {

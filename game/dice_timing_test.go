@@ -37,6 +37,7 @@ func TestDiceTimingMatchesTheBrowser(t *testing.T) {
 		"saving_roll":         {Kind: rules.SavingRoll},
 		"fell":                {Kind: rules.Fell},
 		"pothole_opened":      {Kind: rules.PotholeOpened},
+		"pothole_reset":       {Kind: rules.PotholeReset},
 		"repaired":            {Kind: rules.Repaired},
 		"pothole_closed":      {Kind: rules.PotholeClosed},
 		"no_pothole":          {Kind: rules.NoPothole},

@@ -58,6 +58,11 @@ var migrations = []string{
 	`ALTER TABLE games ADD COLUMN rules INTEGER NOT NULL DEFAULT 1;
 	 UPDATE games SET ended_at = CAST(strftime('%s','now') AS INTEGER) * 1000, result = 'retired'
 	  WHERE ended_at IS NULL;`,
+	// 6: a roll onto an open pothole resets it instead of rolling again.
+	// Rules 2 turns that re-rolled off a hole don't replay, so unfinished
+	// rules 2 games end as 'retired', like migration 5.
+	`UPDATE games SET ended_at = CAST(strftime('%s','now') AS INTEGER) * 1000, result = 'retired'
+	  WHERE ended_at IS NULL AND rules = 2;`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

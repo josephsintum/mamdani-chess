@@ -40,9 +40,12 @@ describe('scenes', () => {
 		expect(pieceOn(end(scenes.roads), 'e4')).toBe('wN');
 	});
 
-	it('rounds: c4 runs out, then the cap closes the oldest', () => {
-		expect(holes(scenes.rounds)).toEqual(['f3', 'b6', 'd7', 'a3', 'h5']);
-		expect(end(scenes.rounds).last.some((e) => e.kind === 'pothole_closed' && e.sq === 'e5')).toBe(true);
+	it('rounds: c4 runs out, the cap closes the oldest, then f3 resets', () => {
+		const frames = framesOf(scenes.rounds);
+		expect(frames.at(-2)!.view.last.some((e) => e.kind === 'pothole_closed' && e.sq === 'e5')).toBe(true);
+		expect(holes(scenes.rounds)).toEqual(['b6', 'd7', 'a3', 'h5', 'f3']);
+		expect(end(scenes.rounds).potholes.find((h) => h.sq === 'f3')).toEqual({ sq: 'f3', by: 'black', left: 3 });
+		expect(end(scenes.rounds).last.at(-1)).toMatchObject({ kind: 'pothole_reset', sq: 'f3', was: 'white', left: 1 });
 	});
 
 	it('blocks: the Mamdani on d2 cuts the bishop off from the king', () => {

@@ -16,10 +16,11 @@ import (
 // ErrCodeTaken is returned by CreateGame when a saved game already has the code.
 var ErrCodeTaken = errors.New("game code already taken")
 
-// rulesVersion is the rules new games are saved under: 2 since potholes
-// last three rounds (milestone 06c). Games saved under other rules are
-// never loaded, since their turns would not replay the same.
-const rulesVersion = 2
+// rulesVersion is the rules new games are saved under: 3 since a roll
+// onto an open pothole resets it (2 from milestone 06c's three-round
+// potholes). Games saved under other rules are never loaded, since their
+// turns would not replay the same.
+const rulesVersion = 3
 
 // Game is a saved game's seats. Black is "" until someone joins. The names
 // are the players' names when they sat down ("" for games saved before

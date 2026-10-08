@@ -94,6 +94,9 @@ type EventJSON struct {
 	Roll   int                `json:"roll,omitempty"`
 	Saved  *bool              `json:"saved,omitempty"`
 	Reason rules.RerollReason `json:"reason,omitempty"`
+	// Was and Left are a reset hole's roller and rounds before the reset.
+	Was  string `json:"was,omitempty" ts:"Color"`
+	Left int    `json:"left,omitempty"`
 }
 
 // LogEntry is one turn in the move log: the move in algebraic notation and
@@ -218,6 +221,9 @@ func eventJSON(e rules.Event) EventJSON {
 		j.Sq, j.Color = squareName(e.Square), colorName(e.Color)
 	case rules.RolledPothole:
 		j.Roll, j.Color = e.Roll, colorName(e.Color)
+	case rules.PotholeReset:
+		j.Sq, j.Color = squareName(e.Square), colorName(e.Color)
+		j.Was, j.Left = colorName(e.Was), int(e.Left)
 	case rules.Reroll:
 		j.Sq, j.Reason = squareName(e.Square), e.Reason
 	case rules.SavingRoll:
@@ -253,6 +259,8 @@ func describe(events []rules.Event) string {
 			parts[last] += " → " + e.Square.String()
 		case rules.Reroll:
 			parts[last] += " (re-roll: " + string(e.Reason) + ")"
+		case rules.PotholeReset:
+			parts[last] += " reset"
 		case rules.SavingRoll:
 			mark := "✗"
 			if e.Saved {

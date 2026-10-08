@@ -81,6 +81,9 @@ export interface EventJSON {
 	roll?: number;
 	saved?: boolean;
 	reason?: string;
+	/** Was and Left are a reset hole's roller and rounds before the reset. */
+	was?: Color;
+	left?: number;
 }
 
 /**

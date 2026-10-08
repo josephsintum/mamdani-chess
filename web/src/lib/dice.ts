@@ -6,6 +6,7 @@
 
 import TIMING from './dice-timing.json';
 import { capitalize, pieceName, type EventJSON, type View } from './game.ts';
+import { HOLE_ROUNDS } from './wire.gen.ts';
 
 /** How long the move shows before the dice roll. */
 export const MOVE_MS = TIMING.moveMs;
@@ -149,6 +150,8 @@ function pillAt(view: View, i: number): Omit<DicePill, 'last'> | null {
 		}
 		case 'reroll':
 			return { key, text: `${e.sq} · re-roll`, tone: 'pot' };
+		case 'pothole_reset':
+			return { key, text: `Pothole reset: ${HOLE_ROUNDS} rounds`, tone: 'pot' };
 		case 'saving_roll': {
 			const who = `${capitalize(pieceName(e.piece))} ${e.sq}`;
 			return { key, text: `${who} · saving roll`, tone: 'save', then: { text: `${who} · ${e.saved ? 'saved' : 'falls'}`, tone: 'save', at: SAVE_MS } };
