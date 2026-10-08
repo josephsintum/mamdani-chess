@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { bonusOf, formatClock } from './clock.ts';
 	import { pieceName, sideName, type Color } from './game.ts';
-	import type { BarPill } from './board.ts';
+	import { byKind, type BarPill } from './board.ts';
+	import LogMark from './LogMark.svelte';
 	import { reducedMotion } from './motion.ts';
 
 	let {
@@ -9,6 +10,8 @@
 		name = '',
 		you,
 		lost,
+		taken = [],
+		lead = 0,
 		pill = '',
 		pillTone = 'turn',
 		compact = false,
@@ -24,10 +27,14 @@
 		name?: string;
 		you: boolean;
 		lost: string[];
+		/** The other side's pieces this player has captured. */
+		taken?: string[];
+		/** How far ahead in material this player is; 0 when level or behind. */
+		lead?: number;
 		/** "Your move", "In check", "Waiting…", or "" for none (see pillFor). */
 		pill?: string;
 		pillTone?: BarPill['tone'];
-		/** The phone's one-row bar: lost pieces after the name, nothing when none. */
+		/** The phone's one-row bar: captures, lead and pothole count after the name. */
 		compact?: boolean;
 		/** Time left, in ms; no clock is shown without it (the sandbox). */
 		clockMs?: number;
@@ -44,6 +51,11 @@
 	} = $props();
 
 	let side = $derived(sideName(color));
+	let took = $derived(byKind(taken));
+	let gone = $derived(byKind(lost));
+	let names = (codes: string[]) => codes.map((p) => pieceName(p)).join(', ') || 'none';
+	// The phone's one label for its row of pieces.
+	let summary = $derived(`Took: ${names(took)}${lead ? `, up ${lead}` : ''}. Lost to potholes: ${names(gone)}.`);
 	let label = $derived(name || side);
 
 	// The "+5": when this player moves, the increment floats up from their
@@ -92,15 +104,19 @@
 			><span class="label" title={label}>{label}</span>{#if you}<span class="you" class:sr-only={compact}>(you)</span>{/if}{#if offline}<span class="offline">{compact ? 'Offline' : 'Disconnected'}</span>{/if}</span
 		>
 		{#if compact}
-			{#if lost.length > 0}
-				<span class="glyphs" role="img" aria-label="Lost to potholes: {lost.map((p) => pieceName(p)).join(', ')}">
-					{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt="" />{/each}
-				</span>
-			{/if}
+			{#if took.length > 0 || lead > 0 || gone.length > 0}<span class="sr-only">{summary}</span>{/if}
+			{#if took.length > 0}<span class="taken" aria-hidden="true">{#each took as p, i (i)}<img src="/pieces/{p}.svg" alt="" class:same={p === took[i - 1]} />{/each}</span>{/if}
+			{#if lead}<span class="lead" aria-hidden="true">+{lead}</span>{/if}
+			{#if gone.length > 0}<span class="pothole" aria-hidden="true"><LogMark kind="hole" />{gone.length}</span>{/if}
 		{:else}
 			<span class="lost">
+				Took:
+				{#if took.length === 0}none{:else}<span class="taken">{#each took as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} class:same={p === took[i - 1]} />{/each}</span>{/if}
+				{#if lead}<span class="lead">+{lead}</span>{/if}
+			</span>
+			<span class="lost">
 				Lost to potholes:
-				{#if lost.length === 0}none{:else}<span class="glyphs">{#each lost as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} />{/each}</span>{/if}
+				{#if gone.length === 0}none{:else}<span class="glyphs">{#each gone as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} class:same={p === gone[i - 1]} />{/each}</span>{/if}
 			</span>
 		{/if}
 	</span>
@@ -159,7 +175,11 @@
 	.compact .who {
 		flex-direction: row;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
+	}
+	.compact .taken img {
+		width: 16px;
+		height: 16px;
 	}
 	.name {
 		display: flex;
@@ -204,13 +224,73 @@
 		font-size: 13px;
 		color: var(--text-muted);
 	}
-	.glyphs {
+	.glyphs,
+	.taken {
 		display: inline-flex;
+		align-items: center;
 		gap: 1px;
 		vertical-align: middle;
 		overflow: hidden;
 	}
-	.glyphs img {
+	/* On the phone the name gives way first, then the captured pieces,
+	   which fade where they are cut; the lead and the pothole count stay. */
+	.compact .name {
+		flex-shrink: 2;
+		min-width: min(64px, 100%);
+	}
+	.compact .taken {
+		flex-shrink: 1;
+		min-width: 0;
+		mask-image: linear-gradient(to right, #000 calc(100% - 8px), transparent);
+	}
+	/* Short of room (a 320 px phone with its pill), the captured pieces go
+	   rather than show cut in half; the lead and the pothole count stay, and
+	   the row's label still lists everything. */
+	.compact .who {
+		container: who / inline-size;
+		overflow: hidden;
+	}
+	@container who (max-width: 150px) {
+		.taken {
+			display: none;
+		}
+	}
+	/* The smallest phone on its side, with a pill: only the name. */
+	@container who (max-width: 120px) {
+		.lead,
+		.pothole {
+			display: none;
+		}
+	}
+	/* Pieces of one kind stack, as lichess shows them, so the row stays short. */
+	img.same {
+		margin-left: -9px;
+	}
+	.compact img.same {
+		margin-left: -10px;
+	}
+	.lead {
+		flex-shrink: 0;
+		margin-left: 2px;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-muted);
+	}
+	/* The phone's pieces lost to potholes: a hole and how many. */
+	.pothole {
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		flex-shrink: 0;
+		margin-left: 4px;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-muted);
+	}
+	.glyphs img,
+	.taken img {
 		width: 18px;
 		height: 18px;
 		flex-shrink: 0;

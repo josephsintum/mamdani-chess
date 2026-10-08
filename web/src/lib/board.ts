@@ -3,7 +3,7 @@
 
 import { HOLE_CAP, HOLE_ROUNDS } from './wire.gen.ts';
 import { firstDiceStep, SAVE_MS, SCAN_MS, stepDice, THROW_MS, type DieSpec } from './dice.ts';
-import { capitalize, isPlayer, opponent, pieceName, reasons, rerollReasons, sideName, squareName, type Color, type EventJSON, type View } from './game.ts';
+import { capitalize, isPlayer, opponent, pieceName, reasons, rerollReasons, sideName, squareName, type Color, type EventJSON, type LogEntry, type View } from './game.ts';
 
 export function squareIndex(name: string): number {
 	return (Number(name[1]) - 1) * 8 + (name.charCodeAt(0) - 97);
@@ -23,6 +23,50 @@ export function pieceOn(pos: Pick<View, 'board' | 'mamdani'>, sq: string): strin
 export function kingSquare(board: string[], c: Color): string {
 	const i = board.indexOf(c === 'white' ? 'wK' : 'bK');
 	return i < 0 ? '' : squareName(i);
+}
+
+const pieceValues: Record<string, number> = { P: 1, N: 3, B: 3, R: 5, Q: 9 };
+
+/**
+ * How far each side is ahead in material on this board, counting P1 N3 B3
+ * R5 Q9: the side behind gets 0. Read from the board, so promotions and
+ * pieces lost to potholes count too.
+ */
+export function materialLead(board: string[]): Record<Color, number> {
+	let diff = 0; // White minus Black
+	for (const p of board) if (p) diff += (p[0] === 'w' ? 1 : -1) * (pieceValues[p[1]] ?? 0);
+	return { white: Math.max(diff, 0), black: Math.max(-diff, 0) };
+}
+
+/** Piece codes sorted pawns first, then knights, bishops, rooks, queens. */
+export function byKind(codes: readonly string[]): string[] {
+	const order = 'PNBRQK';
+	return [...codes].sort((a, b) => order.indexOf(a[1]) - order.indexOf(b[1]));
+}
+
+/**
+ * A log entry's move as a piece icon and the rest of its SAN: Nf3 is the
+ * knight's icon and "f3", Mb5 the Mamdani's and "b5". Pawn moves, castling
+ * and the sandbox's "e2–e4" keep their text and no icon.
+ */
+export function figurine(entry: Pick<LogEntry, 'san' | 'piece'>): { icon: string; text: string } {
+	const letter = entry.piece === 'M' ? 'M' : entry.piece[1];
+	if (!letter || letter === 'P' || !entry.san.startsWith(letter)) return { icon: '', text: entry.san };
+	return { icon: entry.piece, text: entry.san.slice(1) };
+}
+
+/** A log entry with its index in the log. */
+export type Ply = LogEntry & { i: number };
+
+/** The log as move rows, as the move lists draw it: White's ply, then Black's. */
+export function moveRows(log: readonly LogEntry[]): { white?: Ply; black?: Ply }[] {
+	const rows: { white?: Ply; black?: Ply }[] = [];
+	log.forEach((entry, i) => {
+		const last = rows.at(-1);
+		if (entry.color === 'black' && last && !last.black) last.black = { ...entry, i };
+		else rows.push({ [entry.color]: { ...entry, i } });
+	});
+	return rows;
 }
 
 type Dir = readonly [number, number];

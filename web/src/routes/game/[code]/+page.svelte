@@ -14,9 +14,10 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import MovesSheet, { LANDSCAPE } from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
+	import RecentMoves from '#lib/RecentMoves.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { dicePill, playOutMs, scanOf, type DicePill } from '#lib/dice.ts';
-	import { checkSquare, endedHere, matedKing, pillFor, repairsShown, resultCardOf, stageAt, tallyOf, wonHere, type Stage } from '#lib/board.ts';
+	import { checkSquare, endedHere, matedKing, materialLead, pillFor, repairsShown, resultCardOf, stageAt, tallyOf, wonHere, type Stage } from '#lib/board.ts';
 	import { contextOf, endQuip, quipper } from '#lib/catchphrases.ts';
 	import { BURST_HOLD_MS, countAt } from '#lib/feel.ts';
 	import { applyMove, settlesGuess } from '#lib/pieces.ts';
@@ -485,6 +486,8 @@
 		name={view.players[c]}
 		you={you === c}
 		lost={stage.lost[c]}
+		taken={view.taken[c]}
+		lead={materialLead(stage.board)[c]}
 		pill={compact ? phonePill(p, c) : p.text}
 		pillTone={p.tone}
 		toMove={playing && view.turn === c && !animating}
@@ -543,6 +546,7 @@
 		<p class="sr-only" aria-live="polite">{status}</p>
 
 		<div class="ph-play">
+			<div class="ph-recent"><RecentMoves log={view.log} rolling={animating} onclick={(e) => sheet?.open(e.currentTarget)} /></div>
 			<div class="ph-top">{@render bar(view, stage, top, true)}</div>
 			<div class="ph-board">{@render board(view, stage, !!resultCard || view.status === 'waiting', null)}</div>
 			<div class="ph-me">{@render bar(view, stage, bottom, true)}</div>
@@ -833,6 +837,16 @@
 		flex: 1 1 auto;
 		min-height: 0;
 		container-type: size;
+	}
+	/* The latest moves fill the spare height under the header (RecentMoves
+	   hides when not even a row fits), so the board stays in thumb reach. */
+	.ph-recent {
+		flex: 1 1 0;
+		min-height: 0;
+		container: recent / size;
+	}
+	.land .ph-recent {
+		display: none;
 	}
 	.ph-board {
 		width: min(calc(100cqw - 16px), calc(100cqh - 92px));
@@ -1224,9 +1238,9 @@
 	}
 	.layout {
 		/* The board shrinks with the window's height, so both player bars
-		   (and your clock) fit without scrolling: about 240 px go to the page
+		   (and your clock) fit without scrolling: about 260 px go to the page
 		   padding, header, status line, bars and gaps. */
-		--board: clamp(320px, calc(100dvh - 240px), 600px);
+		--board: clamp(320px, calc(100dvh - 260px), 600px);
 		display: grid;
 		grid-template-columns: 260px minmax(0, var(--board)) minmax(260px, 340px);
 		gap: 24px;

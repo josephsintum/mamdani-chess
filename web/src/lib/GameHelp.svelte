@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Die from './Die.svelte';
+	import LogMark from './LogMark.svelte';
 	import { THROW_MS, type DieTone } from './dice.ts';
 	import { setTipsOn, tipsOn } from './tips.ts';
 
@@ -69,6 +70,13 @@
 				<span class="key"><img class="mamdani" src="/mamdani/piece.webp" alt="" /></span>
 				The Mamdani. Either player can move it, and it repairs potholes next to it (👍).
 			</li>
+		</ul>
+
+		<h3>The move log</h3>
+		<ul>
+			<li><span class="key"><LogMark kind="hole" /></span>A pothole opened. Hover a move for its rolls.</li>
+			<li><span class="key"><LogMark kind="fell" piece="wN" /></span>A piece fell into a pothole.</li>
+			<li><span class="key"><LogMark kind="repair" /></span>The Mamdani repaired a pothole.</li>
 		</ul>
 
 		<label class="switch">

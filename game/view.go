@@ -36,6 +36,7 @@ type View struct {
 	Last     []EventJSON `json:"last"`  // what happened on the latest turn, in order
 	Log      []LogEntry  `json:"log"`   // one entry per turn
 	Lost     LostJSON    `json:"lost"`  // pieces each side has lost to potholes
+	Taken    LostJSON    `json:"taken"` // pieces each side has captured from the other
 	Stats    StatsJSON   `json:"stats"`
 	Result   *ResultJSON `json:"result"`
 	Seq      int         `json:"seq"` // turns played; a move must quote it
@@ -96,15 +97,22 @@ type EventJSON struct {
 	Reason rules.RerollReason `json:"reason,omitempty"`
 }
 
-// LogEntry is one turn in the move log: the move in algebraic notation and
-// what the dice did, e.g. {"e4", "white", "d8 4 → c3"}.
+// LogEntry is one turn in the move log: the move in algebraic notation, the
+// piece that moved, and what the dice did, e.g. {"e4", "white", "wP",
+// "d8 4 → c3", "c3"}. Opened, Fell and Repaired pick out of the dice what
+// the log marks, so the browser never reads Dice apart.
 type LogEntry struct {
-	SAN   string `json:"san"`
-	Color string `json:"color" ts:"Color"`
-	Dice  string `json:"dice"`
+	SAN      string   `json:"san"`
+	Color    string   `json:"color" ts:"Color"`
+	Piece    string   `json:"piece"` // what moved: "wN", "bP", or "M" for the Mamdani
+	Dice     string   `json:"dice"`
+	Opened   string   `json:"opened,omitempty"`   // the square a new pothole opened on
+	Fell     []string `json:"fell,omitempty"`     // pieces that fell this turn, "M" too
+	Repaired bool     `json:"repaired,omitempty"` // the Mamdani repaired a pothole
 }
 
-// LostJSON lists the pieces each side has lost to potholes, as piece codes.
+// LostJSON lists pieces for each side, as piece codes: what it has lost to
+// potholes (View.Lost) or captured from the other side (View.Taken).
 type LostJSON struct {
 	White []string `json:"white"`
 	Black []string `json:"black"`
