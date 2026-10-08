@@ -30,6 +30,17 @@ export function moveDuration(a: string, b: string): number {
 }
 
 /**
+ * The square whose piece a move takes: its target, or the pawn behind it en
+ * passant (a pawn moving diagonally onto an empty square); null when it
+ * takes nothing. The Mamdani isn't on the board array and never captures.
+ */
+export function capturedSquare(board: readonly string[], move: Pick<MoveJSON, 'from' | 'to'>): string | null {
+	if (board[squareIndex(move.to)]) return move.to;
+	const piece = board[squareIndex(move.from)] ?? '';
+	return piece[1] === 'P' && move.from[0] !== move.to[0] ? move.to[0] + move.from[1] : null;
+}
+
+/**
  * Plays a move's mechanics on a board: the piece moves, a capture goes,
  * castling brings the rook, en passant removes the pawn behind, a pawn
  * promotes, or the Mamdani moves. No legality check: callers pass moves the
@@ -40,10 +51,9 @@ export function applyMove(state: Pick<View, 'board' | 'mamdani'>, move: MoveJSON
 	if (move.from === state.mamdani) return { board, mamdani: move.to };
 	const piece = board[squareIndex(move.from)];
 	const df = move.to.charCodeAt(0) - move.from.charCodeAt(0);
-	// En passant: a pawn moving diagonally onto an empty square.
-	if (piece[1] === 'P' && df !== 0 && !board[squareIndex(move.to)]) {
-		board[squareIndex(move.to[0] + move.from[1])] = '';
-	}
+	// En passant takes the pawn behind the target square.
+	const taken = capturedSquare(board, move);
+	if (taken && taken !== move.to) board[squareIndex(taken)] = '';
 	board[squareIndex(move.from)] = '';
 	board[squareIndex(move.to)] = move.promo ? piece[0] + move.promo.toUpperCase() : piece;
 	if (piece[1] === 'K' && Math.abs(df) === 2) {

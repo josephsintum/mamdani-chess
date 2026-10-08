@@ -186,7 +186,7 @@ export function stageAt(view: View, shown: number): Stage {
  * opening on the fallen piece's square, or the cap closing the oldest hole
  * between the two.
  */
-function fallsWith(last: EventJSON[], i: number): number {
+export function fallsWith(last: readonly EventJSON[], i: number): number {
 	let open = i;
 	while (last[open]?.kind === 'pothole_closed') open++;
 	let fall = i - 1;

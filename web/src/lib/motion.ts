@@ -8,6 +8,11 @@ export function setInstant(on: boolean) {
 	instant = on;
 }
 
+/** Whether instant mode is on: no animations and no sound. */
+export function instantMode(): boolean {
+	return instant;
+}
+
 /** True when the player asked their system for less motion, or instant mode is on. */
 export function reducedMotion(): boolean {
 	if (instant) return true;
