@@ -56,6 +56,13 @@
 					<a href="https://github.com/lichess-org/lila" target="_blank" rel="noopener">Lichess</a>, under the AGPL-3.0 or later.
 				</li>
 				<li>
+					<strong>Other sound effects:</strong> from free sound sites, believed to be in the public domain; each is listed with its
+					source in the
+					<a href="https://github.com/josephsintum/mamdani-chess/blob/main/web/src/lib/sounds/CREDITS.md" target="_blank" rel="noopener">sound credits</a>.
+					If a sound's licence can't be confirmed, or it isn't in the public domain,
+					<a href="https://github.com/josephsintum/mamdani-chess/issues" target="_blank" rel="noopener">message the developer</a> and it will be replaced.
+				</li>
+				<li>
 					<strong>Fonts:</strong> Barlow Condensed and IBM Plex, under the SIL Open Font License.
 				</li>
 			</ul>
