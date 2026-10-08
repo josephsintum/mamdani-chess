@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -123,8 +124,8 @@ func TestMoveBroadcastsToEveryone(t *testing.T) {
 		if v.Seq != 1 || v.Turn != "black" || v.Board[rules.E4] != "wP" || v.Board[rules.E2] != "" {
 			t.Errorf("%s: seq=%d turn=%s e4=%q e2=%q", name, v.Seq, v.Turn, v.Board[rules.E4], v.Board[rules.E2])
 		}
-		if !slices.Equal(v.Log, []LogEntry{{SAN: "e4", Color: "white", Dice: "d8 1"}}) {
-			t.Errorf("%s: log %q", name, v.Log)
+		if !reflect.DeepEqual(v.Log, []LogEntry{{SAN: "e4", Color: "white", Piece: "wP", Dice: "d8 1"}}) {
+			t.Errorf("%s: log %+v", name, v.Log)
 		}
 		// Black: 19 normal moves (a7a5 is blocked by the Mamdani) + 13 Mamdani moves.
 		wantLegal := map[string]int{"alice": 0, "bob": 32, "carol": 0}[name]
@@ -179,7 +180,7 @@ func TestPotholeShowsInView(t *testing.T) {
 		t.Errorf("last %v, want %v", kinds, want)
 	}
 	if !strings.HasPrefix(v.Log[0].Dice, "d8 2 → d4") {
-		t.Errorf("log %q", v.Log[0])
+		t.Errorf("log %+v", v.Log[0])
 	}
 }
 
@@ -311,20 +312,33 @@ func TestStatsAndLostPieces(t *testing.T) {
 		2, 7, 8, // e4: g8 is hit; the Mamdani on a5 has no line to it, so the knight falls
 		2, 4, 2, 5, // e5: d2 is hit; a5-b4-c3-d2 is clear, so White rolls to save: 5 saves it
 		2, 2, 4, // Nf3: b4 is next to the Mamdani, so the new pothole is repaired at once
+		1, // d6
+		1, // Nxe5
 	}}, nil), "alice")
 	a := join(t, g, "alice")
 	join(t, g, "bob")
 	recv(t, a)
-	plays(t, g, "e2e4", "e7e5", "g1f3")
-	v := recvSeq(t, a, 3)
+	plays(t, g, "e2e4", "e7e5", "g1f3", "d7d6", "f3e5")
+	v := recvSeq(t, a, 5)
 	if !slices.Equal(v.Lost.White, []string{}) || !slices.Equal(v.Lost.Black, []string{"bN"}) {
 		t.Errorf("lost %+v, want white none and black [bN]", v.Lost)
+	}
+	if !slices.Equal(v.Taken.White, []string{"bP"}) || !slices.Equal(v.Taken.Black, []string{}) {
+		t.Errorf("taken %+v, want white [bP] and black none", v.Taken)
 	}
 	if want := (StatsJSON{SavingRolls: 1, Saved: 1, Repaired: 1}); v.Stats != want {
 		t.Errorf("stats %+v, want %+v", v.Stats, want)
 	}
-	if want := (LogEntry{SAN: "e4", Color: "white", Dice: "d8 2 → g8 · bN falls"}); v.Log[0] != want {
-		t.Errorf("log[0] %+v, want %+v", v.Log[0], want)
+	for i, want := range []LogEntry{
+		{SAN: "e4", Color: "white", Piece: "wP", Dice: "d8 2 → g8 · bN falls", Opened: "g8", Fell: []string{"bN"}},
+		{SAN: "e5", Color: "black", Piece: "bP", Dice: "d8 2 → d2 · save 5 ✓"}, // saved: no hole,
+		{SAN: "Nf3", Color: "white", Piece: "wN", Dice: "d8 2 → b4 repaired", Repaired: true},
+		{SAN: "d6", Color: "black", Piece: "bP", Dice: "d8 1"},
+		{SAN: "Nxe5", Color: "white", Piece: "wN", Dice: "d8 1"},
+	} {
+		if !reflect.DeepEqual(v.Log[i], want) {
+			t.Errorf("log[%d] %+v, want %+v", i, v.Log[i], want)
+		}
 	}
 }
 

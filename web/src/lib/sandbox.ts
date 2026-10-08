@@ -7,7 +7,7 @@
 import { HOLE_CAP, HOLE_ROUNDS } from './wire.gen.ts';
 import { squareAt, squareIndex } from './board.ts';
 import { applyMove } from './pieces.ts';
-import { rerollReasons, type Color, type EventJSON, type MoveJSON, type View } from './game.ts';
+import { rerollReasons, type Color, type EventJSON, type LogEntry, type MoveJSON, type View } from './game.ts';
 
 /** What the dice do on the next turn. */
 export interface RollScript {
@@ -36,6 +36,7 @@ export function emptyView(): View {
 		last: [],
 		log: [],
 		lost: { white: [], black: [] },
+		taken: { white: [], black: [] },
 		stats: { savingRolls: 0, saved: 0, repaired: 0, mamdaniFell: false },
 		result: null,
 		seq: 0,
@@ -234,7 +235,10 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 	ev.push({ kind: 'moved', from: move.from, to: move.to, piece, color: mover, ...(move.promo ? { promo: move.promo } : {}) });
 	if (!isMamdani) {
 		const captured = v.board[squareIndex(move.to)];
-		if (captured) ev.push({ kind: 'captured', sq: move.to, piece: captured });
+		if (captured) {
+			ev.push({ kind: 'captured', sq: move.to, piece: captured });
+			v.taken[mover].push(captured);
+		}
 	}
 	Object.assign(v, applyMove(v, move));
 
@@ -325,7 +329,14 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 	}
 
 	v.last = ev;
-	v.log.push({ san: `${move.from}–${move.to}`, color: mover, dice: dice.join(' · ') });
+	// What the log marks, picked out of the events as the server's logEntry does.
+	const entry: LogEntry = { san: `${move.from}–${move.to}`, color: mover, piece, dice: dice.join(' · ') };
+	for (const e of ev) {
+		if (e.kind === 'pothole_opened') entry.opened = e.sq;
+		if (e.kind === 'fell' && e.piece) (entry.fell ??= []).push(e.piece);
+		if (e.kind === 'repaired') entry.repaired = true;
+	}
+	v.log.push(entry);
 	v.turn = mover === 'white' ? 'black' : 'white';
 	v.seq++;
 	return v;

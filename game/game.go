@@ -61,6 +61,7 @@ type Game struct {
 	last    []rules.Event
 	log     []LogEntry  // only ever grows: views share it (see shared)
 	lost    [2][]string // piece codes lost to potholes, by color; only ever grow
+	taken   [2][]string // piece codes captured, by the capturer's color; only ever grow
 	stats   StatsJSON
 	clock   clock
 	rematch rematch
@@ -402,15 +403,36 @@ func (g *Game) apply(m rules.Move, dice rules.Dice) error {
 		return err
 	}
 	g.last = ev
-	g.log = append(g.log, LogEntry{SAN: before.SAN(m), Color: colorName(color), Dice: describe(ev)})
+	g.log = append(g.log, logEntry(before.SAN(m), color, ev))
 	g.tally(ev)
 	return nil
+}
+
+// logEntry is the log's line for a turn played as san by color.
+func logEntry(san string, color rules.Color, ev []rules.Event) LogEntry {
+	l := LogEntry{SAN: san, Color: colorName(color), Dice: describe(ev)}
+	for _, e := range ev {
+		switch e.Kind {
+		case rules.Moved:
+			l.Piece = pieceCode(e.Piece)
+		case rules.PotholeOpened:
+			l.Opened = e.Square.String()
+		case rules.Fell:
+			l.Fell = append(l.Fell, pieceCode(e.Piece))
+		case rules.Repaired:
+			l.Repaired = true
+		}
+	}
+	return l
 }
 
 // tally adds a turn's events to the game's stats.
 func (g *Game) tally(ev []rules.Event) {
 	for _, e := range ev {
 		switch e.Kind {
+		case rules.Captured:
+			c := e.Piece.Color().Other()
+			g.taken[c] = append(g.taken[c], pieceCode(e.Piece))
 		case rules.Fell:
 			if e.Piece == rules.MamdaniPiece {
 				g.stats.MamdaniFell = true
@@ -582,6 +604,7 @@ func (g *Game) viewFor(r role) *View {
 		Last:     make([]EventJSON, 0, len(g.last)),
 		Log:      shared(g.log),
 		Lost:     LostJSON{White: shared(g.lost[rules.White]), Black: shared(g.lost[rules.Black])},
+		Taken:    LostJSON{White: shared(g.taken[rules.White]), Black: shared(g.taken[rules.Black])},
 		Stats:    g.stats,
 		Seq:      len(g.g.Turns),
 		Clock:    g.clockJSON(now),

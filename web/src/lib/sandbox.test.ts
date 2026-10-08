@@ -65,7 +65,7 @@ describe('playTurn', () => {
 		expect(v.turn).toBe('black');
 		expect(v.seq).toBe(1);
 		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole']);
-		expect(v.log).toEqual([{ san: 'e2–e4', color: 'white', dice: 'd8 1' }]);
+		expect(v.log).toEqual([{ san: 'e2–e4', color: 'white', piece: 'wP', dice: 'd8 1' }]);
 	});
 
 	it('opens a pothole on an empty square and closes it after 3 of the roller’s moves', () => {
@@ -100,7 +100,14 @@ describe('playTurn', () => {
 	it('logs a repair made by the Mamdani’s move, as the server does', () => {
 		const v = playTurn(positions.repair(), { from: 'c3', to: 'e5' }, odd);
 		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'repaired', 'rolled_pothole']);
-		expect(v.log.at(-1)?.dice).toBe('repairs f6 · d8 1');
+		expect(v.log.at(-1)).toEqual({ san: 'c3–e5', color: 'white', piece: 'M', dice: 'repairs f6 · d8 1', repaired: true });
+	});
+
+	it('counts a capture as taken by the side that made it', () => {
+		let v = playTurn(startView(), { from: 'e2', to: 'e4' }, odd);
+		v = playTurn(v, { from: 'd7', to: 'd5' }, odd);
+		v = playTurn(v, { from: 'e4', to: 'd5' }, odd);
+		expect(v.taken).toEqual({ white: ['bP'], black: [] });
 	});
 
 	it('drops a piece without a saving roll and counts it as lost', () => {
@@ -108,6 +115,7 @@ describe('playTurn', () => {
 		expect(v.board[squareIndex('g8')]).toBe('');
 		expect(v.lost.black).toEqual(['bN']);
 		expect(v.last.map((e) => e.kind)).toEqual(['moved', 'rolled_pothole', 'target', 'fell', 'pothole_opened']);
+		expect(v.log.at(-1)).toMatchObject({ opened: 'g8', fell: ['bN'] });
 	});
 
 	it('saves a piece on an odd saving roll and drops it on an even one', () => {

@@ -5,7 +5,7 @@
 	import ScriptedBoard from '#lib/ScriptedBoard.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { dicePace } from '#lib/dice.ts';
-	import { pieceOn, pillFor, squareAt, squareIndex, stageAt } from '#lib/board.ts';
+	import { materialLead, pieceOn, pillFor, squareAt, squareIndex, stageAt } from '#lib/board.ts';
 	import { opponent, sideName, squareName, type Color, type MoveJSON, type View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
@@ -194,9 +194,9 @@
 		</div>
 
 		<div class="board-col">
-			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} pill={topPill.text} pillTone={topPill.tone} />
+			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} taken={view.taken[top]} lead={materialLead(stage.board)[top]} pill={topPill.text} pillTone={topPill.tone} />
 			<ScriptedBoard {anim} {legal} flipped={bottom === 'black'} interactive still={instant} id="sandbox" ending={endings} onmove={move} />
-			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} pill={bottomPill.text} pillTone={bottomPill.tone} />
+			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} taken={view.taken[bottom]} lead={materialLead(stage.board)[bottom]} pill={bottomPill.text} pillTone={bottomPill.tone} />
 		</div>
 
 		<div class="side">

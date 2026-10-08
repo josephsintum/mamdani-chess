@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
 	blockedSquares,
+	byKind,
+	figurine,
+	materialLead,
+	moveRows,
 	resultCardOf,
 	CELEBRATION_MS,
 	celebratedSoFar,
@@ -39,6 +43,7 @@ function makeView(pieces: Record<string, string>, extra: Partial<View> = {}): Vi
 		last: [],
 		log: [],
 		lost: { white: [], black: [] },
+		taken: { white: [], black: [] },
 		stats: { savingRolls: 0, saved: 0, repaired: 0, mamdaniFell: false },
 		result: null,
 		seq: 1,
@@ -574,5 +579,61 @@ describe('resultCardOf', () => {
 	});
 	it('is null before the game ends', () => {
 		expect(resultCardOf(makeView({}))).toBeNull();
+	});
+});
+
+describe('materialLead', () => {
+	it('is even with the same pieces', () => {
+		expect(materialLead(makeView({ e1: 'wK', e8: 'bK', d1: 'wQ', d8: 'bQ', a2: 'wP', a7: 'bP' }).board)).toEqual({ white: 0, black: 0 });
+	});
+	it('gives the side ahead the difference, counting P1 N3 B3 R5 Q9', () => {
+		const { board } = makeView({ e1: 'wK', e8: 'bK', a1: 'wR', b1: 'wN', c1: 'wB', d1: 'wQ', a8: 'bR', b8: 'bN', c8: 'bB', d8: 'bQ' });
+		expect(materialLead(board)).toEqual({ white: 0, black: 0 }); // 20 each
+		board[squareIndex('d8')] = '';
+		expect(materialLead(board)).toEqual({ white: 9, black: 0 });
+		board[squareIndex('a1')] = '';
+		board[squareIndex('b1')] = '';
+		board[squareIndex('c1')] = '';
+		expect(materialLead(board)).toEqual({ white: 0, black: 2 });
+	});
+	it('counts a promoted queen', () => {
+		const board = Array<string>(64).fill('');
+		board[squareIndex('e1')] = 'wK';
+		board[squareIndex('e8')] = 'bK';
+		board[squareIndex('a8')] = 'wQ';
+		board[squareIndex('h7')] = 'bP';
+		expect(materialLead(board)).toEqual({ white: 8, black: 0 });
+	});
+});
+
+describe('byKind', () => {
+	it('sorts pawns, knights, bishops, rooks, queens', () => {
+		expect(byKind(['bQ', 'bP', 'bR', 'bN', 'bP', 'bB'])).toEqual(['bP', 'bP', 'bN', 'bB', 'bR', 'bQ']);
+	});
+});
+
+describe('figurine', () => {
+	it('draws a piece letter as its icon', () => {
+		expect(figurine({ san: 'Nxe5+', piece: 'wN' })).toEqual({ icon: 'wN', text: 'xe5+' });
+		expect(figurine({ san: 'Qh5', piece: 'bQ' })).toEqual({ icon: 'bQ', text: 'h5' });
+		expect(figurine({ san: 'Mb5', piece: 'M' })).toEqual({ icon: 'M', text: 'b5' });
+	});
+	it('keeps pawn moves, castling and the sandbox’s squares as text', () => {
+		expect(figurine({ san: 'exd5', piece: 'wP' })).toEqual({ icon: '', text: 'exd5' });
+		expect(figurine({ san: 'e8=Q', piece: 'wP' })).toEqual({ icon: '', text: 'e8=Q' });
+		expect(figurine({ san: 'O-O', piece: 'wK' })).toEqual({ icon: '', text: 'O-O' });
+		expect(figurine({ san: 'g1–f3', piece: 'wN' })).toEqual({ icon: '', text: 'g1–f3' });
+	});
+});
+
+describe('moveRows', () => {
+	const ply = (san: string, color: 'white' | 'black') => ({ san, color, piece: '', dice: '' });
+	it('pairs White and Black plies into numbered rows', () => {
+		const rows = moveRows([ply('e4', 'white'), ply('e5', 'black'), ply('Nf3', 'white')]);
+		expect(rows.map((r) => [r.white?.san, r.black?.san])).toEqual([['e4', 'e5'], ['Nf3', undefined]]);
+		expect(rows[1].white?.i).toBe(2);
+	});
+	it('starts a row with Black when the log does', () => {
+		expect(moveRows([ply('e5', 'black'), ply('Nf3', 'white')]).map((r) => [r.white?.san, r.black?.san])).toEqual([[undefined, 'e5'], ['Nf3', undefined]]);
 	});
 });

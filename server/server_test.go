@@ -11,6 +11,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -189,8 +190,8 @@ func TestFriendGameOverHTTP(t *testing.T) {
 	if status, body := alice.post("/api/games/"+code+"/move", `{"from":"e2","to":"e4","seq":0}`); status != http.StatusNoContent {
 		t.Fatalf("alice e2e4: %d %s", status, body)
 	}
-	if v := b.state(); v.Seq != 1 || v.Board[28] != "wP" || len(v.Legal) != 32 || v.Log[0] != (game.LogEntry{SAN: "e4", Color: "white", Dice: "d8 1"}) {
-		t.Fatalf("bob after e4: seq=%d e4=%q legal=%d log=%q", v.Seq, v.Board[28], len(v.Legal), v.Log)
+	if v := b.state(); v.Seq != 1 || v.Board[28] != "wP" || len(v.Legal) != 32 || !reflect.DeepEqual(v.Log[0], game.LogEntry{SAN: "e4", Color: "white", Piece: "wP", Dice: "d8 1"}) {
+		t.Fatalf("bob after e4: seq=%d e4=%q legal=%d log=%+v", v.Seq, v.Board[28], len(v.Legal), v.Log)
 	}
 	if v := a.state(); v.Seq != 1 || len(v.Legal) != 0 {
 		t.Fatalf("alice after e4: seq=%d legal=%d", v.Seq, len(v.Legal))

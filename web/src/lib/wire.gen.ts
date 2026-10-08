@@ -34,6 +34,8 @@ export interface View {
 	log: LogEntry[];
 	/** pieces each side has lost to potholes */
 	lost: LostJSON;
+	/** pieces each side has captured from the other */
+	taken: LostJSON;
 	stats: StatsJSON;
 	result: ResultJSON | null;
 	/** turns played; a move must quote it */
@@ -87,16 +89,29 @@ export interface EventJSON {
 }
 
 /**
- * LogEntry is one turn in the move log: the move in algebraic notation and
- * what the dice did, e.g. {"e4", "white", "d8 4 → c3"}.
+ * LogEntry is one turn in the move log: the move in algebraic notation, the
+ * piece that moved, and what the dice did, e.g. {"e4", "white", "wP",
+ * "d8 4 → c3", "c3"}. Opened, Fell and Repaired pick out of the dice what
+ * the log marks, so the browser never reads Dice apart.
  */
 export interface LogEntry {
 	san: string;
 	color: Color;
+	/** what moved: "wN", "bP", or "M" for the Mamdani */
+	piece: string;
 	dice: string;
+	/** the square a new pothole opened on */
+	opened?: string;
+	/** pieces that fell this turn, "M" too */
+	fell?: string[];
+	/** the Mamdani repaired a pothole */
+	repaired?: boolean;
 }
 
-/** LostJSON lists the pieces each side has lost to potholes, as piece codes. */
+/**
+ * LostJSON lists pieces for each side, as piece codes: what it has lost to
+ * potholes (View.Lost) or captured from the other side (View.Taken).
+ */
 export interface LostJSON {
 	white: string[];
 	black: string[];
