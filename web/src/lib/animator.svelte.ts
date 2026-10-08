@@ -28,10 +28,12 @@ export class Animator {
 	pace: Pace;
 	/**
 	 * Called with the events of view.last just revealed, [from, to), on a turn
-	 * that is playing out; never for one shown at once. The game's sounds hang
-	 * on it, so a reload or a hidden tab never replays them.
+	 * that arrived live: step by step as it plays out, or all at once
+	 * (`jumped`) when it arrived in a hidden tab or the rest of a roll was
+	 * skipped. Never for a turn shown at once on load or reconnect, so a
+	 * reload never replays the game's sounds, which hang on it.
 	 */
-	onreveal: ((view: View, from: number, to: number) => void) | undefined;
+	onreveal: ((view: View, from: number, to: number, jumped?: boolean) => void) | undefined;
 	#timer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(pace: Pace = dicePace) {
@@ -62,19 +64,24 @@ export class Animator {
 			this.shown = Math.min(this.shown, next.last.length);
 			return;
 		}
-		const animate = this.view !== null && next.seq === this.view.seq + 1 && next.last.length > 0 && !hidden;
+		const live = this.view !== null && next.seq === this.view.seq + 1 && next.last.length > 0;
+		const animate = live && !hidden;
 		this.view = next;
 		this.animated = animate;
 		clearTimeout(this.#timer);
 		this.shown = animate ? firstDiceStep(next.last) : next.last.length;
 		if (animate) this.onreveal?.(next, 0, this.shown);
+		else if (live) this.onreveal?.(next, 0, this.shown, true);
 		this.#tick();
 	}
 
 	/** Jumps to the end of the current roll. */
 	finish() {
 		clearTimeout(this.#timer);
-		if (this.view) this.shown = this.view.last.length;
+		if (!this.view) return;
+		const from = this.shown;
+		this.shown = this.view.last.length;
+		if (from < this.shown) this.onreveal?.(this.view, from, this.shown, true);
 	}
 
 	/** Stops the timer; call when the page goes away. */

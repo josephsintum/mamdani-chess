@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BURST_HOLD_MS, TEETER_MS } from './feel.ts';
 import type { EventJSON } from './game.ts';
 import { SAVE_MS } from './dice.ts';
+import { setInstant } from './motion.ts';
 import { moveDuration } from './pieces.ts';
 import { endCue, flawless, moveSound, revealCues, turnCues, turnEndCue } from './soundCues.ts';
 import { boardOf, viewOf } from './test-boards.ts';
@@ -19,8 +20,19 @@ describe('revealCues', () => {
 		expect(revealCues([moved, captured])).toEqual([{ sound: 'capture', delayMs: 0 }]);
 	});
 
+	it('reads nothing past the turn: a resignation mid-roll empties it', () => {
+		expect(revealCues([], { from: 0, to: 1 })).toEqual([]);
+		expect(turnCues(viewOf({ you: 'black', last: [], result: { winner: 'black', draw: false, reason: 'resignation' } }), 0, 1, { end: false })).toEqual([]);
+	});
+
 	it('skips a move that sounded as the player made it', () => {
 		expect(revealCues([moved, captured], { skipMove: true })).toEqual([]);
+	});
+
+	it('repairs at once when the dice land beside the Mamdani, even after it moved', () => {
+		const mamdani: EventJSON = { kind: 'moved', from: 'a5', to: 'c3', piece: 'M', color: 'white' };
+		const turn: EventJSON[] = [mamdani, roll, { kind: 'target', sq: 'd4' }, { kind: 'repaired', sq: 'd4' }];
+		expect(revealCues(turn, { from: 3, to: 4 })).toEqual([{ sound: 'repair', delayMs: 0 }]);
 	});
 
 	it('builds as the Mamdani repairs: once its move arrives, at once beside the dice', () => {
@@ -31,6 +43,15 @@ describe('revealCues', () => {
 			{ sound: 'dice', delayMs: 0 },
 			{ sound: 'repair', delayMs: 0 }
 		]);
+	});
+
+	it('drops at once with reduced motion: no teeter to wait for', () => {
+		setInstant(true);
+		try {
+			expect(revealCues([{ kind: 'fell', sq: 'd4', piece: 'wN' }])).toEqual([{ sound: 'fell', delayMs: 0 }]);
+		} finally {
+			setInstant(false);
+		}
 	});
 
 	it('explodes as a piece drops into a pothole, and only gasps for the Mamdani', () => {
@@ -132,6 +153,18 @@ describe('turnCues', () => {
 	it('plays checkmate, then the end sound after the burst', () => {
 		expect(turnCues(mate, 0, 2, { end: true })).toEqual([
 			{ sound: 'capture', delayMs: 0 },
+			{ sound: 'checkmate', delayMs: 0 },
+			{ sound: 'victory', delayMs: BURST_HOLD_MS }
+		]);
+	});
+
+	it('plays only the move and the ending of a turn that jumped to its end', () => {
+		const v = viewOf({ you: 'black', last: [moved, roll, { kind: 'target', sq: 'c3' }, { kind: 'pothole_opened', sq: 'c3' }], check: true });
+		expect(turnCues(v, 0, 4, { jumped: true })).toEqual([
+			{ sound: 'move', delayMs: 0 },
+			{ sound: 'check', delayMs: 0 }
+		]);
+		expect(turnCues(mate, 1, 2, { jumped: true, end: true })).toEqual([
 			{ sound: 'checkmate', delayMs: 0 },
 			{ sound: 'victory', delayMs: BURST_HOLD_MS }
 		]);

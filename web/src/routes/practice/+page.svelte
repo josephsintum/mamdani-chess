@@ -24,12 +24,13 @@
 	const anim = new Animator();
 	// Sounds as in a game. Every move is made here and sounded at once, so a
 	// turn's sounds skip the move; nobody wins or loses practice.
-	anim.onreveal = (v, from, to) => {
-		for (const c of turnCues(v, from, to, { skipMove: true })) play(c.sound, c.delayMs);
+	anim.onreveal = (v, from, to, jumped) => {
+		for (const c of turnCues(v, from, to, { skipMove: true, jumped })) play(c.sound, c.delayMs);
 	};
 	let code = $state('');
 	let flipped = $state(false);
 	let gone = $state(false); // the server no longer has the game (a restart)
+	let sending = $state(false); // a move is on its way, until its turn comes back
 	let error = $state('');
 	let starting = $state(false);
 
@@ -65,7 +66,11 @@
 					else gone = true;
 				}, retryDelay(failures++));
 			};
-			es.addEventListener('state', (e) => anim.receive(JSON.parse(e.data) as View, { hidden: document.hidden }));
+			es.addEventListener('state', (e) => {
+				const next = JSON.parse(e.data) as View;
+				if (next.seq !== anim.view?.seq) sending = false; // the move's turn is back
+				anim.receive(next, { hidden: document.hidden });
+			});
 		};
 		connect();
 		close = () => {
@@ -88,6 +93,7 @@
 				// Blocked storage: a reload starts a new game.
 			}
 			gone = false;
+			sending = false;
 			follow(code);
 		} catch {
 			error = 'Could not start a practice game. Try again in a moment.';
@@ -102,12 +108,16 @@
 		play(moveSound(before.board, m));
 		// Shown at once; the server's turn (with its dice) replaces it.
 		anim.receive({ ...before, ...applyMove(before, m), legal: [], last: [] });
+		// Until the move's turn comes back on the stream, the board takes no
+		// taps: a piece tapped now isn't refused, its turn just isn't back yet.
+		sending = true;
 		const out = await trySendMove(c, m, before.seq);
 		if (c !== code || !alive) return; // a new game took over meanwhile
 		if (out === 'sent') {
 			error = '';
 			return;
 		}
+		sending = false;
 		error = out === 'unsent' ? 'The move didn’t reach the server. Check your connection.' : out.refused;
 		play('error');
 		// Undo the guess: the server's state, or the board before the move.
@@ -171,7 +181,7 @@
 					{anim}
 					legal={view.legal ?? []}
 					{flipped}
-					interactive={!gone}
+					interactive={!gone && !sending}
 					id="practice-{code}"
 					ending={view.result ? 1 : 0}
 					onmove={(m) => void move(m)}

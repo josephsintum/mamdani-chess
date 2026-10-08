@@ -79,8 +79,10 @@
 	// A dragged piece dropped on a square it can't go to settles back with a
 	// squash; n changes each time so the same square can bounce again.
 	let bounce = $state.raw({ sq: '', n: 0 });
-	// A tapped piece that can't move shakes its head; n as for bounce.
-	let nope = $state.raw({ sq: '', n: 0 });
+	// A tapped piece that can't move shakes its head. It follows the piece
+	// (by id), so another piece arriving on that square later doesn't; n as
+	// for bounce.
+	let nope = $state.raw({ id: -1, n: 0 });
 	let boardEl: HTMLDivElement | undefined = $state();
 
 	// Without moves to make (not your turn, dice still rolling) nothing is selectable.
@@ -146,7 +148,7 @@
 	function motion(p: { id: number; from?: string; sq: string; dur: number }) {
 		return (node: HTMLElement) => {
 			const settled = bounce.sq === p.sq ? `bounce:${bounce.n}` : '';
-			const refused = nope.sq === p.sq ? `nope:${nope.n}` : '';
+			const refused = nope.id === p.id ? `nope:${nope.n}` : '';
 			const savedHere = saved === p.sq;
 			if (!saved) delete node.dataset.saved;
 			if (reducedMotion()) return;
@@ -251,7 +253,7 @@
 		if (current && targets.has(sq) && moveTo(current, sq)) return;
 		if (pieceOn(stage, sq) && !movable.has(sq)) {
 			selected = null;
-			nope = { sq, n: nope.n + 1 };
+			nope = { id: pieces.find((p) => p.sq === sq)?.id ?? -1, n: nope.n + 1 };
 			onrefuse?.(sq);
 			return;
 		}

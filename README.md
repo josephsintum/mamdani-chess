@@ -93,4 +93,5 @@ Some files in this repo are not covered by that license:
 - **Chess pieces** (`web/static/pieces/`) keep their own license, the GNU GPL v3 or later, as their [notice](web/static/pieces/LICENSE.txt) says. The GPL v3 and the AGPL v3 allow the two to be combined.
 - **The Mamdani art** (`web/static/mamdani/`) is not licensed for reuse. Don't copy it into your own projects.
 - **Sound clips** marked "not for release" in [`web/src/lib/sounds/CREDITS.md`](web/src/lib/sounds/CREDITS.md) have no licence yet; they are placeholders on the `sound-demo` branch.
+- **Sound clips from Pixabay** (`die.mp3`, `dice.mp3` and `closed.mp3` in `web/src/lib/sounds/`) are under the [Pixabay Content License](https://pixabay.com/service/license-summary/), not the AGPL. It allows them in the game but not handing them out as files on their own, so don't reuse them outside it.
 - **The names "Mamdani" and "Mamdani Chess"** are not licensed either. The license covers the code, not any person's name or likeness. Mamdani Chess is unofficial and not affiliated with Zohran Mamdani.

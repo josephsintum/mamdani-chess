@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { squareIndex } from './board.ts';
-import { applyMove, moveDuration, reconcile, settlesGuess, type PieceRef } from './pieces.ts';
+import { applyMove, capturedSquare, moveDuration, reconcile, settlesGuess, type PieceRef } from './pieces.ts';
 import { boardOf } from './test-boards.ts';
 
 describe('moveDuration', () => {
@@ -8,6 +8,16 @@ describe('moveDuration', () => {
 		expect(moveDuration('e2', 'e2')).toBe(0);
 		expect(moveDuration('e2', 'e3')).toBeCloseTo(376.7, 1);
 		expect(moveDuration('a1', 'h8')).toBeCloseTo(350 + (Math.hypot(7, 7) / 15) * 400, 1);
+	});
+});
+
+describe('capturedSquare', () => {
+	it('is the target, the pawn behind en passant, or none', () => {
+		const board = boardOf({ e5: 'wP', d5: 'bP', f6: 'bN', a2: 'wP' });
+		expect(capturedSquare(board, { from: 'e5', to: 'f6' })).toBe('f6');
+		expect(capturedSquare(board, { from: 'e5', to: 'd6' })).toBe('d5');
+		expect(capturedSquare(board, { from: 'a2', to: 'a4' })).toBeNull();
+		expect(capturedSquare(board, { from: 'a5', to: 'b6' })).toBeNull(); // the Mamdani, off the board array
 	});
 });
 

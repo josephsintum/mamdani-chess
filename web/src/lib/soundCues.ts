@@ -1,12 +1,12 @@
 // Which sound each moment of a game plays. Pure, so it is tested without
 // audio; the pages hand the result to sound.ts.
 
-import { fallsWith, squareIndex } from './board.ts';
+import { fallsWith } from './board.ts';
 import { firstDiceStep, SAVE_MS } from './dice.ts';
 import { BURST_HOLD_MS, TEETER_MS } from './feel.ts';
 import type { Color, EventJSON, MoveJSON, View } from './game.ts';
 import { reducedMotion } from './motion.ts';
-import { moveDuration } from './pieces.ts';
+import { capturedSquare, moveDuration } from './pieces.ts';
 import type { Sound } from './sound.ts';
 
 export interface Cue {
@@ -34,10 +34,14 @@ const THROWS: Readonly<Record<string, Sound>> = { rolled_pothole: 'die', saving_
  */
 export function revealCues(last: readonly EventJSON[], { from = 0, to = last.length, skipMove = false } = {}): Cue[] {
 	const cues: Cue[] = [];
+	// With reduced motion a piece drops at once, without its teeter.
+	const teeter = reducedMotion() ? 0 : TEETER_MS;
 	// Holes close on their own before the roll; during it, only the cap closes one.
 	const roll = firstDiceStep(last);
 	let hissed = false;
-	for (let i = from; i < to; i++) {
+	// A resignation or a timeout mid-roll empties last while the roll's timer
+	// still reveals one more step.
+	for (let i = from; i < Math.min(to, last.length); i++) {
 		const e = last[i];
 		if (e.kind === 'moved' && !skipMove) cues.push({ sound: last[i + 1]?.kind === 'captured' ? 'capture' : 'move', delayMs: 0 });
 		const thrown = THROWS[e.kind];
@@ -49,13 +53,13 @@ export function revealCues(last: readonly EventJSON[], { from = 0, to = last.len
 			hissed = true;
 			cues.push({ sound: 'closed', delayMs: 0 });
 		}
-		if (e.kind === 'repaired') cues.push({ sound: 'repair', delayMs: mamdaniGlide(last.slice(0, i)) });
+		if (e.kind === 'repaired') cues.push({ sound: 'repair', delayMs: i < roll ? mamdaniGlide(last.slice(0, i)) : 0 });
 		if (e.kind === 'fell') {
 			const hole = holeWithFall(last, i);
-			if (e.piece === 'M') cues.push({ sound: 'mamdani-fell', delayMs: TEETER_MS });
+			if (e.piece === 'M') cues.push({ sound: 'mamdani-fell', delayMs: teeter });
 			else {
 				if (hole >= 0) cues.push({ sound: 'pothole', delayMs: 0 });
-				cues.push({ sound: 'fell', delayMs: TEETER_MS });
+				cues.push({ sound: 'fell', delayMs: teeter });
 			}
 		}
 	}
@@ -80,10 +84,13 @@ function mamdaniGlide(events: readonly EventJSON[]): number {
 /**
  * Everything a reveal of view.last's events [from, to) plays. Once the turn
  * has played out: check or checkmate, then, with `end` and when the turn
- * ended the game, the player's end sound, after the checkmate burst.
+ * ended the game, the player's end sound, after the checkmate burst. A
+ * turn `jumped` to its end (it arrived in a hidden tab, or the player came
+ * back mid-roll) plays only its move and that ending, not every die at once.
  */
-export function turnCues(view: Pick<View, 'last' | 'check' | 'result' | 'you' | 'board'>, from: number, to: number, { skipMove = false, end = false } = {}): Cue[] {
-	const cues = revealCues(view.last, { from, to, skipMove });
+export function turnCues(view: Pick<View, 'last' | 'check' | 'result' | 'you' | 'board'>, from: number, to: number, { skipMove = false, end = false, jumped = false } = {}): Cue[] {
+	const revealed = revealCues(view.last, { from, to, skipMove });
+	const cues = jumped ? revealed.filter((c) => c.sound === 'move' || c.sound === 'capture') : revealed;
 	if (to < view.last.length) return cues;
 	const last = turnEndCue(view);
 	if (last) cues.push({ sound: last, delayMs: 0 });
@@ -123,8 +130,5 @@ export function flawless(board: readonly string[], color: Color): boolean {
 
 /** The sound of a move the player makes on the board: a capture (en passant too) or a move. */
 export function moveSound(board: readonly string[], m: MoveJSON): Sound {
-	const target = board[squareIndex(m.to)];
-	const piece = board[squareIndex(m.from)] ?? '';
-	const enPassant = piece.endsWith('P') && m.from[0] !== m.to[0];
-	return target || enPassant ? 'capture' : 'move';
+	return capturedSquare(board, m) ? 'capture' : 'move';
 }

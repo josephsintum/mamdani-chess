@@ -78,10 +78,14 @@ function clipsOf(s: Sound): readonly Clip[] {
 export const CORE: Sound[] = ['move', 'capture', 'die', 'dice', 'reroll', 'pothole', 'closed', 'saved', 'fell', 'check', 'error', 'notify'];
 /** Needed later in a game, fetched while the browser is idle. */
 export const LATER: Sound[] = ['mamdani-fell', 'repair', 'checkmate', 'victory', 'flawless', 'loss', 'draw', 'low', 'challenge'];
+/** What a spectator needs later: no win, loss, clock or rematch sounds. */
+export const SPECTATOR_LATER: Sound[] = ['mamdani-fell', 'repair', 'checkmate'];
 
 const VOLUME = 0.7;
 // The waiting music plays under everything else.
 const MUSIC_VOLUME = 0.5;
+// How long a sound may wait for audio to resume.
+const RESUME_MS = 300;
 
 let ctx: AudioContext | undefined;
 let main: GainNode | undefined;
@@ -92,6 +96,14 @@ const loading = new Map<Clip, Promise<AudioBuffer | null>>();
 // Aborts the downloads in flight when the page is left.
 let leaving = new AbortController();
 const decoded = new Map<Clip, AudioBuffer>();
+// Bad downloads per clip: an error status, or a file that won't decode. A
+// clip that keeps failing (gone after a deploy, say) stops being asked for,
+// instead of on every tap. A network error doesn't count: offline, every
+// try fails at once, and a moment without signal mustn't switch clips off
+// for good.
+const failures = new Map<Clip, number>();
+class BadClip extends Error {}
+const MAX_FAILURES = 3;
 
 interface Loop {
 	sound: Clip;
@@ -129,15 +141,25 @@ function started() {
 	for (const l of loops) startLoop(l);
 }
 
-// Listens for the first taps and key presses. A page reached by a click
-// (quick match, a new game) has already been interacted with, so it tries
-// at once as well.
+// Listens for the first taps and key presses. A press with a mouse lets a
+// page start audio, but a finger only does when it lifts (the HTML spec's
+// activation events), so taps are caught on pointerup and touchend too. A
+// page reached by a click (quick match, a new game) has already been
+// interacted with, so it tries at once as well.
+const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'keydown'];
 function arm() {
 	if (armed || typeof window === 'undefined' || instantMode()) return;
 	armed = true;
-	window.addEventListener('pointerdown', unlock, { capture: true });
-	window.addEventListener('keydown', unlock, { capture: true });
+	for (const e of UNLOCK_EVENTS) window.addEventListener(e, unlock, { capture: true });
 	window.addEventListener('pagehide', leave);
+	// Back online: a captive portal or a proxy may have answered for the
+	// server meanwhile (a page that won't decode), so give every clip another go.
+	window.addEventListener('online', () => failures.clear());
+	// iOS suspends audio for a call or another app's sound and doesn't
+	// always resume it: try again when the page is back in front.
+	document.addEventListener('visibilitychange', () => {
+		if (!document.hidden && ctx && !running()) void ctx.resume().catch(() => {});
+	});
 	if (navigator.userActivation?.hasBeenActive) unlock();
 }
 
@@ -157,17 +179,25 @@ function leave() {
 function fetchSound(s: Clip): Promise<AudioBuffer | null> {
 	const had = loading.get(s);
 	if (had) return had;
-	if (!ctx) return Promise.resolve(null);
+	if (!ctx || (failures.get(s) ?? 0) >= MAX_FAILURES) return Promise.resolve(null);
 	const audio = ctx;
 	const p = fetch(urls[s], { signal: leaving.signal })
-		.then((r) => r.arrayBuffer())
-		.then((bytes) => audio.decodeAudioData(bytes))
+		.then((r) => {
+			if (!r.ok) throw new BadClip(`${s}: ${r.status}`);
+			return r.arrayBuffer();
+		})
+		.then((bytes) =>
+			audio.decodeAudioData(bytes).catch(() => {
+				throw new BadClip(`${s}: won't decode`);
+			})
+		)
 		.then((buffer) => {
 			decoded.set(s, buffer);
 			return buffer;
 		})
-		.catch(() => {
+		.catch((e: unknown) => {
 			loading.delete(s); // try again next time
+			if (e instanceof BadClip) failures.set(s, (failures.get(s) ?? 0) + 1);
 			return null;
 		});
 	loading.set(s, p);
@@ -200,7 +230,13 @@ export function loadSoon(sounds: readonly Sound[]) {
 export function play(s: Sound, delayMs = 0, { wait = 0 } = {}) {
 	if (!soundOn() || instantMode() || !ctx || !main) return;
 	if (!running()) {
-		void ctx.resume().catch(() => {});
+		// Still starting, or suspended (iOS after a call): resume, and play
+		// if that happens soon enough for the sound still to fit its moment.
+		const asked = performance.now();
+		void ctx
+			.resume()
+			.then(() => running() && performance.now() - asked < Math.max(wait, RESUME_MS) && play(s, delayMs, { wait }))
+			.catch(() => {});
 		return;
 	}
 	const clips = clipsOf(s);
@@ -249,7 +285,7 @@ function startLoop(l: Loop) {
 export function loop(s: Clip): () => void {
 	const l: Loop = { sound: s };
 	loops.add(l);
-	wanted.add(s);
+	if (!saveData()) wanted.add(s); // never played then, so never downloaded
 	arm();
 	startLoop(l);
 	return () => {

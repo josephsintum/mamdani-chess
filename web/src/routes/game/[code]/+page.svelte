@@ -5,7 +5,7 @@
 	import { reducedMotion, setInstant } from '#lib/motion.ts';
 	import { dev } from '$app/env';
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
+	import { afterNavigate, replaceState } from '$app/navigation';
 	import Board from '#lib/Board.svelte';
 	import Confetti from '#lib/Confetti.svelte';
 	import DiceSummary from '#lib/DiceSummary.svelte';
@@ -26,7 +26,7 @@
 	import { notify } from '#lib/toast.ts';
 	import { markSeen, seenTips, setTipsOn, tipFor, TIPS, tipsOn } from '#lib/tips.ts';
 	import { retryDelay } from '#lib/reconnect.ts';
-	import { CORE, LATER, load, loadSoon, loop, play } from '#lib/sound.ts';
+	import { CORE, LATER, load, loadSoon, loop, play, SPECTATOR_LATER } from '#lib/sound.ts';
 	import { endCue, moveSound, turnCues } from '#lib/soundCues.ts';
 	import { canShare, shareLink } from '#lib/share.ts';
 	import {
@@ -57,10 +57,14 @@
 	const anim = new Animator(instant ? 0 : undefined);
 	// Sounds follow the turn as it plays out, never a turn shown at once. The
 	// player's own move sounded as they made it.
-	anim.onreveal = (v, from, to) => {
+	anim.onreveal = (v, from, to, jumped) => {
 		const own = v.last.find((e) => e.kind === 'moved')?.color === v.you;
-		for (const c of turnCues(v, from, to, { skipMove: own, end: true })) play(c.sound, c.delayMs);
+		for (const c of turnCues(v, from, to, { skipMove: own, end: !endSounded, jumped })) play(c.sound, c.delayMs);
 	};
+	// The game's end sound already played: a resignation or a timeout that
+	// arrived while a roll was still playing out, which then ends on the
+	// finished game's view.
+	let endSounded = false;
 	// Phones get their own layout (canvas row "Phone game: playtest build"):
 	// upright, or on their side, where the board sits left of everything else.
 	const phone = new MediaQuery(`(max-width: 639px), ${LANDSCAPE}`);
@@ -136,13 +140,20 @@
 			cheer = wonHere(prev, next) && !instant && !reducedMotion();
 			// A resignation or a timeout: no turn plays out, so its sound is here.
 			const ending = next.seq === prev?.seq ? endCue(next) : null;
-			if (ending) play(ending);
+			if (ending) {
+				play(ending);
+				endSounded = true;
+			}
 		}
-		if (next.status === 'playing' && prev?.status !== 'playing') loadSoon(LATER);
+		// The rest of the game's clips, once the page knows who's watching: a
+		// finished game can still get a rematch offer, and a spectator hears
+		// no stings.
+		if (!prev) loadSoon(next.you === 'spectator' ? SPECTATOR_LATER : LATER);
 		const notice = joinNotice(prev, next, fromMatch, fromRematch);
-		// The game starts: the same moments as the notice, but not on a reload.
-		// Just after the page loads the clip may still be on its way.
-		if (notice && !reloaded) play('notify', 0, { wait: 1500 });
+		// The game starts: the same moments as the notice. One seen live always
+		// sounds; the first state a page gets doesn't when the page was
+		// reloaded. Just after the page loads the clip may still be on its way.
+		if (notice && (prev !== null || !reloadedHere())) play('notify', 0, { wait: 1500 });
 		const offer = next.rematch.offer;
 		if (prev && offer && offer !== prev.rematch.offer && next.you !== 'spectator' && offer !== next.you) play('challenge');
 		if (notice && phone.current) joined = notice;
@@ -179,17 +190,30 @@
 		}
 	}
 
-	// A reload shows the game as it is, silently (sound.ts plays only what
-	// happens live).
-	const reloaded = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type === 'reload';
+	// Whether this page is the one the browser reloaded: a reload shows the
+	// game as it is, silently. The navigation entry covers the whole tab, so
+	// a game page reached later inside the app (afterNavigate's 'link' or
+	// 'goto', not 'enter') wasn't reloaded.
+	let entered = false;
+	afterNavigate(({ type }) => (entered = type === 'enter'));
+	function reloadedHere(): boolean {
+		const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+		return entered && nav?.type === 'reload';
+	}
 
-	// Your clock beeps once as it drops under 10 s.
+	// Your clock beeps once a game, as it drops under 10 s while it runs.
+	// lastLeft is your time at the last reading while it ran; a page opened
+	// with less than 10 s left never saw it cross.
 	const LOW_MS = 10_000;
-	let lastLeft = Infinity;
+	let lastLeft: number | undefined;
+	let lowBeeped = '';
 	function checkLowTime(v: View | null) {
-		const running = v?.status === 'playing' && v.you !== 'spectator' && v.clock.running === v.you && !paused(v.clock, serverNow);
-		const left = running ? timeLeft(v.clock, v.you as Color, serverNow) : Infinity;
-		if (left < LOW_MS && lastLeft >= LOW_MS) play('low');
+		if (!v || v.status !== 'playing' || v.you === 'spectator' || v.clock.running !== v.you || paused(v.clock, serverNow)) return;
+		const left = timeLeft(v.clock, v.you, serverNow);
+		if (left < LOW_MS && lastLeft !== undefined && lastLeft >= LOW_MS && lowBeeped !== v.code) {
+			lowBeeped = v.code;
+			play('low');
+		}
 		lastLeft = left;
 	}
 
