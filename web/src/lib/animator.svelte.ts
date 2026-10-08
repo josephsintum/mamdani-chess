@@ -26,6 +26,12 @@ export class Animator {
 	animated = $state(false);
 	/** The wait before each step; applies from the next step on. */
 	pace: Pace;
+	/**
+	 * Called with the events of view.last just revealed, [from, to), on a turn
+	 * that is playing out; never for one shown at once. The game's sounds hang
+	 * on it, so a reload or a hidden tab never replays them.
+	 */
+	onreveal: ((view: View, from: number, to: number) => void) | undefined;
 	#timer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(pace: Pace = dicePace) {
@@ -61,6 +67,7 @@ export class Animator {
 		this.animated = animate;
 		clearTimeout(this.#timer);
 		this.shown = animate ? firstDiceStep(next.last) : next.last.length;
+		if (animate) this.onreveal?.(next, 0, this.shown);
 		this.#tick();
 	}
 
@@ -79,6 +86,7 @@ export class Animator {
 		if (!this.animating) return;
 		this.#timer = setTimeout(() => {
 			this.shown += 1;
+			if (this.view) this.onreveal?.(this.view, this.shown - 1, this.shown);
 			this.#tick();
 		}, this.#wait());
 	}

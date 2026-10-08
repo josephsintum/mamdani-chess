@@ -17,6 +17,7 @@
 //   pnpm --dir web playtest --games 12 --drag 0.5 # half the moves by dragging
 //   pnpm --dir web playtest --phone               # as iPhones: taps, the phone layout
 //   pnpm --dir web playtest --match               # both guests tap Play online (quick match)
+//   pnpm --dir web playtest --sound               # with sound on (each guest starts with it off)
 //
 // Against a production build (no ?instant: the dice play out in full), allow
 // each turn longer:
@@ -36,7 +37,8 @@ const { values: opts } = parseArgs({
 		'turn-ms': { type: 'string', default: '3000' }, // how long a move may take to land
 		headed: { type: 'boolean', default: false },
 		phone: { type: 'boolean', default: false }, // play as an iPhone 15, in the phone layout
-		match: { type: 'boolean', default: false } // find each other through quick match, not a link
+		match: { type: 'boolean', default: false }, // find each other through quick match, not a link
+		sound: { type: 'boolean', default: false } // leave sound on (sound.ts)
 	}
 });
 const GAMES = Number(opts.games);
@@ -164,6 +166,10 @@ async function playGame(browser, n) {
 		[w, 'White'],
 		[b, 'Black']
 	];
+	// Sound off: ?instant plays none anyway, and White's game page, which opens
+	// once before ?instant, would start audio and then be left at once. WebKit
+	// keeps such a page a moment and reports its cut-off requests as errors.
+	if (!opts.sound) for (const c of contexts) await c.addInitScript(() => localStorage.setItem('sound-off', '1'));
 	for (const [p, who] of sides) {
 		p.on('pageerror', (e) => errors.push(`${who} page error: ${e.message.slice(0, 240)}`));
 		p.on('console', (m) => m.type() === 'error' && errors.push(`${who} console: ${m.text().slice(0, 240)}`));

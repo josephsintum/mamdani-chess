@@ -9,6 +9,11 @@ export default defineConfig({
 			adapter: adapter({ fallback: 'index.html', precompress: true })
 		})
 	],
+	build: {
+		// Sounds stay files, never inlined: a page fetches them only once
+		// sound can play, and the browser caches each one (sound.ts).
+		assetsInlineLimit: (file) => (file.endsWith('.mp3') ? false : undefined)
+	},
 	server: {
 		// `pnpm dev` on :5173 talks to `go run ./cmd/server` on :8080.
 		proxy: { '/api': 'http://localhost:8080' },

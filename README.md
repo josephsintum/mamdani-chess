@@ -80,6 +80,7 @@ pnpm --dir web check     # Svelte and TypeScript type checks
 - **Pot-Hole Chess** by Peter Spicer and Michael Chamberlain, published on [The Chess Variant Pages](https://www.chessvariants.com/boardrules.dir/potholechess.html) (2001).
 - **The Mamdani** comes from a [patch video](https://www.instagram.com/reels/Dd8tV_MxEQL/).
 - **Chess pieces:** the "mpchess" set by [Maxime Chupin](https://github.com/chupinmaxime), as published in [lichess](https://github.com/lichess-org/lila/tree/5ae58154b2be1033dcb0252173b4fff4bb02e73a/public/piece/mpchess), under the GNU GPL v3 or later, with every line 1.2 times as heavy ([notice](web/static/pieces/LICENSE.txt), [license](web/static/pieces/GPL-3.0.txt)).
+- **Chess sounds:** the SFX set by [Enigmahack](https://github.com/Enigmahack), from [Lichess](https://github.com/lichess-org/lila/tree/master/public/sound/sfx), under the GNU AGPL v3 or later. Every sound file, with its source and licence, is listed in [`web/src/lib/sounds/CREDITS.md`](web/src/lib/sounds/CREDITS.md).
 
 ## License
 
@@ -91,4 +92,5 @@ Some files in this repo are not covered by that license:
 
 - **Chess pieces** (`web/static/pieces/`) keep their own license, the GNU GPL v3 or later, as their [notice](web/static/pieces/LICENSE.txt) says. The GPL v3 and the AGPL v3 allow the two to be combined.
 - **The Mamdani art** (`web/static/mamdani/`) is not licensed for reuse. Don't copy it into your own projects.
+- **Sound clips** marked "not for release" in [`web/src/lib/sounds/CREDITS.md`](web/src/lib/sounds/CREDITS.md) have no licence yet; they are placeholders on the `sound-demo` branch.
 - **The names "Mamdani" and "Mamdani Chess"** are not licensed either. The license covers the code, not any person's name or likeness. Mamdani Chess is unofficial and not affiliated with Zohran Mamdani.

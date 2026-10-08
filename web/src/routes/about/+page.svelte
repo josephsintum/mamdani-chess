@@ -51,6 +51,11 @@
 					with heavier lines.
 				</li>
 				<li>
+					<strong>Chess sounds:</strong> the SFX set by
+					<a href="https://github.com/Enigmahack" target="_blank" rel="noopener">Enigmahack</a>, from
+					<a href="https://github.com/lichess-org/lila" target="_blank" rel="noopener">Lichess</a>, under the AGPL-3.0 or later.
+				</li>
+				<li>
 					<strong>Fonts:</strong> Barlow Condensed and IBM Plex, under the SIL Open Font License.
 				</li>
 			</ul>

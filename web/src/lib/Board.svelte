@@ -24,7 +24,8 @@
 		scan = null,
 		reroll = false,
 		showing = '',
-		onmove
+		onmove,
+		onrefuse
 	}: {
 		stage: Stage;
 		legal: MoveJSON[];
@@ -55,6 +56,8 @@
 		/** A piece shown as if picked up, its moves and blocked squares marked, on a board you can't play on (how-to-play). */
 		showing?: string;
 		onmove: (move: MoveJSON) => void;
+		/** A tap on a piece that can't move now (the other side's, one with no moves, or any while the opponent plays): it shakes "no". */
+		onrefuse?: (sq: string) => void;
 	} = $props();
 
 	const promoOptions = [
@@ -76,6 +79,8 @@
 	// A dragged piece dropped on a square it can't go to settles back with a
 	// squash; n changes each time so the same square can bounce again.
 	let bounce = $state.raw({ sq: '', n: 0 });
+	// A tapped piece that can't move shakes its head; n as for bounce.
+	let nope = $state.raw({ sq: '', n: 0 });
 	let boardEl: HTMLDivElement | undefined = $state();
 
 	// Without moves to make (not your turn, dice still rolling) nothing is selectable.
@@ -141,6 +146,7 @@
 	function motion(p: { id: number; from?: string; sq: string; dur: number }) {
 		return (node: HTMLElement) => {
 			const settled = bounce.sq === p.sq ? `bounce:${bounce.n}` : '';
+			const refused = nope.sq === p.sq ? `nope:${nope.n}` : '';
 			const savedHere = saved === p.sq;
 			if (!saved) delete node.dataset.saved;
 			if (reducedMotion()) return;
@@ -149,6 +155,11 @@
 			if (savedHere && node.dataset.saved !== saved) {
 				node.dataset.saved = saved;
 				node.animate(SAVE_HOP, { duration: 640, easing: 'ease-out' });
+				return;
+			}
+			if (refused && node.dataset.nope !== refused) {
+				node.dataset.nope = refused;
+				node.animate(NOPE, { duration: 360, easing: 'ease-out', composite: 'add' });
 				return;
 			}
 			if (settled && node.dataset.bounce !== settled) {
@@ -171,6 +182,15 @@
 	// piece that stays picked up at 112% squashes from there, not from 100%.
 	const SQUASH: Keyframe[] = [{ transform: 'scale(1.08, 0.92)' }, { transform: 'scale(1)' }];
 	const squash = (node: HTMLElement) => node.animate(SQUASH, { duration: 140, easing: 'ease-out', composite: 'add' });
+	// A head-shake, on top of the resting transform like SQUASH.
+	const NOPE: Keyframe[] = [
+		{ transform: 'translateX(0)' },
+		{ transform: 'translateX(-10%)' },
+		{ transform: 'translateX(9%)' },
+		{ transform: 'translateX(-6%)' },
+		{ transform: 'translateX(3%)' },
+		{ transform: 'translateX(0)' }
+	];
 	const SAVE_HOP: Keyframe[] = [
 		{ transform: 'rotate(0)' },
 		{ transform: 'rotate(-14deg)', offset: 0.16 },
@@ -227,8 +247,14 @@
 	}
 
 	function tap(sq: string) {
-		if (!active || pending) return;
+		if (!interactive || pending) return;
 		if (current && targets.has(sq) && moveTo(current, sq)) return;
+		if (pieceOn(stage, sq) && !movable.has(sq)) {
+			selected = null;
+			nope = { sq, n: nope.n + 1 };
+			onrefuse?.(sq);
+			return;
+		}
 		selected = movable.has(sq) && current !== sq ? sq : null;
 	}
 

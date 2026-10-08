@@ -7,10 +7,13 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import ScriptedBoard from '#lib/ScriptedBoard.svelte';
 	import SiteFooter from '#lib/SiteFooter.svelte';
+	import SoundToggle from '#lib/SoundToggle.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { createPractice, fetchView, gameExists, isStale, reasons, sideName, trySendMove, type MoveJSON, type View } from '#lib/game.ts';
 	import { applyMove } from '#lib/pieces.ts';
 	import { retryDelay } from '#lib/reconnect.ts';
+	import { load, loadSoon, play } from '#lib/sound.ts';
+	import { moveSound, turnCues } from '#lib/soundCues.ts';
 
 	// Practice: you play both sides of a game on the server, with its rules
 	// engine and dice but no clock. It isn't saved or listed, and starting a
@@ -19,6 +22,11 @@
 
 	const KEY = 'practice';
 	const anim = new Animator();
+	// Sounds as in a game. Every move is made here and sounded at once, so a
+	// turn's sounds skip the move; nobody wins or loses practice.
+	anim.onreveal = (v, from, to) => {
+		for (const c of turnCues(v, from, to, { skipMove: true })) play(c.sound, c.delayMs);
+	};
 	let code = $state('');
 	let flipped = $state(false);
 	let gone = $state(false); // the server no longer has the game (a restart)
@@ -91,6 +99,7 @@
 		const before = view;
 		const c = code;
 		if (!before) return;
+		play(moveSound(before.board, m));
 		// Shown at once; the server's turn (with its dice) replaces it.
 		anim.receive({ ...before, ...applyMove(before, m), legal: [], last: [] });
 		const out = await trySendMove(c, m, before.seq);
@@ -100,12 +109,16 @@
 			return;
 		}
 		error = out === 'unsent' ? 'The move didn’t reach the server. Check your connection.' : out.refused;
+		play('error');
 		// Undo the guess: the server's state, or the board before the move.
 		const now = (out !== 'unsent' && out.state) || (await fetchView(c).catch(() => before));
 		if (c === code && !isStale(anim.view, now)) anim.receive(now);
 	}
 
 	onMount(() => {
+		// Only what practice plays: nobody joins, wins or loses.
+		load(['move', 'capture', 'die', 'dice', 'fell', 'check', 'error']);
+		loadSoon(['mamdani-fell', 'repair', 'checkmate']);
 		let saved: string | null = null;
 		try {
 			saved = sessionStorage.getItem(KEY);
@@ -162,6 +175,7 @@
 					id="practice-{code}"
 					ending={view.result ? 1 : 0}
 					onmove={(m) => void move(m)}
+					onrefuse={() => play('error')}
 				/>
 				<div class="phone-dice"><DiceSummary {view} shown={anim.shown} wrap /></div>
 			{:else}
@@ -175,6 +189,7 @@
 			<div class="actions">
 				<button type="button" class="primary" onclick={() => void start()} disabled={starting}>New game</button>
 				<button type="button" onclick={() => (flipped = !flipped)} aria-pressed={flipped}>Flip board</button>
+				<SoundToggle />
 				<GameHelp />
 			</div>
 		</div>

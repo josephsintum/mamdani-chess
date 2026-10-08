@@ -15,6 +15,7 @@
 	import MovesSheet, { LANDSCAPE } from '#lib/MovesSheet.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import RecentMoves from '#lib/RecentMoves.svelte';
+	import SoundToggle from '#lib/SoundToggle.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { dicePill, playOutMs, scanOf, type DicePill } from '#lib/dice.ts';
 	import { checkSquare, endedHere, matedKing, materialLead, pillFor, repairsShown, resultCardOf, stageAt, tallyOf, wonHere, type Stage } from '#lib/board.ts';
@@ -25,6 +26,8 @@
 	import { notify } from '#lib/toast.ts';
 	import { markSeen, seenTips, setTipsOn, tipFor, TIPS, tipsOn } from '#lib/tips.ts';
 	import { retryDelay } from '#lib/reconnect.ts';
+	import { CORE, LATER, load, loadSoon, loop, play } from '#lib/sound.ts';
+	import { endCue, moveSound, turnCues } from '#lib/soundCues.ts';
 	import { canShare, shareLink } from '#lib/share.ts';
 	import {
 		createGame,
@@ -52,6 +55,12 @@
 	const instant = dev && page.url.searchParams.has('instant');
 	setInstant(instant);
 	const anim = new Animator(instant ? 0 : undefined);
+	// Sounds follow the turn as it plays out, never a turn shown at once. The
+	// player's own move sounded as they made it.
+	anim.onreveal = (v, from, to) => {
+		const own = v.last.find((e) => e.kind === 'moved')?.color === v.you;
+		for (const c of turnCues(v, from, to, { skipMove: own, end: true })) play(c.sound, c.delayMs);
+	};
 	// Phones get their own layout (canvas row "Phone game: playtest build"):
 	// upright, or on their side, where the board sits left of everything else.
 	const phone = new MediaQuery(`(max-width: 639px), ${LANDSCAPE}`);
@@ -125,7 +134,12 @@
 		if (endedHere(prev, next)) {
 			endedLive = true;
 			cheer = wonHere(prev, next) && !instant && !reducedMotion();
+			// A resignation or a timeout: no turn plays out, so its sound is here.
+			const ending = next.seq === prev?.seq ? endCue(next) : null;
+			if (ending) play(ending);
 		}
+		if (prev?.status === 'waiting' && next.status === 'playing' && next.you === 'white') play('notify');
+		if (next.status === 'playing' && prev?.status !== 'playing') loadSoon(LATER);
 		const notice = joinNotice(prev, next, fromMatch, fromRematch);
 		if (notice && phone.current) joined = notice;
 		else if (notice) notify.info(notice, { id: 'join' });
@@ -163,6 +177,7 @@
 
 	onMount(() => {
 		if (page.params.code !== code) void replaceState(`/game/${code}${location.search}`, page.state);
+		load(CORE);
 		// Every stream this page has open. A new one replaces the others only
 		// once it is up, so the server never sees the player leave in between
 		// (which would withdraw a rematch offer, say).
@@ -292,6 +307,7 @@
 	async function move(m: MoveJSON) {
 		if (!view || busy) return;
 		busy = true;
+		play(stage ? moveSound(stage.board, m) : 'move');
 		optimistic = { seq: view.seq, move: m };
 		const sent = await trySendMove(code, m, view.seq);
 		busy = false;
@@ -302,6 +318,7 @@
 			retryLater();
 		} else if (sent !== 'sent') {
 			optimistic = null; // refused: glide back
+			play('error');
 			if (sent.state) receive(sent.state); // resync at once (this clears error)
 			error = sent.refused;
 		}
@@ -505,7 +522,7 @@
 		legal={view.legal}
 		{lastMove}
 		flipped={bottom === 'black'}
-		interactive={!animating && !busy && !optimistic && playing}
+		interactive={!animating && !busy && !optimistic && playing && view.you !== 'spectator'}
 		{dim}
 		check={checked}
 		saved={savedSquare}
@@ -516,6 +533,7 @@
 		{scan}
 		{reroll}
 		onmove={move}
+		onrefuse={() => play('error')}
 	/>
 {/snippet}
 
@@ -531,6 +549,7 @@
 				{#if !connected && !lost}<span class="ph-chip warn">Reconnecting…</span>{/if}
 				{#if you === 'spectator'}<span class="ph-chip">Watching</span>{/if}
 				<span class="ph-code">{copyHint && view.status !== 'waiting' ? copyHint : code}</span>
+				<SoundToggle compact />
 				<GameHelp compact />
 				<button type="button" class="ph-icon" aria-label="Copy game link" onclick={copyLink}>
 					<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
@@ -556,7 +575,7 @@
 		     board never moves when a card changes. -->
 		<div class="ph-bottom">
 		{#if view.status === 'waiting' && you === 'white'}
-			<section class="ph-card" aria-label="Invite a friend">
+			<section class="ph-card" aria-label="Invite a friend" {@attach () => loop('waiting')}>
 				{#if sharable}
 					<span class="ph-title">Send this link to your friend</span>
 					<div class="ph-row">
@@ -644,7 +663,7 @@
 		<a href="/" class="logo">Mamdani Chess</a>
 		<span class="code">{code}</span>
 		{#if view && !connected && !lost}<span class="warn">Reconnecting…</span>{/if}
-		<span class="help-slot"><GameHelp /></span>
+		<span class="help-slot"><SoundToggle /><GameHelp /></span>
 	</header>
 
 	{#if lost}
@@ -671,7 +690,7 @@
 		</p>
 
 		{#if view.status === 'waiting' && you === 'white'}
-			<div class="share">
+			<div class="share" {@attach () => loop('waiting')}>
 				<label for="link">Send this link to your friend</label>
 				<div class="share-row">
 					<input id="link" readonly value={page.url.href} />
@@ -1159,6 +1178,8 @@
 		color: var(--text-muted);
 	}
 	.help-slot {
+		display: flex;
+		gap: 8px;
 		align-self: center;
 		margin-left: auto;
 	}
