@@ -3,12 +3,16 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import PlayerBar from '#lib/PlayerBar.svelte';
 	import ScriptedBoard from '#lib/ScriptedBoard.svelte';
+	import SoundToggle from '#lib/SoundToggle.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { dicePace } from '#lib/dice.ts';
 	import { materialLead, pieceOn, pillFor, squareAt, squareIndex, stageAt } from '#lib/board.ts';
 	import { opponent, sideName, squareName, type Color, type MoveJSON, type View } from '#lib/game.ts';
 	import { setInstant } from '#lib/motion.ts';
 	import { freeMoves, playTurn, positions, type RollScript } from '#lib/sandbox.ts';
+	import { CORE, LATER, load as loadSounds, play } from '#lib/sound.ts';
+	import { turnCues } from '#lib/soundCues.ts';
+	import { onMount } from 'svelte';
 
 	// Test bench for the board UI: one browser plays both sides, nothing goes
 	// to the server, and the dice do what you pick. Moves follow how each piece
@@ -27,7 +31,13 @@
 	];
 
 	const anim = new Animator();
+	// The game page's sounds, so scripted rolls can audition them: each
+	// turn plays out in full here, the move included.
+	anim.onreveal = (v, from, to) => {
+		for (const c of turnCues(v, from, to, { end: true })) play(c.sound, c.delayMs);
+	};
 	anim.receive(positions.start());
+	onMount(() => loadSounds([...CORE, ...LATER]));
 
 	let rollKind = $state<RollKind>('empty');
 	let target = $state('d4');
@@ -129,6 +139,7 @@
 	<header>
 		<a href="/" class="logo">Mamdani Chess</a>
 		<span class="tag">Board sandbox · dev only</span>
+		<span class="sound-slot"><SoundToggle /></span>
 	</header>
 	<p class="status">
 		{view.result ? 'Game over' : anim.animating ? 'Dice are rolling…' : `${sideName(view.turn)} to move`}
@@ -195,7 +206,7 @@
 
 		<div class="board-col">
 			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} taken={view.taken[top]} lead={materialLead(stage.board)[top]} pill={topPill.text} pillTone={topPill.tone} />
-			<ScriptedBoard {anim} {legal} flipped={bottom === 'black'} interactive still={instant} id="sandbox" ending={endings} onmove={move} />
+			<ScriptedBoard {anim} {legal} flipped={bottom === 'black'} interactive still={instant} id="sandbox" ending={endings} onmove={move} onrefuse={() => play('error')} />
 			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} taken={view.taken[bottom]} lead={materialLead(stage.board)[bottom]} pill={bottomPill.text} pillTone={bottomPill.tone} />
 		</div>
 
@@ -218,6 +229,10 @@
 		display: flex;
 		align-items: baseline;
 		gap: 12px;
+	}
+	.sound-slot {
+		margin-left: auto;
+		align-self: center;
 	}
 	.logo {
 		font-family: var(--font-display);

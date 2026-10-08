@@ -117,7 +117,7 @@
 
 	onMount(() => {
 		// Only what practice plays: nobody joins, wins or loses.
-		load(['move', 'capture', 'die', 'dice', 'fell', 'check', 'error']);
+		load(['move', 'capture', 'die', 'dice', 'reroll', 'pothole', 'closed', 'saved', 'fell', 'check', 'error']);
 		loadSoon(['mamdani-fell', 'repair', 'checkmate']);
 		let saved: string | null = null;
 		try {

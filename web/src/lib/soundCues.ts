@@ -1,7 +1,8 @@
 // Which sound each moment of a game plays. Pure, so it is tested without
 // audio; the pages hand the result to sound.ts.
 
-import { squareIndex } from './board.ts';
+import { fallsWith, squareIndex } from './board.ts';
+import { firstDiceStep, SAVE_MS } from './dice.ts';
 import { BURST_HOLD_MS, TEETER_MS } from './feel.ts';
 import type { Color, EventJSON, MoveJSON, View } from './game.ts';
 import { reducedMotion } from './motion.ts';
@@ -17,25 +18,56 @@ export interface Cue {
 const THROWS: Readonly<Record<string, Sound>> = { rolled_pothole: 'die', saving_roll: 'die', target: 'dice' };
 
 /**
- * The sounds for events of a turn just revealed, in order. `skipMove` skips
- * the move itself (and its capture) when it already sounded as the player
- * made it. Each throw rattles: one die for the pothole roll and a saving
- * roll, two for the file and rank dice. A piece falling into a pothole
- * explodes as it drops, after its teeter; the Mamdani gets the crowd's
- * gasp instead. A repair sounds with its celebration: once the Mamdani has
+ * The sounds for a turn's events [from, to), just revealed, in order.
+ * `skipMove` skips the move itself (and its capture) when it already
+ * sounded as the player made it. Each throw rattles: one die for the
+ * pothole roll and a saving roll, two for the file and rank dice. A
+ * re-roll buzzes as its target blinks, and a saved piece chimes as its die
+ * lands and it hops out. A new
+ * pothole cracks open, and one that closes on its own, its rounds run out,
+ * hisses (once, however many close together); one the cap pushes out
+ * closes quietly. A piece falling in cracks its hole open (the hole opens
+ * in the fall's step, before the server's pothole_opened) and explodes as
+ * it drops, after its teeter; the Mamdani gets only the crowd's gasp. A repair sounds with its celebration: once the Mamdani has
  * arrived when its move fixed the hole, or at once when the dice land
  * beside it.
  */
-export function revealCues(events: readonly EventJSON[], { skipMove = false } = {}): Cue[] {
+export function revealCues(last: readonly EventJSON[], { from = 0, to = last.length, skipMove = false } = {}): Cue[] {
 	const cues: Cue[] = [];
-	events.forEach((e, i) => {
-		if (e.kind === 'moved' && !skipMove) cues.push({ sound: events[i + 1]?.kind === 'captured' ? 'capture' : 'move', delayMs: 0 });
+	// Holes close on their own before the roll; during it, only the cap closes one.
+	const roll = firstDiceStep(last);
+	let hissed = false;
+	for (let i = from; i < to; i++) {
+		const e = last[i];
+		if (e.kind === 'moved' && !skipMove) cues.push({ sound: last[i + 1]?.kind === 'captured' ? 'capture' : 'move', delayMs: 0 });
 		const thrown = THROWS[e.kind];
 		if (thrown) cues.push({ sound: thrown, delayMs: 0 });
-		if (e.kind === 'repaired') cues.push({ sound: 'repair', delayMs: mamdaniGlide(events.slice(0, i)) });
-		if (e.kind === 'fell') cues.push({ sound: e.piece === 'M' ? 'mamdani-fell' : 'fell', delayMs: TEETER_MS });
-	});
+		if (e.kind === 'reroll') cues.push({ sound: 'reroll', delayMs: 0 });
+		if (e.kind === 'saving_roll' && e.saved) cues.push({ sound: 'saved', delayMs: SAVE_MS });
+		if (e.kind === 'pothole_opened' && fallsWith(last, i) === Infinity) cues.push({ sound: 'pothole', delayMs: 0 });
+		if (e.kind === 'pothole_closed' && i < roll && !hissed) {
+			hissed = true;
+			cues.push({ sound: 'closed', delayMs: 0 });
+		}
+		if (e.kind === 'repaired') cues.push({ sound: 'repair', delayMs: mamdaniGlide(last.slice(0, i)) });
+		if (e.kind === 'fell') {
+			const hole = holeWithFall(last, i);
+			if (e.piece === 'M') cues.push({ sound: 'mamdani-fell', delayMs: TEETER_MS });
+			else {
+				if (hole >= 0) cues.push({ sound: 'pothole', delayMs: 0 });
+				cues.push({ sound: 'fell', delayMs: TEETER_MS });
+			}
+		}
+	}
 	return cues;
+}
+
+// The index of the hole the fall at i opens in the same step, or -1
+// (board.ts, stageAt).
+function holeWithFall(last: readonly EventJSON[], i: number): number {
+	let j = i + 1;
+	while (last[j]?.kind === 'pothole_closed') j++;
+	return last[j]?.kind === 'pothole_opened' && fallsWith(last, j) === i ? j : -1;
 }
 
 // How long the Mamdani glides if one of these events moved it: Board waits
@@ -51,7 +83,7 @@ function mamdaniGlide(events: readonly EventJSON[]): number {
  * ended the game, the player's end sound, after the checkmate burst.
  */
 export function turnCues(view: Pick<View, 'last' | 'check' | 'result' | 'you' | 'board'>, from: number, to: number, { skipMove = false, end = false } = {}): Cue[] {
-	const cues = revealCues(view.last.slice(from, to), { skipMove });
+	const cues = revealCues(view.last, { from, to, skipMove });
 	if (to < view.last.length) return cues;
 	const last = turnEndCue(view);
 	if (last) cues.push({ sound: last, delayMs: 0 });

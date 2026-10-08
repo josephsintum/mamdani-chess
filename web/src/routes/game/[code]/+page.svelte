@@ -138,9 +138,13 @@
 			const ending = next.seq === prev?.seq ? endCue(next) : null;
 			if (ending) play(ending);
 		}
-		if (prev?.status === 'waiting' && next.status === 'playing' && next.you === 'white') play('notify');
 		if (next.status === 'playing' && prev?.status !== 'playing') loadSoon(LATER);
 		const notice = joinNotice(prev, next, fromMatch, fromRematch);
+		// The game starts: the same moments as the notice, but not on a reload.
+		// Just after the page loads the clip may still be on its way.
+		if (notice && !reloaded) play('notify', 0, { wait: 1500 });
+		const offer = next.rematch.offer;
+		if (prev && offer && offer !== prev.rematch.offer && next.you !== 'spectator' && offer !== next.you) play('challenge');
 		if (notice && phone.current) joined = notice;
 		else if (notice) notify.info(notice, { id: 'join' });
 		anim.receive(next, { hidden: document.hidden });
@@ -173,6 +177,20 @@
 		} catch {
 			return false;
 		}
+	}
+
+	// A reload shows the game as it is, silently (sound.ts plays only what
+	// happens live).
+	const reloaded = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type === 'reload';
+
+	// Your clock beeps once as it drops under 10 s.
+	const LOW_MS = 10_000;
+	let lastLeft = Infinity;
+	function checkLowTime(v: View | null) {
+		const running = v?.status === 'playing' && v.you !== 'spectator' && v.clock.running === v.you && !paused(v.clock, serverNow);
+		const left = running ? timeLeft(v.clock, v.you as Color, serverNow) : Infinity;
+		if (left < LOW_MS && lastLeft >= LOW_MS) play('low');
+		lastLeft = left;
 	}
 
 	onMount(() => {
@@ -240,6 +258,7 @@
 		// Only a game in progress has a running clock or a first-move deadline.
 		const tick = setInterval(() => {
 			if (view?.status === 'playing') serverNow = Date.now() + offset;
+			checkLowTime(view);
 		}, 100);
 		// Coming back to a tab mid-animation jumps to the end of the roll.
 		const finishOnReturn = () => {

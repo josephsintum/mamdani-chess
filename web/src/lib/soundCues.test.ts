@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BURST_HOLD_MS, TEETER_MS } from './feel.ts';
 import type { EventJSON } from './game.ts';
+import { SAVE_MS } from './dice.ts';
 import { moveDuration } from './pieces.ts';
 import { endCue, flawless, moveSound, revealCues, turnCues, turnEndCue } from './soundCues.ts';
 import { boardOf, viewOf } from './test-boards.ts';
@@ -34,13 +35,37 @@ describe('revealCues', () => {
 
 	it('explodes as a piece drops into a pothole, and only gasps for the Mamdani', () => {
 		expect(revealCues([{ kind: 'fell', sq: 'd4', piece: 'wN' }])).toEqual([{ sound: 'fell', delayMs: TEETER_MS }]);
-		expect(revealCues([{ kind: 'fell', sq: 'a5', piece: 'M' }])).toEqual([{ sound: 'mamdani-fell', delayMs: TEETER_MS }]);
+		expect(revealCues([{ kind: 'fell', sq: 'a5', piece: 'M' }, { kind: 'pothole_opened', sq: 'a5' }])).toEqual([{ sound: 'mamdani-fell', delayMs: TEETER_MS }]);
+	});
+
+	it('buzzes for a re-roll, and chimes when a saving roll saves the piece', () => {
+		const die = { sound: 'die', delayMs: 0 };
+		expect(revealCues([{ kind: 'target', sq: 'e1' }, { kind: 'reroll', sq: 'e1', reason: 'king' }])).toEqual([{ sound: 'dice', delayMs: 0 }, { sound: 'reroll', delayMs: 0 }]);
+		expect(revealCues([{ kind: 'saving_roll', sq: 'b8', roll: 3, saved: true }])).toEqual([die, { sound: 'saved', delayMs: SAVE_MS }]);
+		expect(revealCues([{ kind: 'saving_roll', sq: 'b8', roll: 6, saved: false }])).toEqual([die]);
+	});
+
+	it('hisses once as holes close on their own, and not when the cap pushes one out', () => {
+		const hiss = { sound: 'closed', delayMs: 0 };
+		const closes: EventJSON[] = [moved, { kind: 'pothole_closed', sq: 'a3', color: 'white' }, { kind: 'pothole_closed', sq: 'h6', color: 'white' }, roll];
+		expect(revealCues(closes, { from: 0, to: 3, skipMove: true })).toEqual([hiss]);
+		const cap: EventJSON[] = [roll, { kind: 'target', sq: 'c3' }, { kind: 'pothole_closed', sq: 'a3', color: 'black' }, { kind: 'pothole_opened', sq: 'c3' }];
+		expect(revealCues(cap, { from: 2, to: 3 })).toEqual([]);
+		expect(revealCues(cap, { from: 3, to: 4 })).toEqual([{ sound: 'pothole', delayMs: 0 }]);
+	});
+
+	it('cracks a pothole open as it appears: with the fall, when a piece falls in', () => {
+		const crack = { sound: 'pothole', delayMs: 0 };
+		const boom = { sound: 'fell', delayMs: TEETER_MS };
+		const turn: EventJSON[] = [roll, { kind: 'target', sq: 'd4' }, { kind: 'fell', sq: 'd4', piece: 'wN' }, { kind: 'pothole_closed', sq: 'a3', color: 'black' }, { kind: 'pothole_opened', sq: 'd4' }];
+		expect(revealCues(turn, { from: 2, to: 3 })).toEqual([crack, boom]);
+		expect(revealCues(turn, { from: 3, to: 5 })).toEqual([]);
 	});
 
 	it('rattles one die or two for each throw, and nothing else of the roll', () => {
 		const die = { sound: 'die', delayMs: 0 };
 		const dice = { sound: 'dice', delayMs: 0 };
-		expect(revealCues([roll, { kind: 'target', sq: 'c3' }, { kind: 'pothole_opened', sq: 'c3' }])).toEqual([die, dice]);
+		expect(revealCues([roll, { kind: 'target', sq: 'c3' }, { kind: 'pothole_opened', sq: 'c3' }])).toEqual([die, dice, { sound: 'pothole', delayMs: 0 }]);
 		expect(revealCues([{ kind: 'saving_roll', roll: 4 }])).toEqual([die]);
 		expect(revealCues([{ kind: 'rolled_pothole', roll: 3 }, { kind: 'no_pothole' }])).toEqual([die]);
 	});

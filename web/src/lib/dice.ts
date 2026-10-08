@@ -24,7 +24,7 @@ export const SAVE_MS = THROW_MS;
 export const BLINK_MS = TIMING.playMs.reroll / 2;
 
 /** Index of the pothole roll in a turn's events; the end if none was rolled. */
-export function firstDiceStep(last: EventJSON[]): number {
+export function firstDiceStep(last: readonly EventJSON[]): number {
 	const i = last.findIndex((e) => e.kind === 'rolled_pothole');
 	return i < 0 ? last.length : i;
 }

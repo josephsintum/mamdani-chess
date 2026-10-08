@@ -9,6 +9,7 @@
 
 import { instantMode } from './motion.ts';
 import capture from './sounds/capture.mp3';
+import challenge from './sounds/challenge.mp3';
 import check from './sounds/check.mp3';
 import checkmate from './sounds/checkmate.mp3';
 import dice from './sounds/dice.mp3';
@@ -18,12 +19,17 @@ import error from './sounds/error.mp3';
 import fell from './sounds/fell.mp3';
 import flawless from './sounds/flawless.mp3';
 import loss from './sounds/loss.mp3';
+import low from './sounds/low.mp3';
 import mamdaniFell from './sounds/mamdani-fell.mp3';
 import move from './sounds/move.mp3';
 import notify from './sounds/notify.mp3';
+import potholeCrack from './sounds/pothole-crack.mp3';
+import potholeIce from './sounds/pothole-ice.mp3';
+import closed from './sounds/closed.mp3';
 import repairConstruction from './sounds/repair-construction.mp3';
 import repairDrill from './sounds/repair-drill.mp3';
-import repairWrench from './sounds/repair-wrench.mp3';
+import reroll from './sounds/reroll.mp3';
+import saved from './sounds/saved.mp3';
 import victory from './sounds/victory.mp3';
 import waiting from './sounds/waiting.mp3';
 
@@ -36,15 +42,21 @@ const urls = {
 	dice,
 	error,
 	notify,
+	reroll,
+	'pothole-crack': potholeCrack,
+	'pothole-ice': potholeIce,
+	closed,
+	saved,
 	fell,
 	'mamdani-fell': mamdaniFell,
 	'repair-construction': repairConstruction,
 	'repair-drill': repairDrill,
-	'repair-wrench': repairWrench,
 	victory,
 	flawless,
 	loss,
 	draw,
+	low,
+	challenge,
 	waiting
 };
 
@@ -52,7 +64,8 @@ type Clip = keyof typeof urls;
 
 // A sound with several clips plays one of them at random each time.
 const GROUPS = {
-	repair: ['repair-construction', 'repair-drill', 'repair-wrench']
+	pothole: ['pothole-crack', 'pothole-ice'],
+	repair: ['repair-construction', 'repair-drill']
 } satisfies Record<string, Clip[]>;
 
 export type Sound = Clip | keyof typeof GROUPS;
@@ -62,9 +75,9 @@ function clipsOf(s: Sound): readonly Clip[] {
 }
 
 /** Needed as soon as a game starts. */
-export const CORE: Sound[] = ['move', 'capture', 'die', 'dice', 'fell', 'check', 'error', 'notify'];
+export const CORE: Sound[] = ['move', 'capture', 'die', 'dice', 'reroll', 'pothole', 'closed', 'saved', 'fell', 'check', 'error', 'notify'];
 /** Needed later in a game, fetched while the browser is idle. */
-export const LATER: Sound[] = ['mamdani-fell', 'repair', 'checkmate', 'victory', 'flawless', 'loss', 'draw'];
+export const LATER: Sound[] = ['mamdani-fell', 'repair', 'checkmate', 'victory', 'flawless', 'loss', 'draw', 'low', 'challenge'];
 
 const VOLUME = 0.7;
 // The waiting music plays under everything else.
@@ -181,9 +194,10 @@ export function loadSoon(sounds: readonly Sound[]) {
 /**
  * Plays a clip, `delayMs` from now. Silent when sound is off, in instant
  * mode, before the player has tapped, or when the clip hasn't arrived: a
- * sound that would come late is skipped.
+ * sound that would come late is skipped, unless it may wait `wait` ms for
+ * its clip (the start of a game, just after the page loaded).
  */
-export function play(s: Sound, delayMs = 0) {
+export function play(s: Sound, delayMs = 0, { wait = 0 } = {}) {
 	if (!soundOn() || instantMode() || !ctx || !main) return;
 	if (!running()) {
 		void ctx.resume().catch(() => {});
@@ -192,7 +206,11 @@ export function play(s: Sound, delayMs = 0) {
 	const clips = clipsOf(s);
 	const ready = clips.filter((c) => decoded.has(c));
 	for (const c of clips) if (!decoded.has(c)) void fetchSound(c);
-	if (ready.length === 0) return;
+	if (ready.length === 0) {
+		const asked = performance.now();
+		if (wait > 0) void fetchSound(clips[0]).then((b) => b && performance.now() - asked < wait && play(s, delayMs));
+		return;
+	}
 	const buffer = decoded.get(ready[Math.floor(Math.random() * ready.length)])!;
 	const node = ctx.createBufferSource();
 	node.buffer = buffer;
