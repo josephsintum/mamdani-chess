@@ -63,6 +63,30 @@ var migrations = []string{
 	// rules 2 games end as 'retired', like migration 5.
 	`UPDATE games SET ended_at = CAST(strftime('%s','now') AS INTEGER) * 1000, result = 'retired'
 	  WHERE ended_at IS NULL AND rules = 2;`,
+	// 7: visits and browser errors (stats plan 1). visitor is the first 12
+	// hex characters of the guest ID; path is a route, never a game code;
+	// referrer is a host. Both tables are pruned after 400 days.
+	`CREATE TABLE visits (
+		at       INTEGER NOT NULL,
+		visitor  TEXT NOT NULL,
+		path     TEXT NOT NULL,
+		referrer TEXT NOT NULL DEFAULT '',
+		country  TEXT NOT NULL DEFAULT '',
+		city     TEXT NOT NULL DEFAULT '',
+		device   TEXT NOT NULL DEFAULT '',
+		os       TEXT NOT NULL DEFAULT '',
+		browser  TEXT NOT NULL DEFAULT ''
+	 );
+	 CREATE INDEX visits_at ON visits(at);
+	 CREATE INDEX visits_visitor ON visits(visitor, at);
+	 CREATE TABLE browser_errors (
+		at      INTEGER NOT NULL,
+		visitor TEXT NOT NULL,
+		path    TEXT NOT NULL,
+		message TEXT NOT NULL,
+		browser TEXT NOT NULL DEFAULT ''
+	 );
+	 CREATE INDEX browser_errors_at ON browser_errors(at);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
