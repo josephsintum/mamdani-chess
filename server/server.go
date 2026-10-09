@@ -31,6 +31,9 @@ type Server struct {
 	// Version is the deployed build (a commit), reported by /healthz so a
 	// deploy can be checked without touching game data. "" reads as "dev".
 	Version string
+	// Geo names a visitor's country and city for the stats page; nil
+	// without a database (then they're "Unknown").
+	Geo GeoLookup
 }
 
 // New returns a Server for the games in hub that serves the frontend from
@@ -61,6 +64,8 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	s.mux.HandleFunc("GET /api/games", s.liveGames)
 	s.mux.HandleFunc("POST /api/games", s.createGame)
 	s.mux.HandleFunc("POST /api/practice", s.createPractice)
+	s.mux.HandleFunc("POST /api/visit", s.visit)
+	s.mux.HandleFunc("POST /api/error", s.browserError)
 	s.mux.HandleFunc("GET /api/games/{code}", s.gameView)
 	s.mux.HandleFunc("GET /api/games/{code}/stream", s.gameStream)
 	s.mux.HandleFunc("POST /api/games/{code}/move", s.gameMove)

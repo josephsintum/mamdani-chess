@@ -1,8 +1,15 @@
 package server
 
 import (
+	"net/http"
 	"net/http/httptest"
+	"net/netip"
+	"reflect"
+	"strings"
 	"testing"
+	"time"
+
+	"mamdani-chess/store"
 )
 
 func TestPageOf(t *testing.T) {
@@ -64,6 +71,9 @@ func TestReferrerOf(t *testing.T) {
 			t.Errorf("referrerOf(%q) = %q, want %q", in, got, want)
 		}
 	}
+	if got := referrerOf("http://localhost:8080/rules", "localhost:8080"); got != "" {
+		t.Errorf("own host with a port: referrerOf = %q, want empty", got)
+	}
 }
 
 func TestClientIP(t *testing.T) {
@@ -99,5 +109,90 @@ func TestIsRobot(t *testing.T) {
 	r.Header.Set("X-Playtest", "1")
 	if !isRobot(r) {
 		t.Error("the playtest header not a robot")
+	}
+}
+
+// lastVisit returns the stats for everything stored, so a test can check a
+// row through the same path the page uses.
+func lastVisit(t *testing.T, s *Server) store.VisitStats {
+	t.Helper()
+	st, err := s.store.VisitStats(t.Context(), time.Time{}, time.Now().Add(time.Hour), time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
+func TestVisitStoresNothingIdentifying(t *testing.T) {
+	s, ts := newTestServer(t)
+	s.Geo = geoFunc(func(ip netip.Addr) (string, string) {
+		if ip.String() != "203.0.113.9" {
+			t.Errorf("looked up %v", ip)
+		}
+		return "Canada", "Toronto"
+	})
+	alice := newPlayer(t, ts)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/visit",
+		strings.NewReader(`{"path":"/game/K7F3QZ?instant","w":390,"h":844,"touch":true,"referrer":"https://l.instagram.com/?u=secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "203.0.113.9")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1")
+	resp, err := alice.c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST /api/visit: %d", resp.StatusCode)
+	}
+	if len(resp.Cookies()) != 1 || resp.Cookies()[0].Name != "guest" {
+		t.Errorf("a first visit set cookies %v, want the guest cookie", resp.Cookies())
+	}
+	st := lastVisit(t, s)
+	got := []any{st.Views, st.Pages, st.Sources, st.Countries, st.Cities, st.Devices, st.Systems, st.Browsers}
+	want := []any{1, []store.Count{{Label: "/game", N: 1}}, []store.Count{{Label: "Instagram", N: 1}}, []store.Count{{Label: "Canada", N: 1}}, []store.Count{{Label: "Toronto", N: 1}},
+		[]store.Count{{Label: "phone", N: 1}}, []store.Count{{Label: "iOS", N: 1}}, []store.Count{{Label: "Safari", N: 1}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("stored %v, want %v", got, want)
+	}
+}
+
+func TestVisitIgnoresRobots(t *testing.T) {
+	s, ts := newTestServer(t)
+	alice := newPlayer(t, ts)
+	for _, h := range []http.Header{
+		{"User-Agent": {"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/125.0.0.0 Safari/537.36"}},
+		{"X-Playtest": {"1"}},
+	} {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/visit", strings.NewReader(`{"path":"/","w":1440,"h":900}`))
+		req.Header = h
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := alice.c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			t.Errorf("%v: %d", h, resp.StatusCode)
+		}
+	}
+	if st := lastVisit(t, s); st.Views != 0 {
+		t.Errorf("robots stored %d views", st.Views)
+	}
+}
+
+func TestVisitAndErrorBodies(t *testing.T) {
+	s, ts := newTestServer(t)
+	alice := newPlayer(t, ts)
+	if status, body := alice.post("/api/visit", `nope`); status != http.StatusBadRequest || body != `{"error":"bad request body"}` {
+		t.Errorf("bad visit: %d %s", status, body)
+	}
+	long := strings.Repeat("x", 500)
+	if status, _ := alice.post("/api/error", `{"path":"/game/K7F3QZ","message":"`+long+`"}`); status != http.StatusNoContent {
+		t.Errorf("error report: %d", status)
+	}
+	st := lastVisit(t, s)
+	if st.Errors != 1 || len(st.LatestError) != 300 {
+		t.Errorf("errors %d, latest %d chars; want 1 and 300", st.Errors, len(st.LatestError))
 	}
 }
