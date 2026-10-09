@@ -239,7 +239,7 @@ func top(m map[string]int) []Count {
 // in the range, so each step is at most the one before. Moved: white made
 // ply 0 or black ply 1. Finished: the game ended with a result (not
 // aborted, expired or retired). Again: finished two or more games. Games:
-// all games created in the range.
+// all games created in the range but playtests'.
 type Funnel struct {
 	Visited, Opened, Moved, Finished, Again, Games int
 }
@@ -271,7 +271,7 @@ func (s *Store) FunnelStats(ctx context.Context, from, to time.Time) (Funnel, er
 			SELECT substr(white, 1, 12) g FROM games WHERE created_at >= ? AND created_at < ? AND result IN ` + finishedReasons + `
 			UNION ALL
 			SELECT substr(black, 1, 12) FROM games WHERE created_at >= ? AND created_at < ? AND black IS NOT NULL AND result IN ` + finishedReasons + `) WHERE g IN ` + seen + ` GROUP BY g HAVING COUNT(*) >= 2)`, []any{a, b, a, b, a, b}},
-		{&f.Games, `SELECT COUNT(*) FROM games WHERE created_at >= ? AND created_at < ?`, []any{a, b}},
+		{&f.Games, `SELECT COUNT(*) FROM games WHERE created_at >= ? AND created_at < ? AND playtest = 0`, []any{a, b}},
 	} {
 		if err := s.db.QueryRowContext(ctx, q.sql, q.args...).Scan(q.dst); err != nil {
 			return f, err

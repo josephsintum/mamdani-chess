@@ -89,12 +89,15 @@ var migrations = []string{
 	 CREATE INDEX browser_errors_at ON browser_errors(at);`,
 	// 8: game stats (stats plan 2). kind is friend or quick (a rematch keeps
 	// its game's kind; everything saved before is friend). joined_at is when
-	// Black sat down. game_stats is one row per game that got going, written
-	// with its result; open_hist counts the turns that ended with 0..5
-	// holes open. searches logs quick-match searches (guest is the 12-hex
-	// visitor key). events counts practice games, reconnects and restarts.
+	// Black sat down. playtest marks a game a playtest started (the stats
+	// leave it out; a rematch keeps the mark). game_stats is one row per
+	// game that got going, written with its result; open_hist counts the
+	// turns that ended with 0..5 holes open. searches logs quick-match
+	// searches (guest is the 12-hex visitor key). events counts practice
+	// games, reopened game streams and restarts.
 	`ALTER TABLE games ADD COLUMN kind TEXT NOT NULL DEFAULT 'friend';
 	 ALTER TABLE games ADD COLUMN joined_at INTEGER;
+	 ALTER TABLE games ADD COLUMN playtest INTEGER NOT NULL DEFAULT 0;
 	 UPDATE games SET joined_at = created_at WHERE black IS NOT NULL AND rematch_of IS NOT NULL;
 	 CREATE TABLE game_stats (
 		game          TEXT PRIMARY KEY REFERENCES games(code),
