@@ -72,10 +72,11 @@
 					the home page, and every game between players is saved with its moves and rolls.
 				</li>
 				<li>
-					<strong>No ads, no tracking companies.</strong> We count visits ourselves, on this server: which page, your
-					rough city, and your device and browser, so we know how many people play and whether the game works. Your IP
-					address is used once to find the city and isn't kept, game links are counted without their code, and nothing
-					goes to anyone else. City lookups use a local copy of
+					<strong>No ads, no tracking companies.</strong> We count visits ourselves, on this server: which page, the site
+					that sent you (its name only, never the page), your rough city, and your device and browser, so we know how
+					many people play and whether the game works. If a page hits an error, it reports the error message so we can
+					fix it. Your IP address is used once to find the city and isn't kept, game links are counted without their
+					code, and nothing goes to anyone else. City lookups use a local copy of
 					<a href="https://db-ip.com" target="_blank" rel="noopener">IP geolocation by DB-IP</a>.
 				</li>
 				<li>
