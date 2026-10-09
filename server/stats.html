@@ -27,12 +27,15 @@ section{display:flex;flex-direction:column;gap:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
 .card h3{margin:0;font-size:15px;color:var(--text)}
 .kpi{padding:0;gap:0;overflow:hidden}.kpi .in{padding:18px 20px 20px;display:flex;flex-direction:column;gap:10px}.kpi .foot{padding:10px 20px;background:var(--muted);border-top:1px solid var(--line);font-size:13px;color:var(--text-3)}
+.kpi .k-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--text-2)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font:600 12px "IBM Plex Sans",system-ui,sans-serif;cursor:default}
+.up{background:#eafbf0;color:#15803d}.down{background:#fef1f1;color:#b91c1c}.flat{background:var(--a4);color:var(--text-3)}
 .num{font:600 34px/1 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:-.02em;color:var(--text)}
 .rows{display:flex;flex-direction:column;gap:14px}.row{display:flex;flex-direction:column;gap:6px}
 .row-top{display:flex;justify-content:space-between;gap:12px;font-size:13px}.val{font:500 13px "IBM Plex Mono",monospace;color:var(--text);white-space:nowrap}.val small{font-size:13px;color:var(--text-3)}
 .track{height:6px;border-radius:999px;background:var(--a4);overflow:hidden}.track.thick{height:10px}.track i{display:block;height:100%;border-radius:999px;background:var(--a)}
 .note{font-size:12px;color:var(--text-3)}
-.bars{height:160px;display:flex;align-items:flex-end;gap:4px;border-bottom:1px solid var(--line)}.col{flex:1;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:2px}.col i{display:block}.col i:first-child{border-radius:4px 4px 0 0}
+.bars{height:160px;display:flex;align-items:flex-end;gap:min(4px,calc(30% / var(--n,1)));border-bottom:1px solid var(--line)}.col{flex:1;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:2px}.col i{display:block}.col i:first-child{border-radius:4px 4px 0 0}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--text-3)}.legend span{display:inline-flex;align-items:center;gap:6px}.dot{width:8px;height:8px;border-radius:50%}
 .axis{display:flex;justify-content:space-between;font:500 11px "IBM Plex Mono",monospace;color:var(--text-3)}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:6px}.tile .num{font-size:28px}
@@ -58,10 +61,10 @@ section{display:flex;flex-direction:column;gap:16px}
 <section id="overview">
 <h2>Overview</h2>
 <div class="grid g4">
-<div class="card kpi"><div class="in"><span>Visitors</span><span class="num">{{.Visits.Visitors}}</span></div><div class="foot">{{.Visits.Views}} page views</div></div>
-<div class="card kpi"><div class="in"><span>Played a game</span><span class="num">{{.Funnel.Moved}}</span></div><div class="foot">{{share .Funnel.Moved .Funnel.Visited}}% of visitors made a move</div></div>
-<div class="card kpi"><div class="in"><span>Games</span><span class="num">{{.Funnel.Games}}</span></div><div class="foot">between players</div></div>
-<div class="card kpi"><div class="in"><span>Came back</span><span class="num">{{share .Visits.Returning .Visits.Visitors}}%</span></div><div class="foot">{{.Visits.Returning}} visited on 2 or more days</div></div>
+<div class="card kpi"><div class="in"><div class="k-top"><span>Visitors</span>{{template "chip" dict "C" .Visitors "Before" .Before}}</div><span class="num">{{.Visits.Visitors}}</span></div><div class="foot">{{.Visits.Views}} page views</div></div>
+<div class="card kpi"><div class="in"><div class="k-top"><span>Played a game</span>{{template "chip" dict "C" .Played "Before" .Before}}</div><span class="num">{{.Funnel.Moved}}</span></div><div class="foot">{{share .Funnel.Moved .Funnel.Visited}}% of visitors made a move</div></div>
+<div class="card kpi"><div class="in"><div class="k-top"><span>Games</span>{{template "chip" dict "C" .Games "Before" .Before}}</div><span class="num">{{.Funnel.Games}}</span></div><div class="foot">created in the range</div></div>
+<div class="card kpi"><div class="in"><div class="k-top"><span>Came back</span>{{template "chip" dict "C" .CameBack "Before" .Before}}</div><span class="num">{{share .Visits.Returning .Visits.Visitors}}%</span></div><div class="foot">{{.Visits.Returning}} visited on 2 or more days</div></div>
 </div>
 <div class="card">
 <div><h3>From visit to game</h3><p class="sub">Of the {{.Funnel.Visited}} visitors, how many got each step further. On the right, the share lost since the step before.</p></div>
@@ -77,7 +80,7 @@ section{display:flex;flex-direction:column;gap:16px}
 <div><h2>Visitors</h2><p class="sub">A person counts once a day, however many pages they open</p></div>
 <div class="card">
 <div class="row-top"><div><h3>Visitors per day</h3><p class="sub">New and returning</p></div><div class="legend"><span><i class="dot" style="background:var(--c1)"></i>New</span><span><i class="dot" style="background:var(--c3)"></i>Returning</span></div></div>
-<div class="bars">{{$max := .DayMax}}{{range .Visits.Days}}<div class="col" title="{{.Day}}: {{.New}} new, {{.Returning}} returning">{{if .Returning}}<i style="height:{{pct .Returning $max}}%;background:var(--c3)"></i>{{end}}{{if .New}}<i style="height:{{pct .New $max}}%;background:var(--c1)"></i>{{end}}</div>{{end}}</div>
+<div class="bars" style="--n:{{len .Visits.Days}}">{{$max := .DayMax}}{{range .Visits.Days}}<div class="col" title="{{.Day}}: {{.New}} new, {{.Returning}} returning">{{if .Returning}}<i style="height:{{pct .Returning $max}}%;background:var(--c3)"></i>{{end}}{{if .New}}<i style="height:{{pct .New $max}}%;background:var(--c1)"></i>{{end}}</div>{{end}}</div>
 <div class="axis">{{with .Visits.Days}}<span>{{(index . 0).Day}}</span><span>{{(index . (len . | sub1)).Day}}</span>{{end}}</div>
 </div>
 <div class="grid g3">
@@ -103,6 +106,8 @@ section{display:flex;flex-direction:column;gap:16px}
 </div>
 </body>
 </html>
+
+{{define "chip"}}{{with .C}}{{if .Text}}<span class="chip {{.Dir}}" title="{{$.Before}}">{{if eq .Dir "up"}}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 8.5 4.5 5.5 6.5 7.5 10.5 3.5M7.5 3.5H10.5V6.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>{{else if eq .Dir "down"}}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 3.5 4.5 6.5 6.5 4.5 10.5 8.5M7.5 8.5H10.5V5.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>{{end}}{{.Text}}</span>{{end}}{{end}}{{end}}
 
 {{define "list"}}<div class="card"><div><h3>{{.Title}}</h3><p class="sub">{{.Sub}}</p></div>
 <div class="rows">{{$of := .Of}}{{$top := 0}}{{range $i, $r := .Rows}}{{if eq $i 0}}{{$top = $r.N}}{{end}}

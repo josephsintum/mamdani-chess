@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"html/template"
+	"math"
 	"net/http"
 	"time"
 
@@ -21,13 +22,8 @@ var statsTemplate = template.Must(template.New("stats").Funcs(template.FuncMap{
 		}
 		return fmt.Sprintf("%.1f", 100*float64(n)/float64(of))
 	},
-	"share": func(n, of int) int {
-		if of == 0 {
-			return 0
-		}
-		return int(100*float64(n)/float64(of) + 0.5)
-	},
-	"sub1": func(n int) int { return n - 1 },
+	"share": share,
+	"sub1":  func(n int) int { return n - 1 },
 	"dict": func(kv ...any) map[string]any {
 		m := map[string]any{}
 		for i := 0; i+1 < len(kv); i += 2 {
@@ -52,13 +48,86 @@ func statsRange(q string, now time.Time, loc *time.Location) (from, to time.Time
 		return time.Time{}, to, "All time"
 	}
 	from = to.AddDate(0, 0, -days)
+	return from, to, rangeLabel(from, to)
+}
+
+// rangeLabel names the days from <= day < to, e.g. "Sep 9 – Oct 8, 2026".
+func rangeLabel(from, to time.Time) string {
 	last := to.AddDate(0, 0, -1)
 	if from.Year() == last.Year() {
-		label = from.Format("Jan 2") + " – " + last.Format("Jan 2, 2006")
-	} else {
-		label = from.Format("Jan 2, 2006") + " – " + last.Format("Jan 2, 2006")
+		return from.Format("Jan 2") + " – " + last.Format("Jan 2, 2006")
 	}
-	return from, to, label
+	return from.Format("Jan 2, 2006") + " – " + last.Format("Jan 2, 2006")
+}
+
+// rangeBefore is the range of the same number of days that ends at from.
+func rangeBefore(from, to time.Time) time.Time {
+	days := 0
+	for t := from; t.Before(to); t = t.AddDate(0, 0, 1) {
+		days++
+	}
+	return from.AddDate(0, 0, -days)
+}
+
+// change is a KPI against the range before: Text like "+18%", "−4%",
+// "+3 pts" or "new", and Dir up, down or flat. A zero change shows no chip.
+type change struct {
+	Text, Dir string
+}
+
+// dirOf is the direction of a rounded change.
+func dirOf(n int) string {
+	switch {
+	case n > 0:
+		return "up"
+	case n < 0:
+		return "down"
+	}
+	return "flat"
+}
+
+// signed writes n with a plus or a minus sign (U+2212), and none for 0.
+func signed(n int) string {
+	switch {
+	case n > 0:
+		return fmt.Sprintf("+%d", n)
+	case n < 0:
+		return fmt.Sprintf("−%d", -n)
+	}
+	return "0"
+}
+
+// pctChange is now against before, in percent; "new" when before was 0.
+func pctChange(now, before int) change {
+	if before == 0 {
+		if now == 0 {
+			return change{"0%", "flat"}
+		}
+		return change{"new", "up"}
+	}
+	p := int(math.Round(100 * float64(now-before) / float64(before)))
+	return change{signed(p) + "%", dirOf(p)}
+}
+
+// ptsChange is the share n/of against bn/bof, in percentage points of the
+// shares the cards show; "new" when the range before had no one.
+func ptsChange(n, of, bn, bof int) change {
+	if bof == 0 {
+		if of == 0 {
+			return change{"0 pts", "flat"}
+		}
+		return change{"new", "up"}
+	}
+	d := share(n, of) - share(bn, bof)
+	return change{signed(d) + " pts", dirOf(d)}
+}
+
+// share is n as a whole percentage of of, 0 when of is 0.
+func share(n, of int) int {
+	if of == 0 {
+		return 0
+	}
+	return int(100*float64(n)/float64(of) + 0.5)
 }
 
 // statsPage is what the template reads.
@@ -69,6 +138,10 @@ type statsPage struct {
 	Funnel      store.Funnel
 	Steps       []funnelStep
 	DayMax      int // the busiest day's visitors, for the column heights
+	// Each KPI against the range of the same length before; empty for
+	// all time. Before names that range.
+	Before                            string
+	Visitors, Played, Games, CameBack change
 }
 
 type statsRangeOption struct {
@@ -110,7 +183,25 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "funnel stats", err)
 		return
 	}
-	page := statsPage{Range: label, Days: days, Visits: visits, Funnel: funnel}
+	page := statsPage{Range: label, Days: days, Visits: visits, Funnel: funnel, Steps: funnelSteps(funnel)}
+	if !from.IsZero() {
+		prevFrom := rangeBefore(from, to)
+		prevVisits, err := s.store.VisitStats(r.Context(), prevFrom, from, loc)
+		if err != nil {
+			s.internalError(w, "visit stats before", err)
+			return
+		}
+		prevFunnel, err := s.store.FunnelStats(r.Context(), prevFrom, from)
+		if err != nil {
+			s.internalError(w, "funnel stats before", err)
+			return
+		}
+		page.Before = "vs " + rangeLabel(prevFrom, from)
+		page.Visitors = pctChange(visits.Visitors, prevVisits.Visitors)
+		page.Played = pctChange(funnel.Moved, prevFunnel.Moved)
+		page.Games = pctChange(funnel.Games, prevFunnel.Games)
+		page.CameBack = ptsChange(visits.Returning, visits.Visitors, prevVisits.Returning, prevVisits.Visitors)
+	}
 	for _, o := range []statsRangeOption{{"7", "7 days", false}, {"30", "30 days", false}, {"90", "90 days", false}, {"all", "All", false}} {
 		o.On = o.Days == days || (days != "7" && days != "90" && days != "all" && o.Days == "30")
 		page.Ranges = append(page.Ranges, o)
@@ -118,6 +209,18 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	for _, d := range visits.Days {
 		page.DayMax = max(page.DayMax, d.New+d.Returning)
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := statsTemplate.Execute(w, page); err != nil {
+		s.log.Error("render stats", "err", err)
+	}
+}
+
+// funnelSteps lays out the funnel's rows: each step's share of the
+// visitors and the share lost since the step before (never below 0: Black
+// can finish a game by resigning without moving).
+func funnelSteps(funnel store.Funnel) []funnelStep {
+	var steps []funnelStep
 	prev := 0
 	for i, st := range []struct {
 		label, note string
@@ -129,19 +232,12 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		{"Finished a game", "", funnel.Finished},
 		{"Played again", "finished a second game, any day in the range", funnel.Again},
 	} {
-		step := funnelStep{Label: st.label, Note: st.note, N: st.n, Shade: i + 1}
-		if funnel.Visited > 0 {
-			step.Pct = int(100*float64(st.n)/float64(funnel.Visited) + 0.5)
-		}
+		step := funnelStep{Label: st.label, Note: st.note, N: st.n, Pct: share(st.n, funnel.Visited), Shade: i + 1}
 		if i > 0 && prev > 0 {
-			step.Drop = int(100*float64(prev-st.n)/float64(prev) + 0.5)
+			step.Drop = max(0, int(100*float64(prev-st.n)/float64(prev)+0.5))
 		}
 		prev = st.n
-		page.Steps = append(page.Steps, step)
+		steps = append(steps, step)
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	if err := statsTemplate.Execute(w, page); err != nil {
-		s.log.Error("render stats", "err", err)
-	}
+	return steps
 }
