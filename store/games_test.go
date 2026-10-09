@@ -15,7 +15,7 @@ func TestGameRoundTrip(t *testing.T) {
 	ctx := t.Context()
 	s, path := openTemp(t)
 	must(t, s.CreateGame(ctx, Game{Code: "ABC123", White: "alice", WhiteName: "pigeon-astoria", CreatedAt: t0}))
-	must(t, s.SeatBlack(ctx, "ABC123", "bob", "bagel-soho"))
+	must(t, s.SeatBlack(ctx, "ABC123", "bob", "bagel-soho", t0))
 	turns := []Turn{
 		{Ply: 0, Move: "e2e4", Dice: []int{4, 3, 5}, WhiteMS: 605000, BlackMS: 600000, At: t0.Add(5 * time.Second)},
 		{Ply: 1, Move: "e7e8q", Dice: nil, WhiteMS: 605000, BlackMS: 597000, At: t0.Add(10 * time.Second)},
@@ -30,7 +30,7 @@ func TestGameRoundTrip(t *testing.T) {
 	defer s.Close()
 	got, err := s.LoadForRestore(ctx, t0)
 	must(t, err)
-	want := []SavedGame{{Game: Game{Code: "ABC123", White: "alice", Black: "bob", WhiteName: "pigeon-astoria", BlackName: "bagel-soho", CreatedAt: t0}, Turns: turns}}
+	want := []SavedGame{{Game: Game{Code: "ABC123", White: "alice", Black: "bob", WhiteName: "pigeon-astoria", BlackName: "bagel-soho", CreatedAt: t0, Kind: "friend"}, Turns: turns, JoinedAt: t0}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("loaded\n%+v\nwant\n%+v", got, want)
 	}
@@ -42,7 +42,7 @@ func TestEndGameSavesTheFinalTurnAndResult(t *testing.T) {
 	must(t, s.CreateGame(ctx, Game{Code: "MATE01", White: "a", Black: "b", CreatedAt: t0, RematchOf: ""}))
 	final := Turn{Ply: 0, Move: "f2f3", Dice: []int{1}, WhiteMS: 1, BlackMS: 2, At: t0.Add(time.Second)}
 	r := Result{EndedAt: t0.Add(time.Second), Reason: "checkmate", Winner: "white"}
-	must(t, s.EndGame(ctx, "MATE01", r, &final))
+	must(t, s.EndGame(ctx, "MATE01", r, &final, nil))
 	got, err := s.LoadForRestore(ctx, t0)
 	must(t, err)
 	if len(got) != 1 || !reflect.DeepEqual(got[0].Result, &r) || !reflect.DeepEqual(got[0].Turns, []Turn{final}) {
@@ -54,7 +54,7 @@ func TestEndGameWithoutAFinalTurn(t *testing.T) {
 	ctx := t.Context()
 	s, _ := openTemp(t)
 	must(t, s.CreateGame(ctx, Game{Code: "RESIGN", White: "a", Black: "b", CreatedAt: t0}))
-	must(t, s.EndGame(ctx, "RESIGN", Result{EndedAt: t0, Reason: "aborted"}, nil))
+	must(t, s.EndGame(ctx, "RESIGN", Result{EndedAt: t0, Reason: "aborted"}, nil, nil))
 	got, err := s.LoadForRestore(ctx, t0.Add(-time.Second))
 	must(t, err)
 	if len(got) != 1 || got[0].Result == nil || got[0].Result.Winner != "" || got[0].Turns != nil {
@@ -64,7 +64,7 @@ func TestEndGameWithoutAFinalTurn(t *testing.T) {
 
 func TestEndGameFailsForAnUnknownGame(t *testing.T) {
 	s, _ := openTemp(t)
-	if err := s.EndGame(t.Context(), "NOPE00", Result{EndedAt: t0, Reason: "timeout"}, nil); err == nil {
+	if err := s.EndGame(t.Context(), "NOPE00", Result{EndedAt: t0, Reason: "timeout"}, nil, nil); err == nil {
 		t.Fatal("ending a game that was never saved should fail")
 	}
 }
@@ -96,8 +96,8 @@ func TestLoadForRestoreSkipsOldFinishedGames(t *testing.T) {
 	for _, c := range []string{"OLD000", "RECENT", "OPEN00"} {
 		must(t, s.CreateGame(ctx, Game{Code: c, White: "a", Black: "b", CreatedAt: t0}))
 	}
-	must(t, s.EndGame(ctx, "OLD000", Result{EndedAt: t0.Add(time.Hour), Reason: "timeout", Winner: "black"}, nil))
-	must(t, s.EndGame(ctx, "RECENT", Result{EndedAt: t0.Add(3 * time.Hour), Reason: "timeout", Winner: "black"}, nil))
+	must(t, s.EndGame(ctx, "OLD000", Result{EndedAt: t0.Add(time.Hour), Reason: "timeout", Winner: "black"}, nil, nil))
+	must(t, s.EndGame(ctx, "RECENT", Result{EndedAt: t0.Add(3 * time.Hour), Reason: "timeout", Winner: "black"}, nil, nil))
 	got, err := s.LoadForRestore(ctx, t0.Add(2*time.Hour))
 	must(t, err)
 	var codes []string

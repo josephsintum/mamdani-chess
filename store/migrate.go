@@ -87,6 +87,44 @@ var migrations = []string{
 		browser TEXT NOT NULL DEFAULT ''
 	 );
 	 CREATE INDEX browser_errors_at ON browser_errors(at);`,
+	// 8: game stats (stats plan 2). kind is friend or quick (a rematch keeps
+	// its game's kind; everything saved before is friend). joined_at is when
+	// Black sat down. game_stats is one row per game that got going, written
+	// with its result; open_hist counts the turns that ended with 0..5
+	// holes open. searches logs quick-match searches (guest is the 12-hex
+	// visitor key). events counts practice games, reconnects and restarts.
+	`ALTER TABLE games ADD COLUMN kind TEXT NOT NULL DEFAULT 'friend';
+	 ALTER TABLE games ADD COLUMN joined_at INTEGER;
+	 UPDATE games SET joined_at = created_at WHERE black IS NOT NULL AND rematch_of IS NOT NULL;
+	 CREATE TABLE game_stats (
+		game          TEXT PRIMARY KEY REFERENCES games(code),
+		moves         INTEGER NOT NULL,
+		opened        INTEGER NOT NULL,
+		reset         INTEGER NOT NULL,
+		closed_rounds INTEGER NOT NULL,
+		closed_cap    INTEGER NOT NULL,
+		repaired      INTEGER NOT NULL,
+		fell          INTEGER NOT NULL,
+		saving_rolls  INTEGER NOT NULL,
+		saved         INTEGER NOT NULL,
+		white_lost    INTEGER NOT NULL,
+		black_lost    INTEGER NOT NULL,
+		mate_by_roll  INTEGER NOT NULL,
+		open_hist     TEXT NOT NULL
+	 );
+	 CREATE TABLE searches (
+		started_at INTEGER NOT NULL,
+		ended_at   INTEGER NOT NULL,
+		guest      TEXT NOT NULL,
+		matched    INTEGER NOT NULL,
+		others     INTEGER NOT NULL
+	 );
+	 CREATE INDEX searches_started_at ON searches(started_at);
+	 CREATE TABLE events (
+		at   INTEGER NOT NULL,
+		kind TEXT NOT NULL
+	 );
+	 CREATE INDEX events_at ON events(at);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
