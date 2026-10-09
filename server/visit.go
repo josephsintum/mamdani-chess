@@ -6,6 +6,9 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"time"
+
+	"mamdani-chess/store"
 )
 
 // visitorLen is how much of the guest ID a visit keeps: enough to tell
@@ -108,6 +111,9 @@ func referrerOf(raw, ourHost string) string {
 	if err != nil || u.Host == "" {
 		return ""
 	}
+	if h, _, err := net.SplitHostPort(ourHost); err == nil {
+		ourHost = h
+	}
 	host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 	if host == strings.TrimPrefix(strings.ToLower(ourHost), "www.") {
 		return ""
@@ -138,4 +144,76 @@ func clientIP(r *http.Request) (netip.Addr, bool) {
 // playtest, agent-browser) or any request the playtest marks.
 func isRobot(r *http.Request) bool {
 	return strings.Contains(r.UserAgent(), "HeadlessChrome") || r.Header.Get("X-Playtest") != ""
+}
+
+// visitBody is what the page sends on every navigation: the path (the
+// server keeps only the route), the screen in CSS px and whether it is a
+// touch screen, and the referrer or "ref:<tag>" on the first page of a visit.
+type visitBody struct {
+	Path     string `json:"path"`
+	W        int    `json:"w"`
+	H        int    `json:"h"`
+	Touch    bool   `json:"touch"`
+	Referrer string `json:"referrer"`
+}
+
+type errorBody struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
+// errorLen caps a reported message.
+const errorLen = 300
+
+// visit records a page view. Robots get a 204 and no row.
+func (s *Server) visit(w http.ResponseWriter, r *http.Request) {
+	if isRobot(r) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var body visitBody
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	v := store.Visit{
+		At:       time.Now(),
+		Visitor:  visitorOf(guestID(w, r)),
+		Path:     pageOf(body.Path),
+		Referrer: referrerOf(body.Referrer, r.Host),
+		Device:   deviceOf(body.W, body.H, body.Touch),
+	}
+	v.OS, v.Browser = parseUA(r.UserAgent())
+	if s.Geo != nil {
+		if ip, ok := clientIP(r); ok {
+			v.Country, v.City = s.Geo.Lookup(ip)
+		}
+	}
+	if err := s.store.AddVisit(r.Context(), v); err != nil {
+		s.internalError(w, "save visit", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// browserError records an uncaught error a page reported.
+func (s *Server) browserError(w http.ResponseWriter, r *http.Request) {
+	if isRobot(r) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var body errorBody
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	msg := body.Message
+	if len(msg) > errorLen {
+		msg = msg[:errorLen]
+	}
+	e := store.BrowserError{At: time.Now(), Visitor: visitorOf(guestID(w, r)), Path: pageOf(body.Path), Message: msg}
+	_, e.Browser = parseUA(r.UserAgent())
+	if err := s.store.AddBrowserError(r.Context(), e); err != nil {
+		s.internalError(w, "save browser error", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
