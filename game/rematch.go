@@ -60,6 +60,7 @@ func (g *Game) offerRematch(guest string, decline bool) error {
 		return nil
 	case theirs: // crossing offers count as accepting
 		next, err := g.hub.create(store.Game{
+			Kind:      g.kind,
 			White:     g.seats[rules.Black],
 			Black:     g.seats[rules.White],
 			WhiteName: g.names[rules.Black],

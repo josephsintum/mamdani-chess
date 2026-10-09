@@ -52,7 +52,7 @@ func (h *Hub) Create(creator string) (*Game, error) {
 	if err != nil {
 		return nil, err
 	}
-	return h.create(store.Game{White: creator, WhiteName: name})
+	return h.create(store.Game{Kind: "friend", White: creator, WhiteName: name})
 }
 
 // CreatePair starts a game between two guests, both seated (quick match),
@@ -67,7 +67,7 @@ func (h *Hub) CreatePair(white, black string) (*Game, error) {
 	if err != nil {
 		return nil, err
 	}
-	return h.create(store.Game{White: white, WhiteName: whiteName, Black: black, BlackName: blackName})
+	return h.create(store.Game{Kind: "quick", White: white, WhiteName: whiteName, Black: black, BlackName: blackName})
 }
 
 // name returns the guest's name, creating it if they have none.
