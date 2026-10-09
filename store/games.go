@@ -33,6 +33,9 @@ type Game struct {
 	BlackName string
 	CreatedAt time.Time
 	RematchOf string // "" unless the game is a rematch
+	// Kind is "friend" (a link) or "quick" (quick match); a rematch keeps
+	// the kind of the game it follows. "" saves as friend.
+	Kind string
 }
 
 // Turn is one saved move: the move in UCI ("e2e4"), every d8 rolled that
@@ -57,15 +60,24 @@ type Result struct {
 // SavedGame is a game as loaded at startup. Result is nil while unfinished.
 type SavedGame struct {
 	Game
-	Turns  []Turn
-	Result *Result
+	Turns    []Turn
+	Result   *Result
+	JoinedAt time.Time // when Black sat down; zero when unknown
 }
 
 // CreateGame saves a new game.
 func (s *Store) CreateGame(ctx context.Context, g Game) error {
+	kind := g.Kind
+	if kind == "" {
+		kind = "friend"
+	}
+	var joined any
+	if g.Black != "" {
+		joined = g.CreatedAt.UnixMilli() // both seated from the start: quick match or a rematch
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO games (code, white, black, white_name, black_name, created_at, rematch_of, rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		g.Code, g.White, nullable(g.Black), nullable(g.WhiteName), nullable(g.BlackName), g.CreatedAt.UnixMilli(), nullable(g.RematchOf), rulesVersion)
+		`INSERT INTO games (code, white, black, white_name, black_name, created_at, rematch_of, rules, kind, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.Code, g.White, nullable(g.Black), nullable(g.WhiteName), nullable(g.BlackName), g.CreatedAt.UnixMilli(), nullable(g.RematchOf), rulesVersion, kind, joined)
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY {
 		return ErrCodeTaken
@@ -73,9 +85,9 @@ func (s *Store) CreateGame(ctx context.Context, g Game) error {
 	return err
 }
 
-// SeatBlack records the guest who took Black's seat, and their name.
-func (s *Store) SeatBlack(ctx context.Context, code, guest, name string) error {
-	return execOne(ctx, s.db, `UPDATE games SET black = ?, black_name = ? WHERE code = ?`, guest, nullable(name), code)
+// SeatBlack records the guest who took Black's seat, their name, and when.
+func (s *Store) SeatBlack(ctx context.Context, code, guest, name string, now time.Time) error {
+	return execOne(ctx, s.db, `UPDATE games SET black = ?, black_name = ?, joined_at = ? WHERE code = ?`, guest, nullable(name), now.UnixMilli(), code)
 }
 
 // AddTurn saves one move.
@@ -85,7 +97,7 @@ func (s *Store) AddTurn(ctx context.Context, code string, t Turn) error {
 
 // EndGame records how a game ended. final, if not nil, is the move that
 // ended it, saved in the same transaction.
-func (s *Store) EndGame(ctx context.Context, code string, r Result, final *Turn) error {
+func (s *Store) EndGame(ctx context.Context, code string, r Result, final *Turn, st *GameStats) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -100,6 +112,11 @@ func (s *Store) EndGame(ctx context.Context, code string, r Result, final *Turn)
 		`UPDATE games SET ended_at = ?, result = ?, winner = ? WHERE code = ?`,
 		r.EndedAt.UnixMilli(), r.Reason, nullable(r.Winner), code); err != nil {
 		return err
+	}
+	if st != nil {
+		if err := addGameStats(ctx, tx, code, *st); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -122,7 +139,7 @@ func (s *Store) ExpireWaiting(ctx context.Context, cutoff, now time.Time) (int64
 // saved under the current rules are returned.
 func (s *Store) LoadForRestore(ctx context.Context, endedAfter time.Time) ([]SavedGame, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT code, white, black, white_name, black_name, created_at, rematch_of, ended_at, result, winner
+		`SELECT code, white, black, white_name, black_name, created_at, rematch_of, ended_at, result, winner, kind, joined_at
 		 FROM games WHERE rules = ? AND (ended_at IS NULL OR ended_at > ?) ORDER BY created_at`,
 		rulesVersion, endedAfter.UnixMilli())
 	if err != nil {
@@ -130,18 +147,10 @@ func (s *Store) LoadForRestore(ctx context.Context, endedAfter time.Time) ([]Sav
 	}
 	var games []SavedGame
 	for rows.Next() {
-		var g SavedGame
-		var black, whiteName, blackName, rematchOf, result, winner sql.NullString
-		var created int64
-		var ended sql.NullInt64
-		if err := rows.Scan(&g.Code, &g.White, &black, &whiteName, &blackName, &created, &rematchOf, &ended, &result, &winner); err != nil {
+		g, err := scanSavedGame(rows)
+		if err != nil {
 			rows.Close()
 			return nil, err
-		}
-		g.Black, g.RematchOf, g.CreatedAt = black.String, rematchOf.String, time.UnixMilli(created)
-		g.WhiteName, g.BlackName = whiteName.String, blackName.String
-		if ended.Valid {
-			g.Result = &Result{EndedAt: time.UnixMilli(ended.Int64), Reason: result.String, Winner: winner.String}
 		}
 		games = append(games, g)
 	}
@@ -155,6 +164,26 @@ func (s *Store) LoadForRestore(ctx context.Context, endedAfter time.Time) ([]Sav
 		}
 	}
 	return games, nil
+}
+
+// scanSavedGame reads one row of the games table's restore columns.
+func scanSavedGame(rows *sql.Rows) (SavedGame, error) {
+	var g SavedGame
+	var black, whiteName, blackName, rematchOf, result, winner sql.NullString
+	var created int64
+	var ended, joined sql.NullInt64
+	if err := rows.Scan(&g.Code, &g.White, &black, &whiteName, &blackName, &created, &rematchOf, &ended, &result, &winner, &g.Kind, &joined); err != nil {
+		return g, err
+	}
+	g.Black, g.RematchOf, g.CreatedAt = black.String, rematchOf.String, time.UnixMilli(created)
+	g.WhiteName, g.BlackName = whiteName.String, blackName.String
+	if joined.Valid {
+		g.JoinedAt = time.UnixMilli(joined.Int64)
+	}
+	if ended.Valid {
+		g.Result = &Result{EndedAt: time.UnixMilli(ended.Int64), Reason: result.String, Winner: winner.String}
+	}
+	return g, nil
 }
 
 func (s *Store) turns(ctx context.Context, code string) ([]Turn, error) {
