@@ -22,6 +22,13 @@ The site is going to friends (milestone 07) and nothing shows who visits or whet
 - **Days are grouped in `STATS_TZ`** (default `America/New_York`).
 - **Kept for 400 days**, pruned at startup. Game codes are never stored (`/game/K7F3QZ` is recorded as `/game`).
 - **The About page** says what is counted, that the IP isn't kept and nothing goes to anyone else, and credits DB-IP (CC BY requires it).
+- **The page is computed on demand and kept for 24 hours** (decided 2026-10-09, not built yet: plan 3). A page load runs about ten queries over its range, a few milliseconds today but every game in the range is read into memory, so the cost grows with the game count and the store has one connection that moves wait on. So:
+  - Each range (`7`, `30`, `90`, `all`) is computed when first asked for and the rendered result kept in memory for 24 hours; the header says "as of 14:02". A restart starts with an empty cache; nothing is stored.
+  - A **Refresh** button recomputes that range now. It posts to `/stats/refresh?days=…`, stays behind the password even if the page itself is ever made public, and is limited to once a minute per range, so it can't be used to load the server.
+  - While a recompute runs, the stale page is served; two people refreshing at once don't both wait.
+  - The queries run under a 2-second timeout, so a pathological range can never hold the connection long enough to retire a game (`storeTimeout` is 5 s).
+  - A second, read-only connection pool (WAL already allows readers beside the one writer) is not needed yet; it waits until a stats load measurably passes about 50 ms, or something new reads the database per request. The visit beacon and every move are writes, and share the one writer either way.
+  - An hourly scheduler with stored snapshots was considered and set aside: more moving parts (eight computations a run, day boundaries, staleness after a deploy) for no gain until someone wants history past the 400-day pruning, when snapshots can be added on top.
 
 ## What is recorded
 
