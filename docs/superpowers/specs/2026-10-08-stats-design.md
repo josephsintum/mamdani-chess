@@ -1,7 +1,7 @@
 # Stats: first-party visit and game metrics
 
 **Date:** 2026-10-08
-**Status:** Agreed. Plan 1 (visits and the page): [2026-10-08-stats-1-visits.md](../plans/2026-10-08-stats-1-visits.md), built (PR #22). Plan 2 (game stats, quick-match log): [2026-10-09-stats-2-games.md](../plans/2026-10-09-stats-2-games.md).
+**Status:** Agreed. Plan 1 built (PR #22); plan 2: [2026-10-09-stats-2-games.md](../plans/2026-10-09-stats-2-games.md).
 **Design:** the canvas https://claude.ai/artifact/Rzwy4PSQuJoKNZ629PYogL (Full site tab): the stats page at desktop and phone width, and the board "Where each number comes from".
 
 ## Why
