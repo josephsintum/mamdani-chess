@@ -38,17 +38,17 @@ func TestGameStatsSavedWithTheResult(t *testing.T) {
 func TestGamesWithoutStatsAndBackfillRow(t *testing.T) {
 	ctx := t.Context()
 	s, _ := openTemp(t)
-	// Three games: one finished without stats (needs a backfill), one with
-	// stats, one that never got going.
+	// Three games: one finished without stats (needs a backfill, though a
+	// playtest played it), one with stats, one that never got going.
 	for _, g := range []struct{ code, reason string }{{"G00001", "resignation"}, {"G00002", "checkmate"}, {"G00003", "aborted"}} {
-		must(t, s.CreateGame(ctx, Game{Code: g.code, White: "w", WhiteName: "w", Black: "b", BlackName: "b", CreatedAt: t0}))
+		must(t, s.CreateGame(ctx, Game{Code: g.code, White: "w", WhiteName: "w", Black: "b", BlackName: "b", CreatedAt: t0, Playtest: g.code == "G00001"}))
 		must(t, s.AddTurn(ctx, g.code, Turn{Ply: 0, Move: "e2e4", Dice: []int{1}, At: t0}))
 		must(t, s.EndGame(ctx, g.code, Result{EndedAt: t0.Add(time.Minute), Reason: g.reason, Winner: "white"}, nil, nil))
 	}
 	must(t, s.AddGameStats(ctx, "G00002", GameStats{Moves: 1}))
 	todo, err := s.GamesWithoutStats(ctx)
 	must(t, err)
-	if len(todo) != 1 || todo[0].Code != "G00001" || len(todo[0].Turns) != 1 || todo[0].Result == nil || todo[0].Result.Reason != "resignation" {
+	if len(todo) != 1 || todo[0].Code != "G00001" || !todo[0].Playtest || len(todo[0].Turns) != 1 || todo[0].Result == nil || todo[0].Result.Reason != "resignation" {
 		t.Fatalf("to backfill: %+v", todo)
 	}
 	must(t, s.AddGameStats(ctx, "G00001", GameStats{Moves: 1}))
@@ -62,6 +62,29 @@ func TestGamesWithoutStatsAndBackfillRow(t *testing.T) {
 	must(t, err)
 	if len(todo) != 0 {
 		t.Fatalf("still to backfill: %d", len(todo))
+	}
+}
+
+func TestGameKindAndHasGameStats(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTemp(t)
+	must(t, s.CreateGame(ctx, Game{Code: "G00001", Kind: "quick", White: "w", WhiteName: "w", Black: "b", BlackName: "b", CreatedAt: t0, Playtest: true}))
+	must(t, s.CreateGame(ctx, Game{Code: "G00002", White: "w", WhiteName: "w", CreatedAt: t0}))
+	must(t, s.AddGameStats(ctx, "G00001", GameStats{Moves: 1}))
+	for _, c := range []struct {
+		code, kind      string
+		playtest, stats bool
+	}{{"G00001", "quick", true, true}, {"G00002", "friend", false, false}} {
+		kind, playtest, err := s.GameKind(ctx, c.code)
+		must(t, err)
+		has, err := s.HasGameStats(ctx, c.code)
+		must(t, err)
+		if kind != c.kind || playtest != c.playtest || has != c.stats {
+			t.Errorf("%s: kind %q playtest %v stats %v, want %q %v %v", c.code, kind, playtest, has, c.kind, c.playtest, c.stats)
+		}
+	}
+	if _, _, err := s.GameKind(ctx, "NOPE00"); err == nil {
+		t.Error("an unknown game has a kind")
 	}
 }
 

@@ -46,10 +46,11 @@ func addGameStats(ctx context.Context, db execer, code string, st GameStats) err
 }
 
 // GamesWithoutStats returns every game under the current rules that got
-// going and has no stats row yet, with its turns, oldest first.
+// going and has no stats row yet, with its turns, oldest first. Playtests'
+// games are included: their rows are kept, just not shown.
 func (s *Store) GamesWithoutStats(ctx context.Context) ([]SavedGame, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT code, white, black, white_name, black_name, created_at, rematch_of, ended_at, result, winner, kind, joined_at
+		`SELECT `+savedGameColumns+`
 		 FROM games WHERE rules = ? AND result IN `+finishedReasons+` AND code NOT IN (SELECT game FROM game_stats) ORDER BY created_at`,
 		rulesVersion)
 	if err != nil {
@@ -74,6 +75,19 @@ func (s *Store) GamesWithoutStats(ctx context.Context) ([]SavedGame, error) {
 		}
 	}
 	return games, nil
+}
+
+// GameKind returns a saved game's kind and whether a playtest started it.
+func (s *Store) GameKind(ctx context.Context, code string) (kind string, playtest bool, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT kind, playtest FROM games WHERE code = ?`, code).Scan(&kind, &playtest)
+	return kind, playtest, err
+}
+
+// HasGameStats reports whether a game has a stats row.
+func (s *Store) HasGameStats(ctx context.Context, code string) (bool, error) {
+	var has bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM game_stats WHERE game = ?)`, code).Scan(&has)
+	return has, err
 }
 
 // AddSearch logs one quick-match search.

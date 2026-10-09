@@ -36,6 +36,9 @@ type Game struct {
 	// Kind is "friend" (a link) or "quick" (quick match); a rematch keeps
 	// the kind of the game it follows. "" saves as friend.
 	Kind string
+	// Playtest marks a game a playtest started (the X-Playtest header or a
+	// headless browser); the stats leave it out. A rematch keeps it.
+	Playtest bool
 }
 
 // Turn is one saved move: the move in UCI ("e2e4"), every d8 rolled that
@@ -76,8 +79,8 @@ func (s *Store) CreateGame(ctx context.Context, g Game) error {
 		joined = g.CreatedAt.UnixMilli() // both seated from the start: quick match or a rematch
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO games (code, white, black, white_name, black_name, created_at, rematch_of, rules, kind, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		g.Code, g.White, nullable(g.Black), nullable(g.WhiteName), nullable(g.BlackName), g.CreatedAt.UnixMilli(), nullable(g.RematchOf), rulesVersion, kind, joined)
+		`INSERT INTO games (code, white, black, white_name, black_name, created_at, rematch_of, rules, kind, joined_at, playtest) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.Code, g.White, nullable(g.Black), nullable(g.WhiteName), nullable(g.BlackName), g.CreatedAt.UnixMilli(), nullable(g.RematchOf), rulesVersion, kind, joined, g.Playtest)
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY {
 		return ErrCodeTaken
@@ -139,7 +142,7 @@ func (s *Store) ExpireWaiting(ctx context.Context, cutoff, now time.Time) (int64
 // saved under the current rules are returned.
 func (s *Store) LoadForRestore(ctx context.Context, endedAfter time.Time) ([]SavedGame, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT code, white, black, white_name, black_name, created_at, rematch_of, ended_at, result, winner, kind, joined_at
+		`SELECT `+savedGameColumns+`
 		 FROM games WHERE rules = ? AND (ended_at IS NULL OR ended_at > ?) ORDER BY created_at`,
 		rulesVersion, endedAfter.UnixMilli())
 	if err != nil {
@@ -166,13 +169,17 @@ func (s *Store) LoadForRestore(ctx context.Context, endedAfter time.Time) ([]Sav
 	return games, nil
 }
 
-// scanSavedGame reads one row of the games table's restore columns.
+// savedGameColumns are the games table's restore columns, as scanSavedGame
+// reads them.
+const savedGameColumns = `code, white, black, white_name, black_name, created_at, rematch_of, ended_at, result, winner, kind, joined_at, playtest`
+
+// scanSavedGame reads one row of savedGameColumns.
 func scanSavedGame(rows *sql.Rows) (SavedGame, error) {
 	var g SavedGame
 	var black, whiteName, blackName, rematchOf, result, winner sql.NullString
 	var created int64
 	var ended, joined sql.NullInt64
-	if err := rows.Scan(&g.Code, &g.White, &black, &whiteName, &blackName, &created, &rematchOf, &ended, &result, &winner, &g.Kind, &joined); err != nil {
+	if err := rows.Scan(&g.Code, &g.White, &black, &whiteName, &blackName, &created, &rematchOf, &ended, &result, &winner, &g.Kind, &joined, &g.Playtest); err != nil {
 		return g, err
 	}
 	g.Black, g.RematchOf, g.CreatedAt = black.String, rematchOf.String, time.UnixMilli(created)

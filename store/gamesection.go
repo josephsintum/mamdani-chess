@@ -19,6 +19,8 @@ type Heat [7][12]int
 
 // GameSection is what the Games, Quick match and The road sections and the
 // Health tiles show for a range. Zero-valued where there is nothing.
+// Playtests' games are left out (their searches and events are never
+// logged).
 type GameSection struct {
 	Games, GotGoing int // games created in the range; of those, ended with a result
 	Days            []KindDay
@@ -28,10 +30,12 @@ type GameSection struct {
 	// Lengths: moves by both sides in games that got going, every bucket kept.
 	Lengths                    []Count
 	MedianMoves, MedianMinutes int
-	OnClock                    int    // ended on time
+	OnClock                    int    // a side ran out of time and lost
 	WinnerClockLeft            string // median of the winner's clock at the end, "3:48"
-	Heat                       Heat
-	Friend                     struct {
+	Heat                       Heat   // games that got going
+	// Friend: links made (rematches aren't links), how many someone joined
+	// and finished, and the rematches of friend games.
+	Friend struct {
 		Links, Joined, Finished, Rematches int
 		MedianJoin                         string
 	}
@@ -90,7 +94,7 @@ func (s *Store) GameSection(ctx context.Context, from, to time.Time, loc *time.L
 		       (SELECT black_ms FROM turns t WHERE t.game = g.code ORDER BY ply DESC LIMIT 1),
 		       s.moves, s.opened, s.reset, s.closed_rounds, s.closed_cap, s.repaired, s.fell, s.saving_rolls, s.saved, s.white_lost, s.black_lost, s.mate_by_roll, s.open_hist
 		FROM games g LEFT JOIN game_stats s ON s.game = g.code
-		WHERE g.created_at >= ? AND g.created_at < ? AND g.result IS NOT 'retired' ORDER BY g.created_at`, a, b)
+		WHERE g.created_at >= ? AND g.created_at < ? AND g.result IS NOT 'retired' AND g.playtest = 0 ORDER BY g.created_at`, a, b)
 	if err != nil {
 		return out, err
 	}
@@ -198,9 +202,16 @@ func (s *Store) GameSection(ctx context.Context, from, to time.Time, loc *time.L
 				d.Friend++
 			}
 		}
-		t := g.created.In(loc)
-		out.Heat[(int(t.Weekday())+6)%7][t.Hour()/2]++
-		if g.kind == "friend" {
+		got := isFinished(g.result)
+		if got {
+			t := g.created.In(loc)
+			out.Heat[(int(t.Weekday())+6)%7][t.Hour()/2]++
+		}
+		// A rematch is no link: it starts with both seated.
+		if g.kind == "friend" && g.rematch {
+			out.Friend.Rematches++
+		}
+		if g.kind == "friend" && !g.rematch {
 			out.Friend.Links++
 			if g.hasBlack {
 				out.Friend.Joined++
@@ -208,11 +219,10 @@ func (s *Store) GameSection(ctx context.Context, from, to time.Time, loc *time.L
 			if !g.joined.IsZero() {
 				joins = append(joins, int(g.joined.Sub(g.created).Milliseconds()))
 			}
+			if got {
+				out.Friend.Finished++
+			}
 		}
-		if g.rematch {
-			out.Friend.Rematches++
-		}
-		got := isFinished(g.result)
 		switch g.result {
 		case "checkmate":
 			if g.stats != nil && g.stats.MateByRoll {
@@ -231,10 +241,7 @@ func (s *Store) GameSection(ctx context.Context, from, to time.Time, loc *time.L
 		case "expired":
 			ends.expired++
 		}
-		if g.kind == "friend" && got {
-			out.Friend.Finished++
-		}
-		if g.result == "timeout" || g.result == "timeout_vs_insufficient" {
+		if g.result == "timeout" { // timeout_vs_insufficient is a draw
 			out.OnClock++
 		}
 		if got {
