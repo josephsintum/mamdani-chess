@@ -157,7 +157,8 @@ async function quickMatch(first, second) {
 
 async function playGame(browser, n) {
 	const device = opts.phone ? { ...devices['iPhone 15'], defaultBrowserType: undefined } : {};
-	const contexts = [await browser.newContext(device), await browser.newContext(device)];
+	const mark = { ...device, extraHTTPHeaders: { 'X-Playtest': '1' } };
+	const contexts = [await browser.newContext(mark), await browser.newContext(mark)];
 	const [w, b] = await Promise.all(contexts.map((c) => c.newPage()));
 	const errors = [];
 	const sides = [
