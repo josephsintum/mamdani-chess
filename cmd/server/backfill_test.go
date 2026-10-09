@@ -1,13 +1,34 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"mamdani-chess/store"
 )
+
+// With the database gone, the restart count and the backfill log at ERROR
+// and startup goes on.
+func TestStartStatsNeverStopsTheServer(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	var buf bytes.Buffer
+	defer slog.SetDefault(slog.Default())
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	startStats(context.Background(), st)
+	out := buf.String()
+	if strings.Count(out, "level=ERROR") != 2 || !strings.Contains(out, "restart not counted") || !strings.Contains(out, "game stats backfill stopped") {
+		t.Fatalf("logged %q", out)
+	}
+}
 
 func TestBackfillSkipsGamesWithStats(t *testing.T) {
 	ctx := context.Background()
