@@ -34,6 +34,11 @@ type Server struct {
 	// Geo names a visitor's country and city for the stats page; nil
 	// without a database (then they're "Unknown").
 	Geo GeoLookup
+	// StatsPassword guards GET /stats (Basic Auth, any user name). Empty
+	// means the page is off: the path serves the app shell like any other.
+	StatsPassword string
+	// StatsZone groups the stats page's days; nil means UTC.
+	StatsZone *time.Location
 }
 
 // New returns a Server for the games in hub that serves the frontend from
@@ -72,6 +77,7 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/games/{code}/resign", s.gameResign)
 	s.mux.HandleFunc("POST /api/games/{code}/rematch", s.gameRematch)
 	s.mux.HandleFunc("/api/", s.apiNotFound)
+	s.mux.HandleFunc("GET /stats", s.stats)
 	s.mux.HandleFunc("/", s.static)
 	return s
 }
