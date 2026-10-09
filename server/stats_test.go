@@ -205,6 +205,9 @@ func TestStatsShowsTheGames(t *testing.T) {
 	}{
 		{"G00001", "quick", "checkmate", "white", &store.GameStats{Moves: 30, Opened: 5, Fell: 2, BlackLost: 2, OpenHist: [6]int{5, 10, 10, 5, 0, 0}}},
 		{"G00002", "friend", "resignation", "black", &store.GameStats{Moves: 12, Opened: 3, Fell: 1, WhiteLost: 1, MateByRoll: false, OpenHist: [6]int{2, 5, 5, 0, 0, 0}}},
+		// Two more resignations: a row after the first is the longest bar.
+		{"G00003", "quick", "resignation", "white", nil},
+		{"G00004", "quick", "resignation", "white", nil},
 	} {
 		if err := s.store.CreateGame(ctx, store.Game{Code: g.code, Kind: g.kind, White: "w", WhiteName: "w", Black: "b", BlackName: "b", CreatedAt: now.Add(-2 * time.Hour)}); err != nil {
 			t.Fatal(err)
@@ -230,12 +233,21 @@ func TestStatsShowsTheGames(t *testing.T) {
 	body := string(b)
 	for _, want := range []string{
 		`<h2>Games</h2>`, `<h2>Quick match</h2>`, `<h2>The road</h2>`,
-		"Checkmate", "Resignation", "Quick match 1", "Friend link 1", // games per day legend with totals
+		"Checkmate", "Resignation", "Quick match 3", "Friend link 1", // games per day legend with totals
 		"How full the road gets", "Did the road decide it?", "Lost less to the road, and won",
-		"found an opponent", "0:19", "Reconnects", "Server restarts",
+		"found an opponent", "0:19", "Streams reopened", "Server restarts",
+		"from the 2 games with a stats row", "Rematches of friend games", "pieces, the Mamdani included",
+		"Mon 10 am–12 pm: 0 games", "Mon 10 pm–12 am: 0 games",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page lacks %q", want)
+		}
+	}
+	// The bars scale to the largest row, not the first.
+	for label, want := range map[string]string{"Checkmate": "33.3", "Resignation": "100.0"} {
+		m := regexp.MustCompile(`<span>` + label + `</span>.*?width:([0-9.]+)%`).FindStringSubmatch(body)
+		if m == nil || m[1] != want {
+			t.Errorf("%s bar: %v, want width %s%%", label, m, want)
 		}
 	}
 	for _, never := range []string{"G00001", "G00002", "soon", "{{", "ZgotmplZ"} {
