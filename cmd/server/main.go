@@ -12,12 +12,17 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // the distroless image has no zone files
 
 	"mamdani-chess/game"
 	"mamdani-chess/server"
 	"mamdani-chess/store"
 	"mamdani-chess/web"
 )
+
+// visitsKeep is how long page views are kept: about thirteen months, so a
+// year can be compared with the year before.
+const visitsKeep = 400 * 24 * time.Hour
 
 func main() {
 	if err := run(); err != nil {
@@ -45,6 +50,20 @@ func run() error {
 	handler := server.New(st, hub, web.Assets())
 	// Railway sets this to the deployed commit; locally it's empty ("dev").
 	handler.Version = os.Getenv("RAILWAY_GIT_COMMIT_SHA")
+	// The stats page (plan: docs/superpowers/plans/2026-10-08-stats-1-visits.md).
+	handler.StatsPassword = os.Getenv("STATS_PASSWORD")
+	zone := envOr("STATS_TZ", "America/New_York")
+	if handler.StatsZone, err = time.LoadLocation(zone); err != nil {
+		return fmt.Errorf("STATS_TZ %q: %w", zone, err)
+	}
+	if handler.Geo, err = server.OpenGeo(os.Getenv("GEOIP_PATH")); err != nil {
+		return fmt.Errorf("GEOIP_PATH: %w", err)
+	}
+	if n, err := st.PruneVisits(context.Background(), time.Now().Add(-visitsKeep)); err != nil {
+		return fmt.Errorf("prune visits: %w", err)
+	} else if n > 0 {
+		slog.Info("old visits pruned", "rows", n)
+	}
 	srv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           handler,
