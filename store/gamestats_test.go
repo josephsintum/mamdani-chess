@@ -105,3 +105,16 @@ func TestSearchesAndCountEventsByRange(t *testing.T) {
 		t.Fatalf("practice in range: %d", n)
 	}
 }
+
+func TestHistRoundTrip(t *testing.T) {
+	h := [6]int{9, 14, 19, 22, 18, 18}
+	got, err := parseHist(formatHist(h))
+	if err != nil || got != h {
+		t.Fatalf("round trip = %v, %v", got, err)
+	}
+	for _, bad := range []string{"", "1,2,3", "1,2,3,4,5,x", "1,2,3,4,5,6,7"} {
+		if _, err := parseHist(bad); err == nil {
+			t.Errorf("parseHist(%q) accepted", bad)
+		}
+	}
+}

@@ -131,18 +131,16 @@ func (s *Store) VisitStats(ctx context.Context, from, to time.Time, loc *time.Lo
 	}
 	// Every day of the range gets a row, quiet ones at zero, so the chart
 	// shows the gaps. "All" (a zero from) starts at the first visit's day.
-	start := from
-	if start.IsZero() {
-		if earliest == nil {
-			start = to // no visits: no days
-		} else {
-			start = *earliest
-		}
+	var earliestAt time.Time
+	if earliest != nil {
+		earliestAt = *earliest
 	}
-	y, m, d := start.In(loc).Date()
-	for t := time.Date(y, m, d, 0, 0, 0, 0, loc); t.Before(to); t = t.AddDate(0, 0, 1) {
-		day := t.Format("2006-01-02")
+	for _, day := range dayRange(from, to, earliestAt, loc) {
 		dc := DayCount{Day: day}
+		t, err := time.ParseInLocation("2006-01-02", day, loc)
+		if err != nil {
+			return st, err
+		}
 		dayStart := t.UnixMilli()
 		for w := range dayVisitors[day] {
 			if first[w] >= dayStart {
@@ -164,6 +162,25 @@ func (s *Store) VisitStats(ctx context.Context, from, to time.Time, loc *time.Lo
 	}
 	st.LatestError = latest.String
 	return st, nil
+}
+
+// dayRange lists the days (2006-01-02, in loc) from from's up to but not
+// including to. A zero from starts at earliest's day instead, and with no
+// earliest either there are no days.
+func dayRange(from, to, earliest time.Time, loc *time.Location) []string {
+	start := from
+	if start.IsZero() {
+		if earliest.IsZero() {
+			return nil
+		}
+		start = earliest
+	}
+	var days []string
+	y, m, d := start.In(loc).Date()
+	for t := time.Date(y, m, d, 0, 0, 0, 0, loc); t.Before(to); t = t.AddDate(0, 0, 1) {
+		days = append(days, t.Format("2006-01-02"))
+	}
+	return days
 }
 
 func orUnknown(s string) string {
