@@ -70,8 +70,8 @@ func TestGameSection(t *testing.T) {
 	check("lengths", g.Lengths, []Count{{"1–10", 0}, {"11–20", 2}, {"21–30", 1}, {"31–40", 1}, {"41–50", 0}, {"51–60", 0}, {"61–80", 0}, {"81+", 0}})
 	check("median moves", g.MedianMoves, 25) // 12, 20, 30, 40 → (20+30)/2
 	check("on clock", g.OnClock, 1)
-	check("winner clock", g.WinnerClockLeft != "", true)
-	check("heat Sat 8pm", g.Heat[5][10], 2) // Saturday, the 20–22 block
+	check("winner clock", g.WinnerClockLeft, "5:58") // 210, 310, 405, 485 s → median 357.5 s
+	check("heat Sat 8pm", g.Heat[5][10], 2)          // Saturday, the 20–22 block
 	check("heat Sun 4pm", g.Heat[6][7]+g.Heat[6][8]+g.Heat[6][9], 4)
 	check("friend", fmt.Sprint(g.Friend.Links, g.Friend.Joined, g.Friend.Finished, g.Friend.Rematches, " ", g.Friend.MedianJoin), "2 1 1 1 1:40")
 	check("quick", fmt.Sprint(g.Quick.Searches, g.Quick.Matched, g.Quick.GaveUp, g.Quick.Alone, " ", g.Quick.MedianWait, " ", g.Quick.MedianGaveUp), "4 3 1 3 0:19 1:05")
@@ -105,5 +105,20 @@ func TestGameSectionHasNoCodes(t *testing.T) {
 	must(t, err)
 	if text := fmt.Sprintf("%+v", g); strings.Contains(text, "Q00001") || strings.Contains(text, "F00001") {
 		t.Fatalf("a code leaked: %s", text)
+	}
+}
+
+func TestIsFinishedMatchesTheSQLList(t *testing.T) {
+	reasons := []string{"checkmate", "stalemate", "fifty_moves", "repetition", "insufficient_material", "timeout", "timeout_vs_insufficient", "resignation"}
+	for _, r := range reasons {
+		if !isFinished(r) || !strings.Contains(finishedReasons, "'"+r+"'") {
+			t.Errorf("%s: isFinished and finishedReasons disagree", r)
+		}
+	}
+	if got := strings.Count(finishedReasons, "'") / 2; got != len(reasons) {
+		t.Errorf("finishedReasons has %d reasons, want %d", got, len(reasons))
+	}
+	if isFinished("aborted") || isFinished("") {
+		t.Error("an unfinished reason counts as finished")
 	}
 }

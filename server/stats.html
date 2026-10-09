@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <title>Stats · Mamdani Chess</title>
 <style>
-:root{--bg:#f4f4f5;--card:#fff;--muted:#fafafa;--line:#e4e4e7;--text:#09090b;--text-2:#3f3f46;--text-3:#71717a;--a:#27272a;--a4:#ededf0;--c1:#033d8b;--c2:#0969da;--c3:#54aeff;--o1:#0a3069;--o2:#0550ae;--o3:#0969da;--o4:#218bff;--o5:#54aeff;--r:6px}
+:root{--bg:#f4f4f5;--card:#fff;--muted:#fafafa;--line:#e4e4e7;--text:#09090b;--text-2:#3f3f46;--text-3:#71717a;--a:#27272a;--a4:#ededf0;--c1:#033d8b;--c2:#0969da;--c3:#54aeff;--s0:#eff1f3;--s1:#b6e3ff;--s2:#54aeff;--s3:#0969da;--s4:#0a3069;--o1:#0a3069;--o2:#0550ae;--o3:#0969da;--o4:#218bff;--o5:#54aeff;--r:6px}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text-2);font:14px/1.45 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 .site{display:flex;min-height:100vh}
@@ -40,7 +40,14 @@ section{display:flex;flex-direction:column;gap:16px}
 .axis{display:flex;justify-content:space-between;font:500 11px "IBM Plex Mono",monospace;color:var(--text-3)}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:6px}.tile .num{font-size:28px}
 .foot-note{border-top:1px solid var(--line);padding-top:20px;font-size:13px;color:var(--text-3)}
-@media (max-width:760px){.site{flex-direction:column}.side{flex:none;padding:14px 16px 0;gap:12px;border-right:0;border-bottom:1px solid var(--line)}.nav{flex-direction:row;overflow-x:auto;gap:4px;margin:0 -16px;padding:0 16px 10px}.nav a,.nav span{flex:none;white-space:nowrap}.main{padding:20px 16px 48px}.g4{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.g3{grid-template-columns:minmax(0,1fr)}.num{font-size:28px}.seg{width:100%}.seg a{flex:1;justify-content:center;padding:0 6px}}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g21{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
+.hist{height:130px;display:flex;align-items:flex-end;gap:6px}.hcol{flex:1;min-width:0;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;font:500 12px "IBM Plex Mono",monospace;color:var(--text-2)}.hcol i{display:block;flex:none;width:100%;background:var(--a);border-radius:4px 4px 0 0}.hlab{display:flex;gap:6px}.hlab span{flex:1;min-width:0;text-align:center;font:500 11px "IBM Plex Mono",monospace;color:var(--text-3)}
+.list{display:flex;flex-direction:column}.list>div{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}.list>div:last-child{border-bottom:0;padding-bottom:0}
+.heat{display:flex;flex-direction:column;gap:4px}.heat>div{display:grid;grid-template-columns:34px repeat(12,minmax(0,1fr));gap:4px;align-items:center}.heat span{font-size:12px;color:var(--text-3)}.heat .h span{font:500 11px "IBM Plex Mono",monospace;text-align:center}.heat i{display:block;height:22px;border-radius:3px}.l0{background:var(--s0)}.l1{background:var(--s1)}.l2{background:var(--s2)}.l3{background:var(--s3)}.l4{background:var(--s4)}
+.scale{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-3)}.scale i{width:14px;height:14px;border-radius:4px}
+.share{display:flex;height:10px;gap:3px}.share i{display:block;border-radius:999px}
+.big{display:flex;flex-direction:column;gap:4px}
+@media (max-width:760px){.g2,.g21{grid-template-columns:minmax(0,1fr)}.heat>div{grid-template-columns:28px repeat(12,minmax(0,1fr));gap:3px}.site{flex-direction:column}.side{flex:none;padding:14px 16px 0;gap:12px;border-right:0;border-bottom:1px solid var(--line)}.nav{flex-direction:row;overflow-x:auto;gap:4px;margin:0 -16px;padding:0 16px 10px}.nav a,.nav span{flex:none;white-space:nowrap}.main{padding:20px 16px 48px}.g4{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.g3{grid-template-columns:minmax(0,1fr)}.num{font-size:28px}.seg{width:100%}.seg a{flex:1;justify-content:center;padding:0 6px}}
 </style>
 </head>
 <body>
@@ -48,7 +55,7 @@ section{display:flex;flex-direction:column;gap:16px}
 <aside class="side">
 <div class="brand"><b>Mamdani Chess</b><span>Stats</span></div>
 <nav class="nav" aria-label="Sections">
-<a href="#overview">Overview</a><span>Games <i>soon</i></span><span>Quick match <i>soon</i></span><span>The road <i>soon</i></span><a href="#visitors">Visitors</a><a href="#health">Health</a>
+<a href="#overview">Overview</a><a href="#games">Games</a><a href="#match">Quick match</a><a href="#road">The road</a><a href="#visitors">Visitors</a><a href="#health">Health</a>
 </nav>
 </aside>
 <main class="main"><div class="wrap">
@@ -76,6 +83,69 @@ section{display:flex;flex-direction:column;gap:16px}
 </div>
 </section>
 
+<section id="games">
+<div><h2>Games</h2><p class="sub">{{.Section.Games}} games created, {{.Section.GotGoing}} of them got going</p></div>
+<div class="card">
+<div class="row-top"><div><h3>Games per day</h3><p class="sub">Quick match, friend links and practice</p></div>
+<div class="legend"><span><i class="dot" style="background:var(--c1)"></i>Quick match {{.QuickTotal}}</span><span><i class="dot" style="background:var(--c2)"></i>Friend link {{.FriendTotal}}</span><span><i class="dot" style="background:var(--c3)"></i>Practice {{.PracticeTotal}}</span></div></div>
+<div class="bars" style="--n:{{len .Section.Days}}">{{$max := .DayKindMax}}{{range .Section.Days}}<div class="col" title="{{.Day}}: {{.Quick}} quick match, {{.Friend}} friend link, {{.Practice}} practice">{{if .Practice}}<i style="height:{{pct .Practice $max}}%;background:var(--c3)"></i>{{end}}{{if .Friend}}<i style="height:{{pct .Friend $max}}%;background:var(--c2)"></i>{{end}}{{if .Quick}}<i style="height:{{pct .Quick $max}}%;background:var(--c1)"></i>{{end}}</div>{{end}}</div>
+<div class="axis">{{with .Section.Days}}<span>{{(index . 0).Day}}</span><span>{{(index . (len . | sub1)).Day}}</span>{{end}}</div>
+</div>
+<div class="grid g2">
+{{template "list" dict "Title" "How games end" "Sub" (printf "%d games created in the range" .Section.Games) "Rows" .Section.Ends "Of" .Section.Games}}
+<div class="card"><div><h3>Game length</h3><p class="sub">Moves by both sides, games that got going</p></div>
+<div class="hist">{{$m := .LengthMax}}{{range .Section.Lengths}}<div class="hcol">{{.N}}<i style="height:{{pct .N $m}}%"></i></div>{{end}}</div>
+<div class="hlab">{{range .Section.Lengths}}<span>{{.Label}}</span>{{end}}</div>
+<div class="list"><div><span>Median game</span><span class="val">{{.Section.MedianMoves}} moves · {{.Section.MedianMinutes}} min</span></div><div><span>Decided on the clock</span><span class="val">{{.Section.OnClock}} of {{.Section.GotGoing}} · {{share .Section.OnClock .Section.GotGoing}}%</span></div><div><span>Winner's clock left (median)</span><span class="val">{{or .Section.WinnerClockLeft "–"}}</span></div></div>
+</div>
+</div>
+<div class="grid g21">
+<div class="card"><div class="row-top"><div><h3>When people play</h3><p class="sub">Games started, by weekday and time</p></div><div class="scale"><span>Fewer</span><i style="background:var(--s0)"></i><i style="background:var(--s1)"></i><i style="background:var(--s2)"></i><i style="background:var(--s3)"></i><i style="background:var(--s4)"></i><span>More</span></div></div>
+<div class="heat"><div class="h"><span></span><span>12a</span><span>2a</span><span>4a</span><span>6a</span><span>8a</span><span>10a</span><span>12p</span><span>2p</span><span>4p</span><span>6p</span><span>8p</span><span>10p</span></div>
+{{range .HeatRows}}<div><span>{{.Day}}</span>{{range .Cells}}<i class="l{{.Level}}" title="{{.Title}}"></i>{{end}}</div>{{end}}</div>
+</div>
+<div class="card"><div><h3>Friend links</h3><p class="sub">{{.Section.Friend.Links}} links made</p></div>
+<div class="rows">{{$links := .Section.Friend.Links}}{{range .FriendRows}}<div class="row"><div class="row-top"><span>{{.Label}}</span><span class="val">{{.N}} <small>{{share .N $links}}%</small></span></div><div class="track thick"><i style="width:{{pct .N $links}}%"></i></div></div>{{end}}</div>
+<div class="list"><div><span>Median time to join</span><span class="val">{{or .Section.Friend.MedianJoin "–"}}</span></div><div><span>Rematches in the range</span><span class="val">{{.Section.Friend.Rematches}}</span></div></div>
+</div>
+</div>
+</section>
+
+<section id="match">
+<div><h2>Quick match</h2><p class="sub">{{.Section.Quick.Searches}} searches</p></div>
+<div class="grid g21">
+<div class="card"><div><h3>How long people waited</h3><p class="sub">Searches that found an opponent</p></div>
+<div class="hist">{{$w := .WaitMax}}{{range .Section.Quick.Waits}}<div class="hcol">{{.N}}<i style="height:{{pct .N $w}}%"></i></div>{{end}}</div>
+<div class="hlab">{{range .Section.Quick.Waits}}<span>{{.Label}}</span>{{end}}</div></div>
+<div class="card"><div><h3>Found an opponent</h3><p class="sub">Out of {{.Section.Quick.Searches}} searches</p></div>
+<div class="big"><span class="num">{{share .Section.Quick.Matched .Section.Quick.Searches}}%</span><span class="sub">{{.Section.Quick.Matched}} matched · {{.Section.Quick.GaveUp}} gave up</span></div>
+<div class="share"><i style="flex:{{.Section.Quick.Matched}} 1 0;background:var(--c1)"></i><i style="flex:{{.Section.Quick.GaveUp}} 1 0;background:var(--a4)"></i></div>
+<div class="list"><div><span>Median wait</span><span class="val">{{or .Section.Quick.MedianWait "–"}}</span></div><div><span>Gave up after (median)</span><span class="val">{{or .Section.Quick.MedianGaveUp "–"}}</span></div><div><span>Searched when nobody else was</span><span class="val">{{.Section.Quick.Alone}} · {{share .Section.Quick.Alone .Section.Quick.Searches}}%</span></div></div>
+</div>
+</div>
+</section>
+
+<section id="road">
+<div><h2>The road</h2><p class="sub">Potholes, falls and the Mamdani, from the dice of the {{.Section.Road.Games}} games that got going</p></div>
+<div class="grid g4">
+<div class="tile"><span>Potholes a game</span><span class="num">{{.PerGame .Section.Road.Opened}}</span><span class="note">{{.Section.Road.Opened}} opened</span></div>
+<div class="tile"><span>Falls a game</span><span class="num">{{.PerGame .Section.Road.Fell}}</span><span class="note">{{.Section.Road.Fell}} pieces · {{share .Section.Road.NoFall .Section.Road.Games}}% of games had none</span></div>
+<div class="tile"><span>Saving rolls saved</span><span class="num">{{share .Section.Road.Saved .Section.Road.SavingRolls}}%</span><span class="note">{{.Section.Road.Saved}} of {{.Section.Road.SavingRolls}}</span></div>
+<div class="tile"><span>Ended by a roll</span><span class="num">{{share .Section.Road.MateByRoll .Section.Road.Games}}%</span><span class="note">{{.Section.Road.MateByRoll}} mates by the dice</span></div>
+</div>
+<div class="grid g2">
+<div class="card"><div><h3>How full the road gets</h3><p class="sub">Potholes open after each turn. Tells us whether 3 rounds and a cap of 5 feel right.</p></div>
+<div class="hist">{{$o := .OpenMax}}{{range $i, $p := .OpenPct}}<div class="hcol">{{$p}}%<i style="height:{{pct $p $o}}%"></i></div>{{end}}</div>
+<div class="hlab"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5 (cap)</span></div>
+<div class="list"><div><span>Ran their 3 rounds</span><span class="val">{{.Section.Road.ClosedRounds}}</span></div><div><span>Closed early by the cap</span><span class="val">{{.Section.Road.ClosedCap}}</span></div><div><span>Repaired by the Mamdani</span><span class="val">{{.Section.Road.Repaired}}</span></div><div><span>Reset by a roll landing on them</span><span class="val">{{.Section.Road.Reset}}</span></div></div>
+</div>
+<div class="card"><div><h3>Did the road decide it?</h3><p class="sub">{{.Decisive}} decisive games: did the winner lose less to potholes than the loser?</p></div>
+<div class="share"><i style="flex:{{.Section.Road.LessWon}} 1 0;background:var(--c1)"></i><i style="flex:{{.Section.Road.MoreWon}} 1 0;background:var(--c3)"></i><i style="flex:{{.Section.Road.Same}} 1 0;background:var(--a4)"></i></div>
+<div class="rows">{{$d := .Decisive}}{{range .DecidedRows}}<div class="row"><div class="row-top"><span>{{.Label}}</span><span class="val">{{.N}} <small>{{share .N $d}}%</small></span></div><div class="track"><i style="width:{{pct .N $d}}%;background:{{.Color}}"></i></div></div>{{end}}</div>
+</div>
+</div>
+</section>
+
 <section id="visitors">
 <div><h2>Visitors</h2><p class="sub">A person counts once a day, however many pages they open</p></div>
 <div class="card">
@@ -98,6 +168,8 @@ section{display:flex;flex-direction:column;gap:16px}
 <h2>Health</h2>
 <div class="grid g3">
 <div class="tile"><span>Browser errors</span><span class="num">{{.Visits.Errors}}</span><span class="note">{{if .Visits.LatestError}}latest: {{.Visits.LatestError}}{{else}}none in this range{{end}}</span></div>
+<div class="tile"><span>Reconnects</span><span class="num">{{.Section.Reconnects}}</span><span class="note">a live stream dropped and came back</span></div>
+<div class="tile"><span>Server restarts</span><span class="num">{{.Section.Restarts}}</span><span class="note">each one pauses the games in progress</span></div>
 </div>
 </section>
 
