@@ -8,7 +8,7 @@ import (
 // playing starts a game between white and black on h.
 func playing(t *testing.T, h *Hub, white, black string) *Game {
 	t.Helper()
-	g, err := h.CreatePair(white, black)
+	g, err := h.CreatePair(white, black, false)
 	if err != nil {
 		t.Fatal(err)
 	}

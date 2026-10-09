@@ -13,6 +13,11 @@ func TestVisitRoundTripAndPrune(t *testing.T) {
 		Country: "United States", City: "New York", Device: "phone", OS: "iOS", Browser: "Safari"}))
 	must(t, s.AddVisit(ctx, Visit{At: t0.Add(24 * time.Hour), Visitor: "0123456789ab", Path: "/"}))
 	must(t, s.AddBrowserError(ctx, BrowserError{At: t0, Visitor: "0123456789ab", Path: "/game", Message: "TypeError: x", Browser: "Safari"}))
+	// Searches and events go by the same cutoff.
+	must(t, s.AddSearch(ctx, Search{StartedAt: t0, EndedAt: t0.Add(2 * time.Hour), Guest: "0123456789ab"}))
+	must(t, s.AddSearch(ctx, Search{StartedAt: t0.Add(2 * time.Hour), EndedAt: t0.Add(3 * time.Hour), Guest: "0123456789ab"}))
+	must(t, s.AddEvent(ctx, "restart", t0))
+	must(t, s.AddEvent(ctx, "restart", t0.Add(2*time.Hour)))
 
 	var n int
 	var city string
@@ -22,8 +27,13 @@ func TestVisitRoundTripAndPrune(t *testing.T) {
 	}
 	removed, err := s.PruneVisits(ctx, t0.Add(time.Hour))
 	must(t, err)
-	if removed != 2 { // the first visit and the error
-		t.Fatalf("pruned %d rows, want 2", removed)
+	if removed != 4 { // the first visit, the error, the first search and the first event
+		t.Fatalf("pruned %d rows, want 4", removed)
+	}
+	var searches, events int
+	must(t, s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM searches), (SELECT COUNT(*) FROM events)`).Scan(&searches, &events))
+	if searches != 1 || events != 1 {
+		t.Fatalf("%d searches and %d events left, want 1 and 1", searches, events)
 	}
 	must(t, s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM visits`).Scan(&n))
 	if n != 1 {

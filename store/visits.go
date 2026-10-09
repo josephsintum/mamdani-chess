@@ -54,12 +54,17 @@ func (s *Store) Visitors(ctx context.Context, from, to time.Time) ([]string, err
 	return out, rows.Err()
 }
 
-// PruneVisits deletes visits and browser errors from before the cutoff and
-// returns how many rows went.
+// PruneVisits deletes visits, browser errors, quick-match searches and
+// events from before the cutoff and returns how many rows went.
 func (s *Store) PruneVisits(ctx context.Context, before time.Time) (int64, error) {
 	var total int64
-	for _, table := range []string{"visits", "browser_errors"} {
-		res, err := s.db.ExecContext(ctx, `DELETE FROM `+table+` WHERE at < ?`, before.UnixMilli())
+	for _, q := range []string{
+		`DELETE FROM visits WHERE at < ?`,
+		`DELETE FROM browser_errors WHERE at < ?`,
+		`DELETE FROM searches WHERE started_at < ?`,
+		`DELETE FROM events WHERE at < ?`,
+	} {
+		res, err := s.db.ExecContext(ctx, q, before.UnixMilli())
 		if err != nil {
 			return total, err
 		}

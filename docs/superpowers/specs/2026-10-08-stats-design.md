@@ -1,7 +1,7 @@
 # Stats: first-party visit and game metrics
 
 **Date:** 2026-10-08
-**Status:** Agreed. Plan 1 (visits and the page): [2026-10-08-stats-1-visits.md](../plans/2026-10-08-stats-1-visits.md). Plan 2 (game stats, quick-match log) to follow once plan 1 is live.
+**Status:** Agreed. Plan 1 built (PR #22); plan 2 built ([2026-10-09-stats-2-games.md](../plans/2026-10-09-stats-2-games.md)).
 **Design:** the canvas https://claude.ai/artifact/Rzwy4PSQuJoKNZ629PYogL (Full site tab): the stats page at desktop and phone width, and the board "Where each number comes from".
 
 ## Why
@@ -22,6 +22,13 @@ The site is going to friends (milestone 07) and nothing shows who visits or whet
 - **Days are grouped in `STATS_TZ`** (default `America/New_York`).
 - **Kept for 400 days**, pruned at startup. Game codes are never stored (`/game/K7F3QZ` is recorded as `/game`).
 - **The About page** says what is counted, that the IP isn't kept and nothing goes to anyone else, and credits DB-IP (CC BY requires it).
+- **The page is computed on demand and kept for 24 hours** (decided 2026-10-09, not built yet: plan 3). A page load runs about ten queries over its range, a few milliseconds today but every game in the range is read into memory, so the cost grows with the game count and the store has one connection that moves wait on. So:
+  - Each range (`7`, `30`, `90`, `all`) is computed when first asked for and the rendered result kept in memory for 24 hours; the header says "as of 14:02". A restart starts with an empty cache; nothing is stored.
+  - A **Refresh** button recomputes that range now. It posts to `/stats/refresh?days=…`, stays behind the password even if the page itself is ever made public, and is limited to once a minute per range, so it can't be used to load the server.
+  - While a recompute runs, the stale page is served; two people refreshing at once don't both wait.
+  - The queries run under a 2-second timeout, so a pathological range can never hold the connection long enough to retire a game (`storeTimeout` is 5 s).
+  - A second, read-only connection pool (WAL already allows readers beside the one writer) is not needed yet; it waits until a stats load measurably passes about 50 ms, or something new reads the database per request. The visit beacon and every move are writes, and share the one writer either way.
+  - An hourly scheduler with stored snapshots was considered and set aside: more moving parts (eight computations a run, day boundaries, staleness after a deploy) for no gain until someone wants history past the 400-day pruning, when snapshots can be added on top.
 
 ## What is recorded
 
@@ -45,13 +52,14 @@ Sidebar: Overview, Games, Quick match, The road, Visitors, Health. Range: 7, 30,
 | Stat | Source | Plan |
 | --- | --- | --- |
 | How games end, game length, rematches, when people play | `games`, `turns` as saved today | 2 (read only) |
-| Games per day by kind; practice count | a `kind` column on `games`; a daily practice counter | 2 |
-| Potholes, falls, saving rolls, repairs, resets, mate by a roll, how full the road gets, did the road decide it | each game's dice replayed through `rules` when it ends; one stats row per player per game, shaped so milestone 08's player history reuses it; old games backfilled once | 2 |
-| Quick match | a row per search: start, end, matched or gave up, queue size at the start | 2 |
-| Friend links: joined, time to join | `joined_at` on `games` | 2 |
+| Games per day by kind; practice count | a `kind` column on `games` (a rematch keeps its game's kind); a `practice` row in `events` per practice game | 2 |
+| Potholes, falls, saving rolls, repairs, resets, mate by a roll, how full the road gets, did the road decide it | `game_stats`: one row per game that got going, written with its result from the dice the game played (`white_lost`/`black_lost` keep each side's pieces lost to the road); old games backfilled at startup by replaying their saved dice | 2 |
+| Quick match | `searches`: a row per search: start, end, matched or gave up, how many others were looking at the start | 2 |
+| Friend links: joined, time to join | `joined_at` on `games`; rematches aren't links | 2 |
 | Visitors, came back, funnel, country, city, device, system, browser, arrived via, pages | `visits`, joined to `games` by the 12-hex visitor key | 1 |
 | Browser errors | `browser_errors` | 1 |
-| Reconnects, restarts | counters on the server | 2 |
+| Streams reopened, restarts | `events`: a `reconnect` row when the page reopens a game stream after an error (the browser's own retries aren't seen), a `restart` row at each start | 2 |
+| Playtests left out | a `playtest` mark on `games` (the `X-Playtest` header or a headless browser created or joined it; a rematch keeps it); a playtest's searches and events aren't written | 2 |
 
 ## Never kept
 

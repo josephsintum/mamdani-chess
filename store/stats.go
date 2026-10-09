@@ -131,18 +131,16 @@ func (s *Store) VisitStats(ctx context.Context, from, to time.Time, loc *time.Lo
 	}
 	// Every day of the range gets a row, quiet ones at zero, so the chart
 	// shows the gaps. "All" (a zero from) starts at the first visit's day.
-	start := from
-	if start.IsZero() {
-		if earliest == nil {
-			start = to // no visits: no days
-		} else {
-			start = *earliest
-		}
+	var earliestAt time.Time
+	if earliest != nil {
+		earliestAt = *earliest
 	}
-	y, m, d := start.In(loc).Date()
-	for t := time.Date(y, m, d, 0, 0, 0, 0, loc); t.Before(to); t = t.AddDate(0, 0, 1) {
-		day := t.Format("2006-01-02")
+	for _, day := range dayRange(from, to, earliestAt, loc) {
 		dc := DayCount{Day: day}
+		t, err := time.ParseInLocation("2006-01-02", day, loc)
+		if err != nil {
+			return st, err
+		}
 		dayStart := t.UnixMilli()
 		for w := range dayVisitors[day] {
 			if first[w] >= dayStart {
@@ -164,6 +162,25 @@ func (s *Store) VisitStats(ctx context.Context, from, to time.Time, loc *time.Lo
 	}
 	st.LatestError = latest.String
 	return st, nil
+}
+
+// dayRange lists the days (2006-01-02, in loc) from from's up to but not
+// including to. A zero from starts at earliest's day instead, and with no
+// earliest either there are no days.
+func dayRange(from, to, earliest time.Time, loc *time.Location) []string {
+	start := from
+	if start.IsZero() {
+		if earliest.IsZero() {
+			return nil
+		}
+		start = earliest
+	}
+	var days []string
+	y, m, d := start.In(loc).Date()
+	for t := time.Date(y, m, d, 0, 0, 0, 0, loc); t.Before(to); t = t.AddDate(0, 0, 1) {
+		days = append(days, t.Format("2006-01-02"))
+	}
+	return days
 }
 
 func orUnknown(s string) string {
@@ -222,7 +239,7 @@ func top(m map[string]int) []Count {
 // in the range, so each step is at most the one before. Moved: white made
 // ply 0 or black ply 1. Finished: the game ended with a result (not
 // aborted, expired or retired). Again: finished two or more games. Games:
-// all games created in the range.
+// all games created in the range but playtests'.
 type Funnel struct {
 	Visited, Opened, Moved, Finished, Again, Games int
 }
@@ -254,7 +271,7 @@ func (s *Store) FunnelStats(ctx context.Context, from, to time.Time) (Funnel, er
 			SELECT substr(white, 1, 12) g FROM games WHERE created_at >= ? AND created_at < ? AND result IN ` + finishedReasons + `
 			UNION ALL
 			SELECT substr(black, 1, 12) FROM games WHERE created_at >= ? AND created_at < ? AND black IS NOT NULL AND result IN ` + finishedReasons + `) WHERE g IN ` + seen + ` GROUP BY g HAVING COUNT(*) >= 2)`, []any{a, b, a, b, a, b}},
-		{&f.Games, `SELECT COUNT(*) FROM games WHERE created_at >= ? AND created_at < ?`, []any{a, b}},
+		{&f.Games, `SELECT COUNT(*) FROM games WHERE created_at >= ? AND created_at < ? AND playtest = 0`, []any{a, b}},
 	} {
 		if err := s.db.QueryRowContext(ctx, q.sql, q.args...).Scan(q.dst); err != nil {
 			return f, err

@@ -150,7 +150,8 @@ func clientIP(r *http.Request) (netip.Addr, bool) {
 // isRobot reports a visit that isn't a person: headless Chrome (the
 // playtest, agent-browser), a crawler that runs scripts (Googlebot and the
 // like name themselves bot, crawler or spider) or any request the
-// playtest marks.
+// playtest marks. The stats count none of what a robot does: its visits,
+// games (marked playtest), quick-match searches and events.
 func isRobot(r *http.Request) bool {
 	ua := r.UserAgent()
 	lower := strings.ToLower(ua)

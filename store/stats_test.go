@@ -151,23 +151,25 @@ func TestFunnelStats(t *testing.T) {
 	// that was aborted; dan moved in a game that is still on.
 	ann, bob, dan := "ann000000000ffffffffffffffffffffffffffffffffffffffffffffffffffff", "bob000000000ffffffffffffffffffffffffffffffffffffffffffffffffffff", "dan000000000ffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	must(t, s.CreateGame(ctx, Game{Code: "G00001", White: ann, WhiteName: "a", CreatedAt: day(2, 12)}))
-	must(t, s.SeatBlack(ctx, "G00001", bob, "b"))
+	must(t, s.SeatBlack(ctx, "G00001", bob, "b", t0))
 	must(t, s.AddTurn(ctx, "G00001", Turn{Ply: 0, Move: "e2e4", At: day(2, 12)}))
-	must(t, s.EndGame(ctx, "G00001", Result{EndedAt: day(2, 13), Reason: "checkmate", Winner: "white"}, &Turn{Ply: 1, Move: "e7e5", At: day(2, 13)}))
+	must(t, s.EndGame(ctx, "G00001", Result{EndedAt: day(2, 13), Reason: "checkmate", Winner: "white"}, &Turn{Ply: 1, Move: "e7e5", At: day(2, 13)}, nil))
 	must(t, s.CreateGame(ctx, Game{Code: "G00002", White: ann, WhiteName: "a", Black: dan, BlackName: "d", CreatedAt: day(3, 12)}))
-	must(t, s.EndGame(ctx, "G00002", Result{EndedAt: day(3, 13), Reason: "aborted"}, nil))
+	must(t, s.EndGame(ctx, "G00002", Result{EndedAt: day(3, 13), Reason: "aborted"}, nil, nil))
 	must(t, s.CreateGame(ctx, Game{Code: "G00003", White: dan, WhiteName: "d", CreatedAt: day(3, 14)}))
 	must(t, s.AddTurn(ctx, "G00003", Turn{Ply: 0, Move: "d2d4", At: day(3, 14)}))
 	// A second finished game between ann and bob, by resignation.
 	must(t, s.CreateGame(ctx, Game{Code: "G00004", White: ann, WhiteName: "a", Black: bob, BlackName: "b", CreatedAt: day(3, 15)}))
-	must(t, s.EndGame(ctx, "G00004", Result{EndedAt: day(3, 16), Reason: "resignation", Winner: "white"}, nil))
+	must(t, s.EndGame(ctx, "G00004", Result{EndedAt: day(3, 16), Reason: "resignation", Winner: "white"}, nil, nil))
+	// A playtest's game, which isn't counted.
+	must(t, s.CreateGame(ctx, Game{Code: "P00001", White: dan, WhiteName: "d", Black: dan, BlackName: "d", CreatedAt: day(3, 17), Playtest: true}))
 	f, err := s.FunnelStats(ctx, day(1, 0), day(4, 0))
 	must(t, err)
 	// By hand: visits come from ann, bob and cat (Visited 3); ann and bob
 	// opened /game or /play (Opened 2). dan never visited, so he is left out
 	// of the later steps. Moved: ann and bob in G00001 (dan's G00003 move
 	// does not count) = 2. Finished: G00001 and G00004 give ann and bob = 2.
-	// Again: both finished two games = 2. Games: all four.
+	// Again: both finished two games = 2. Games: all four but the playtest's.
 	want := Funnel{Visited: 3, Opened: 2, Moved: 2, Finished: 2, Again: 2, Games: 4}
 	if f.Moved > f.Opened || f.Opened > f.Visited {
 		t.Errorf("funnel rises: %+v", f)

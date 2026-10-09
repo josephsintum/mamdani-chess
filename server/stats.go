@@ -23,6 +23,7 @@ var statsTemplate = template.Must(template.New("stats").Funcs(template.FuncMap{
 		return fmt.Sprintf("%.1f", 100*float64(n)/float64(of))
 	},
 	"share": share,
+	"top":   top,
 	"sub1":  func(n int) int { return n - 1 },
 	"dict": func(kv ...any) map[string]any {
 		m := map[string]any{}
@@ -122,6 +123,16 @@ func ptsChange(n, of, bn, bof int) change {
 	return change{signed(d) + " pts", dirOf(d)}
 }
 
+// top is the largest count, which a list's longest bar stands for (0 for
+// none).
+func top(rows []store.Count) int {
+	n := 0
+	for _, r := range rows {
+		n = max(n, r.N)
+	}
+	return n
+}
+
 // share is n as a whole percentage of of, 0 when of is 0.
 func share(n, of int) int {
 	if of == 0 {
@@ -142,6 +153,75 @@ type statsPage struct {
 	// all time. Before names that range.
 	Before                            string
 	Visitors, Played, Games, CameBack change
+
+	Section                                 store.GameSection
+	QuickTotal, FriendTotal, PracticeTotal  int
+	DayKindMax, LengthMax, WaitMax, OpenMax int
+	OpenPct                                 [6]int // each open-holes count as a percentage of turns
+	Decisive                                int
+	FriendRows                              []countRow
+	DecidedRows                             []countRow
+	HeatRows                                []heatRow
+}
+
+// countRow is a labelled count, with the colour of its bar when it has one.
+type countRow struct {
+	Label string
+	Color template.CSS // a fixed colour token, never user data
+	N     int
+}
+
+// PerGame is n over the games with a stats row, to one decimal.
+func (p statsPage) PerGame(n int) string {
+	if p.Section.Road.Games == 0 {
+		return "0"
+	}
+	return fmt.Sprintf("%.1f", float64(n)/float64(p.Section.Road.Games))
+}
+
+type heatRow struct {
+	Day   string
+	Cells []heatCell
+}
+
+type heatCell struct {
+	Level int // 0 (none) to 4 (the busiest)
+	Title string
+}
+
+var heatBlocks = [12]string{"12–2 am", "2–4 am", "4–6 am", "6–8 am", "8–10 am", "10 am–12 pm", "12–2 pm", "2–4 pm", "4–6 pm", "6–8 pm", "8–10 pm", "10 pm–12 am"}
+
+// heatRows shades each weekday × two-hour block by its share of the
+// busiest block: 0 for none, then up to a quarter, half, 85%, and the rest.
+func heatRows(h store.Heat) []heatRow {
+	top := 0
+	for _, row := range h {
+		for _, n := range row {
+			top = max(top, n)
+		}
+	}
+	days := [7]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+	var rows []heatRow
+	for d, row := range h {
+		hr := heatRow{Day: days[d]}
+		for b, n := range row {
+			level := 0
+			switch t := 100 * n / max(top, 1); {
+			case n == 0:
+			case t <= 25:
+				level = 1
+			case t <= 50:
+				level = 2
+			case t <= 85:
+				level = 3
+			default:
+				level = 4
+			}
+			hr.Cells = append(hr.Cells, heatCell{Level: level, Title: fmt.Sprintf("%s %s: %d games", days[d], heatBlocks[b], n)})
+		}
+		rows = append(rows, hr)
+	}
+	return rows
 }
 
 type statsRangeOption struct {
@@ -208,6 +288,41 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, d := range visits.Days {
 		page.DayMax = max(page.DayMax, d.New+d.Returning)
+	}
+	section, err := s.store.GameSection(r.Context(), from, to, loc)
+	if err != nil {
+		s.internalError(w, "game section", err)
+		return
+	}
+	page.Section = section
+	for _, d := range section.Days {
+		page.QuickTotal += d.Quick
+		page.FriendTotal += d.Friend
+		page.PracticeTotal += d.Practice
+		page.DayKindMax = max(page.DayKindMax, d.Quick+d.Friend+d.Practice)
+	}
+	for _, c := range section.Lengths {
+		page.LengthMax = max(page.LengthMax, c.N)
+	}
+	for _, c := range section.Quick.Waits {
+		page.WaitMax = max(page.WaitMax, c.N)
+	}
+	turns := 0
+	for _, n := range section.Road.OpenHist {
+		turns += n
+	}
+	for i, n := range section.Road.OpenHist {
+		page.OpenPct[i] = share(n, turns)
+		page.OpenMax = max(page.OpenMax, page.OpenPct[i])
+	}
+	page.HeatRows = heatRows(section.Heat)
+	page.FriendRows = []countRow{{Label: "Someone joined", N: section.Friend.Joined}, {Label: "Game finished", N: section.Friend.Finished}}
+	road := section.Road
+	page.Decisive = road.LessWon + road.MoreWon + road.Same
+	page.DecidedRows = []countRow{
+		{"Lost less to the road, and won", template.CSS("var(--c1)"), road.LessWon},
+		{"Lost more to the road, and still won", template.CSS("var(--c3)"), road.MoreWon},
+		{"Lost the same", template.CSS("var(--text-3)"), road.Same},
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

@@ -193,3 +193,66 @@ func TestStatsComparesWithTheRangeBefore(t *testing.T) {
 		t.Error("all time shows a change")
 	}
 }
+
+func TestStatsShowsTheGames(t *testing.T) {
+	s, ts := newTestServer(t)
+	s.StatsPassword = "hunter2"
+	ctx := t.Context()
+	now := time.Now()
+	for _, g := range []struct {
+		code, kind, reason, winner string
+		st                         *store.GameStats
+	}{
+		{"G00001", "quick", "checkmate", "white", &store.GameStats{Moves: 30, Opened: 5, Fell: 2, BlackLost: 2, OpenHist: [6]int{5, 10, 10, 5, 0, 0}}},
+		{"G00002", "friend", "resignation", "black", &store.GameStats{Moves: 12, Opened: 3, Fell: 1, WhiteLost: 1, MateByRoll: false, OpenHist: [6]int{2, 5, 5, 0, 0, 0}}},
+		// Two more resignations: a row after the first is the longest bar.
+		{"G00003", "quick", "resignation", "white", nil},
+		{"G00004", "quick", "resignation", "white", nil},
+	} {
+		if err := s.store.CreateGame(ctx, store.Game{Code: g.code, Kind: g.kind, White: "w", WhiteName: "w", Black: "b", BlackName: "b", CreatedAt: now.Add(-2 * time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.store.AddTurn(ctx, g.code, store.Turn{Ply: 0, Move: "e2e4", WhiteMS: 500000, BlackMS: 600000, At: now.Add(-time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.store.EndGame(ctx, g.code, store.Result{EndedAt: now.Add(-30 * time.Minute), Reason: g.reason, Winner: g.winner}, nil, g.st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.store.AddSearch(ctx, store.Search{StartedAt: now.Add(-time.Hour), EndedAt: now.Add(-time.Hour).Add(19 * time.Second), Guest: "ann000000000", Matched: true}); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/stats?days=7", nil)
+	req.SetBasicAuth("", "hunter2")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	body := string(b)
+	for _, want := range []string{
+		`<h2>Games</h2>`, `<h2>Quick match</h2>`, `<h2>The road</h2>`,
+		"Checkmate", "Resignation", "Quick match 3", "Friend link 1", // games per day legend with totals
+		"How full the road gets", "Did the road decide it?", "Lost less to the road, and won",
+		"found an opponent", "0:19", "Streams reopened", "Server restarts",
+		"from the 2 games with a stats row", "Rematches of friend games", "pieces, the Mamdani included",
+		"Mon 10 am–12 pm: 0 games", "Mon 10 pm–12 am: 0 games",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the page lacks %q", want)
+		}
+	}
+	// The bars scale to the largest row, not the first.
+	for label, want := range map[string]string{"Checkmate": "33.3", "Resignation": "100.0"} {
+		m := regexp.MustCompile(`<span>` + label + `</span>.*?width:([0-9.]+)%`).FindStringSubmatch(body)
+		if m == nil || m[1] != want {
+			t.Errorf("%s bar: %v, want width %s%%", label, m, want)
+		}
+	}
+	for _, never := range []string{"G00001", "G00002", "soon", "{{", "ZgotmplZ"} {
+		if strings.Contains(body, never) {
+			t.Errorf("the page shows %q", never)
+		}
+	}
+}
