@@ -23,7 +23,7 @@
 - **One new Go dependency and no other:** `github.com/oschwald/maxminddb-golang/v2 v2.7.0`, added with `go get` in Task 3. Don't edit `go.mod` by hand. No new npm dependencies. Don't edit `names/`.
 - **Nothing identifying is stored:** no IP address, no full guest ID (12 hex characters of `guestID()`), no game code (`pageOf` maps `/game/K7F3QZ` to `/game`), no referrer path (host only).
 - **Robots and playtests are never counted:** a user agent containing `HeadlessChrome`, or a request with an `X-Playtest` header, gets 204 and no row.
-- **JSON:** `POST /api/visit` body `{"path":"/game/ABCDEF","w":390,"h":844,"referrer":"https://l.instagram.com/"}`, reply 204 with no body. `POST /api/error` body `{"path":"/game/ABCDEF","message":"TypeError: x is undefined"}`, reply 204. Bad bodies get the existing 400 `{"error":"bad request body"}`. Both set the `guest` cookie when missing, like every API call.
+- **JSON:** `POST /api/visit` body `{"path":"/game/ABCDEF","w":390,"h":844,"touch":true,"referrer":"https://l.instagram.com/"}`, reply 204 with no body. `POST /api/error` body `{"path":"/game/ABCDEF","message":"TypeError: x is undefined"}`, reply 204. Bad bodies get the existing 400 `{"error":"bad request body"}`. Both set the `guest` cookie when missing, like every API call.
 - **`/stats`:** when `STATS_PASSWORD` is empty the path serves the app shell (so nothing new is reachable); otherwise it answers 401 with `WWW-Authenticate: Basic realm="stats"` until the right password arrives (any user name), compared in constant time.
 - **Logging:** the request log line stays as it is. Nothing new logs the guest ID or the IP.
 - **Frontend:** `#lib/...` imports with the file extension (no `$lib`), `$app/env` not `$app/environment`, no `$effect`, run `npx @sveltejs/mcp svelte-autofixer <file>` on every component you change, toasts only through `notify.*`.
@@ -620,7 +620,7 @@ git commit -m "store: visits and browser errors, with the stats queries"
 - Produces, all in package `server`:
   - `const visitorLen = 12`; `func visitorOf(guest string) string`
   - `func pageOf(path string) string`: `/`, `/game`, `/play`, `/practice`, `/how-to-play`, `/rules`, `/about` by their first segment; anything else `other`.
-  - `func deviceOf(w, h int) string`: `""` when either is 0; short side `< 640` → `phone`, `< 1024` → `tablet`, else `desktop`.
+  - `func deviceOf(w, h int, touch bool) string`: `""` when either is 0; short side `< 640` → `phone`; else `tablet` when the screen is a touch screen, else `desktop`. (A laptop's short side is often under 1024, so the screen alone can't separate laptops from tablets; iPads say they are Macs, so the user agent can't either. Touch does.)
   - `func parseUA(ua string) (os, browser string)`
   - `func referrerOf(raw, ourHost string) string`: the referrer's host without `www.`, `""` for none, an unparsable value or our own host; `raw` of the form `ref:<tag>` (what the page sends for a `?ref=` link) passes through as `ref:<tag>` with the tag cut to 20 characters.
   - `func clientIP(r *http.Request) (netip.Addr, bool)`: the last `X-Forwarded-For` entry, else `X-Real-IP`, else `RemoteAddr`.
@@ -651,11 +651,13 @@ func TestPageOf(t *testing.T) {
 
 func TestDeviceOf(t *testing.T) {
 	for _, c := range []struct {
-		w, h int
-		want string
-	}{{390, 844, "phone"}, {844, 390, "phone"}, {639, 1200, "phone"}, {768, 1024, "tablet"}, {1024, 1366, "tablet"}, {1440, 900, "desktop"}, {0, 0, ""}} {
-		if got := deviceOf(c.w, c.h); got != c.want {
-			t.Errorf("deviceOf(%d, %d) = %q, want %q", c.w, c.h, got, c.want)
+		w, h  int
+		touch bool
+		want  string
+	}{{390, 844, true, "phone"}, {844, 390, true, "phone"}, {639, 1200, true, "phone"}, {768, 1024, true, "tablet"}, {1024, 1366, true, "tablet"},
+		{1440, 900, false, "desktop"}, {1440, 900, true, "tablet"}, {2560, 1440, false, "desktop"}, {0, 0, false, ""}} {
+		if got := deviceOf(c.w, c.h, c.touch); got != c.want {
+			t.Errorf("deviceOf(%d, %d, %v) = %q, want %q", c.w, c.h, c.touch, got, c.want)
 		}
 	}
 }
@@ -781,18 +783,18 @@ func pageOf(path string) string {
 	return "other"
 }
 
-// deviceOf reads the device from the screen's short side: under 640 CSS px
-// is a phone (the app's own phone breakpoint; iPads say they are Macs, so
-// the user agent can't tell), under 1024 a tablet.
-func deviceOf(w, h int) string {
-	if w <= 0 || h <= 0 {
-		return ""
-	}
-	short := min(w, h)
+// deviceOf reads the device from the screen: a short side under 640 CSS px
+// is a phone (the app's own phone breakpoint); otherwise a touch screen is
+// a tablet and anything else a desktop. iPads say they are Macs, so the
+// user agent can't tell, and a laptop's short side is often under 1024, so
+// the size alone can't either.
+func deviceOf(w, h int, touch bool) string {
 	switch {
-	case short < 640:
+	case w <= 0 || h <= 0:
+		return ""
+	case min(w, h) < 640:
 		return "phone"
-	case short < 1024:
+	case touch:
 		return "tablet"
 	}
 	return "desktop"
@@ -1069,7 +1071,7 @@ git commit -m "server: city and country lookups from a local MMDB file"
 - Produces:
   - On `Server`: `Geo GeoLookup` (exported, set by `main`; nil = unknown).
   - Routes `POST /api/visit` and `POST /api/error`, both answering 204.
-  - `visitBody{Path string; W, H int; Referrer string}` and `errorBody{Path, Message string}` (unexported).
+  - `visitBody{Path string; W, H int; Touch bool; Referrer string}` and `errorBody{Path, Message string}` (unexported).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1097,7 +1099,7 @@ func TestVisitStoresNothingIdentifying(t *testing.T) {
 	})
 	alice := newPlayer(t, ts)
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/visit",
-		strings.NewReader(`{"path":"/game/K7F3QZ?instant","w":390,"h":844,"referrer":"https://l.instagram.com/?u=secret"}`))
+		strings.NewReader(`{"path":"/game/K7F3QZ?instant","w":390,"h":844,"touch":true,"referrer":"https://l.instagram.com/?u=secret"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Forwarded-For", "203.0.113.9")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1")
@@ -1188,12 +1190,13 @@ Append to `server/visit.go` (add `"time"` and `"mamdani-chess/store"` to its imp
 
 ```go
 // visitBody is what the page sends on every navigation: the path (the
-// server keeps only the route), the screen in CSS px, and the referrer or
-// "ref:<tag>" on the first page of a visit.
+// server keeps only the route), the screen in CSS px and whether it is a
+// touch screen, and the referrer or "ref:<tag>" on the first page of a visit.
 type visitBody struct {
 	Path     string `json:"path"`
 	W        int    `json:"w"`
 	H        int    `json:"h"`
+	Touch    bool   `json:"touch"`
 	Referrer string `json:"referrer"`
 }
 
@@ -1220,7 +1223,7 @@ func (s *Server) visit(w http.ResponseWriter, r *http.Request) {
 		Visitor:  visitorOf(guestID(w, r)),
 		Path:     pageOf(body.Path),
 		Referrer: referrerOf(body.Referrer, r.Host),
-		Device:   deviceOf(body.W, body.H),
+		Device:   deviceOf(body.W, body.H, body.Touch),
 	}
 	v.OS, v.Browser = parseUA(r.UserAgent())
 	if s.Geo != nil {
@@ -1716,7 +1719,7 @@ git commit -m "server: the private /stats page"
 **Interfaces:**
 - Consumes: `POST /api/visit` and `POST /api/error` (Task 4).
 - Produces:
-  - `export function visitPayload(url: URL, first: boolean, referrer: string, screen: { width: number; height: number }): VisitPayload` with `type VisitPayload = { path: string; w: number; h: number; referrer: string }`. `path` is `url.pathname`. `referrer` is `ref:<tag>` when `url.searchParams.get('ref')` is set, else `referrer` on the first page of the visit, else `''`.
+  - `export function visitPayload(url: URL, first: boolean, referrer: string, screen: { width: number; height: number }, touch: boolean): VisitPayload` with `type VisitPayload = { path: string; w: number; h: number; touch: boolean; referrer: string }`. `path` is `url.pathname`. `touch` is `navigator.maxTouchPoints > 0`. `referrer` is `ref:<tag>` when `url.searchParams.get('ref')` is set, else `referrer` on the first page of the visit, else `''`.
   - `export function reportVisit(payload: VisitPayload): void`: `navigator.sendBeacon('/api/visit', blob)` when available, else `fetch(..., { method: 'POST', keepalive: true })` with its rejection swallowed. Never throws.
   - `export function reportError(path: string, message: string): void`: same transport to `/api/error`; at most one report per 10 s so a loop can't flood.
 
@@ -1732,20 +1735,21 @@ const screen = { width: 390, height: 844 };
 
 describe('visitPayload', () => {
 	it('sends the path, the screen and the referrer of a first page', () => {
-		expect(visitPayload(new URL('https://mamdanichess.com/game/K7F3QZ'), true, 'https://l.instagram.com/', screen)).toEqual({
+		expect(visitPayload(new URL('https://mamdanichess.com/game/K7F3QZ'), true, 'https://l.instagram.com/', screen, true)).toEqual({
 			path: '/game/K7F3QZ',
 			w: 390,
 			h: 844,
+			touch: true,
 			referrer: 'https://l.instagram.com/'
 		});
 	});
 
 	it('sends no referrer after the first page', () => {
-		expect(visitPayload(new URL('https://mamdanichess.com/rules'), false, 'https://mamdanichess.com/', screen).referrer).toBe('');
+		expect(visitPayload(new URL('https://mamdanichess.com/rules'), false, 'https://mamdanichess.com/', screen, false).referrer).toBe('');
 	});
 
 	it('turns a ?ref= tag into ref:<tag>', () => {
-		expect(visitPayload(new URL('https://mamdanichess.com/?ref=ig'), true, '', screen).referrer).toBe('ref:ig');
+		expect(visitPayload(new URL('https://mamdanichess.com/?ref=ig'), true, '', screen, false).referrer).toBe('ref:ig');
 	});
 });
 
@@ -1756,7 +1760,7 @@ describe('reportVisit', () => {
 		const sendBeacon = vi.fn(() => true);
 		vi.stubGlobal('navigator', { sendBeacon });
 		vi.stubGlobal('fetch', vi.fn());
-		reportVisit({ path: '/', w: 1, h: 1, referrer: '' });
+		reportVisit({ path: '/', w: 1, h: 1, touch: false, referrer: '' });
 		expect(sendBeacon).toHaveBeenCalledTimes(1);
 		const [url, body] = sendBeacon.mock.calls[0] as unknown as [string, Blob];
 		expect(url).toBe('/api/visit');
@@ -1768,7 +1772,7 @@ describe('reportVisit', () => {
 		vi.stubGlobal('navigator', {});
 		const fetch = vi.fn(() => Promise.reject(new Error('down')));
 		vi.stubGlobal('fetch', fetch);
-		expect(() => reportVisit({ path: '/', w: 1, h: 1, referrer: '' })).not.toThrow();
+		expect(() => reportVisit({ path: '/', w: 1, h: 1, touch: false, referrer: '' })).not.toThrow();
 		await Promise.resolve();
 		expect(fetch).toHaveBeenCalledWith('/api/visit', expect.objectContaining({ method: 'POST', keepalive: true }));
 	});
@@ -1805,23 +1809,25 @@ Expected: FAIL (`Failed to resolve import "./visit.ts"`).
 
 ```ts
 // What the page tells the server about a visit: the route it's on, the
-// screen (for phone/tablet/desktop) and, on the first page, where the
-// visitor came from. The server keeps the route, never a game code, and the
+// screen and whether it's a touch screen (for phone/tablet/desktop) and, on
+// the first page, where the visitor came from. The server keeps the route, never a game code, and the
 // referrer's host, never its path.
 
-export type VisitPayload = { path: string; w: number; h: number; referrer: string };
+export type VisitPayload = { path: string; w: number; h: number; touch: boolean; referrer: string };
 
 export function visitPayload(
 	url: URL,
 	first: boolean,
 	referrer: string,
-	screen: { width: number; height: number }
+	screen: { width: number; height: number },
+	touch: boolean
 ): VisitPayload {
 	const tag = url.searchParams.get('ref');
 	return {
 		path: url.pathname,
 		w: screen.width,
 		h: screen.height,
+		touch,
 		referrer: tag ? `ref:${tag}` : first ? referrer : ''
 	};
 }
@@ -1874,7 +1880,7 @@ function send(path: string, body: unknown): void {
 	let first = true;
 	afterNavigate(({ to }) => {
 		if (!to) return;
-		reportVisit(visitPayload(to.url, first, document.referrer, window.screen));
+		reportVisit(visitPayload(to.url, first, document.referrer, window.screen, navigator.maxTouchPoints > 0));
 		first = false;
 	});
 
@@ -1973,7 +1979,7 @@ func TestVisit(t *testing.T) {
 	// c.do sends no body: a bad body is a 400 in the API's usual shape.
 	expectJSON(t, []any{res.status, res.body}, `[400,"{\"error\":\"bad request body\"}\n"]`)
 	p := c.players(1)[0]
-	status, body := p.post("/api/visit", `{"path":"/game/ABCDEF","w":390,"h":844,"referrer":""}`)
+	status, body := p.post("/api/visit", `{"path":"/game/ABCDEF","w":390,"h":844,"touch":true,"referrer":""}`)
 	if status != 204 || body != "" {
 		t.Errorf("POST /api/visit: %d %q", status, body)
 	}
