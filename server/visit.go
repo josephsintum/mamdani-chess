@@ -39,16 +39,17 @@ func pageOf(path string) string {
 }
 
 // deviceOf reads the device from the screen: a short side under 640 CSS px
-// is a phone (the app's own phone breakpoint; iPads say they are Macs, so
-// the user agent can't tell), a width up to 1024 a tablet, else a desktop.
-func deviceOf(w, h int) string {
-	if w <= 0 || h <= 0 {
-		return ""
-	}
+// is a phone (the app's own phone breakpoint); otherwise a touch screen is
+// a tablet and anything else a desktop. iPads say they are Macs, so the
+// user agent can't tell, and a laptop's short side is often under 1024, so
+// the size alone can't either.
+func deviceOf(w, h int, touch bool) string {
 	switch {
+	case w <= 0 || h <= 0:
+		return ""
 	case min(w, h) < 640:
 		return "phone"
-	case w <= 1024:
+	case touch:
 		return "tablet"
 	}
 	return "desktop"

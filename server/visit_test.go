@@ -18,11 +18,13 @@ func TestPageOf(t *testing.T) {
 
 func TestDeviceOf(t *testing.T) {
 	for _, c := range []struct {
-		w, h int
-		want string
-	}{{390, 844, "phone"}, {844, 390, "phone"}, {639, 1200, "phone"}, {768, 1024, "tablet"}, {1024, 1366, "tablet"}, {1440, 900, "desktop"}, {0, 0, ""}} {
-		if got := deviceOf(c.w, c.h); got != c.want {
-			t.Errorf("deviceOf(%d, %d) = %q, want %q", c.w, c.h, got, c.want)
+		w, h  int
+		touch bool
+		want  string
+	}{{390, 844, true, "phone"}, {844, 390, true, "phone"}, {639, 1200, true, "phone"}, {768, 1024, true, "tablet"}, {1024, 1366, true, "tablet"},
+		{1440, 900, false, "desktop"}, {1440, 900, true, "tablet"}, {2560, 1440, false, "desktop"}, {0, 0, false, ""}} {
+		if got := deviceOf(c.w, c.h, c.touch); got != c.want {
+			t.Errorf("deviceOf(%d, %d, %v) = %q, want %q", c.w, c.h, c.touch, got, c.want)
 		}
 	}
 }
