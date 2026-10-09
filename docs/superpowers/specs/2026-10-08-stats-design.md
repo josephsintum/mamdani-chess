@@ -1,7 +1,7 @@
 # Stats: first-party visit and game metrics
 
 **Date:** 2026-10-08
-**Status:** Agreed. Plan 1 built (PR #22); plan 2: [2026-10-09-stats-2-games.md](../plans/2026-10-09-stats-2-games.md).
+**Status:** Agreed. Plan 1 built (PR #22); plan 2 built ([2026-10-09-stats-2-games.md](../plans/2026-10-09-stats-2-games.md)).
 **Design:** the canvas https://claude.ai/artifact/Rzwy4PSQuJoKNZ629PYogL (Full site tab): the stats page at desktop and phone width, and the board "Where each number comes from".
 
 ## Why
@@ -45,13 +45,14 @@ Sidebar: Overview, Games, Quick match, The road, Visitors, Health. Range: 7, 30,
 | Stat | Source | Plan |
 | --- | --- | --- |
 | How games end, game length, rematches, when people play | `games`, `turns` as saved today | 2 (read only) |
-| Games per day by kind; practice count | a `kind` column on `games`; a daily practice counter | 2 |
-| Potholes, falls, saving rolls, repairs, resets, mate by a roll, how full the road gets, did the road decide it | each game's dice replayed through `rules` when it ends; one stats row per player per game, shaped so milestone 08's player history reuses it; old games backfilled once | 2 |
-| Quick match | a row per search: start, end, matched or gave up, queue size at the start | 2 |
-| Friend links: joined, time to join | `joined_at` on `games` | 2 |
+| Games per day by kind; practice count | a `kind` column on `games` (a rematch keeps its game's kind); a `practice` row in `events` per practice game | 2 |
+| Potholes, falls, saving rolls, repairs, resets, mate by a roll, how full the road gets, did the road decide it | `game_stats`: one row per game that got going, written with its result from the dice the game played (`white_lost`/`black_lost` keep each side's pieces lost to the road); old games backfilled at startup by replaying their saved dice | 2 |
+| Quick match | `searches`: a row per search: start, end, matched or gave up, how many others were looking at the start | 2 |
+| Friend links: joined, time to join | `joined_at` on `games`; rematches aren't links | 2 |
 | Visitors, came back, funnel, country, city, device, system, browser, arrived via, pages | `visits`, joined to `games` by the 12-hex visitor key | 1 |
 | Browser errors | `browser_errors` | 1 |
-| Reconnects, restarts | counters on the server | 2 |
+| Streams reopened, restarts | `events`: a `reconnect` row when the page reopens a game stream after an error (the browser's own retries aren't seen), a `restart` row at each start | 2 |
+| Playtests left out | a `playtest` mark on `games` (the `X-Playtest` header or a headless browser created or joined it; a rematch keeps it); a playtest's searches and events aren't written | 2 |
 
 ## Never kept
 
