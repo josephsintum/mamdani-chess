@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Stats · Mamdani Chess</title>
+<style>
+:root{--bg:#f4f4f5;--card:#fff;--muted:#fafafa;--line:#e4e4e7;--text:#09090b;--text-2:#3f3f46;--text-3:#71717a;--a:#27272a;--a4:#ededf0;--c1:#033d8b;--c2:#0969da;--c3:#54aeff;--o1:#0a3069;--o2:#0550ae;--o3:#0969da;--o4:#218bff;--o5:#54aeff;--r:6px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text-2);font:14px/1.45 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.site{display:flex;min-height:100vh}
+.side{flex:0 0 232px;padding:24px 14px;border-right:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;gap:28px}
+.brand b{display:block;font-size:15px;color:var(--text)}.brand span{font-size:12px;color:var(--text-3)}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav a,.nav span{display:flex;min-height:40px;align-items:center;padding:0 10px;border-radius:4px;color:var(--text-2);text-decoration:none;font-weight:500}
+.nav a:hover{background:var(--muted);color:var(--text)}.nav span{color:var(--text-3)}.nav span i{font-style:normal;font-size:11px;margin-left:auto}
+.main{flex:1;min-width:0;padding:32px 40px 64px}.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+h1{margin:0;font-size:28px;line-height:1.2;letter-spacing:-.02em;color:var(--text)}h2{margin:0;font-size:20px;color:var(--text)}
+.sub{margin:0;font-size:13px;color:var(--text-3)}
+.seg{display:flex;gap:2px;padding:3px;background:var(--muted);border:1px solid var(--line);border-radius:var(--r)}
+.seg a{height:38px;padding:0 14px;display:flex;align-items:center;border-radius:3px;color:var(--text-3);font-size:13px;font-weight:500;text-decoration:none}
+.seg a.on{background:var(--card);color:var(--text);box-shadow:0 1px 2px rgb(0 0 0/.06),0 0 0 1px var(--line)}
+section{display:flex;flex-direction:column;gap:16px}
+.grid{display:grid;gap:16px;align-items:start}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.card h3{margin:0;font-size:15px;color:var(--text)}
+.kpi{padding:0;gap:0;overflow:hidden}.kpi .in{padding:18px 20px 20px;display:flex;flex-direction:column;gap:10px}.kpi .foot{padding:10px 20px;background:var(--muted);border-top:1px solid var(--line);font-size:13px;color:var(--text-3)}
+.num{font:600 34px/1 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:-.02em;color:var(--text)}
+.rows{display:flex;flex-direction:column;gap:14px}.row{display:flex;flex-direction:column;gap:6px}
+.row-top{display:flex;justify-content:space-between;gap:12px;font-size:13px}.val{font:500 13px "IBM Plex Mono",monospace;color:var(--text);white-space:nowrap}.val small{font-size:13px;color:var(--text-3)}
+.track{height:6px;border-radius:999px;background:var(--a4);overflow:hidden}.track.thick{height:10px}.track i{display:block;height:100%;border-radius:999px;background:var(--a)}
+.note{font-size:12px;color:var(--text-3)}
+.bars{height:160px;display:flex;align-items:flex-end;gap:4px;border-bottom:1px solid var(--line)}.col{flex:1;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:2px}.col i{display:block}.col i:first-child{border-radius:4px 4px 0 0}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--text-3)}.legend span{display:inline-flex;align-items:center;gap:6px}.dot{width:8px;height:8px;border-radius:50%}
+.axis{display:flex;justify-content:space-between;font:500 11px "IBM Plex Mono",monospace;color:var(--text-3)}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:6px}.tile .num{font-size:28px}
+.foot-note{border-top:1px solid var(--line);padding-top:20px;font-size:13px;color:var(--text-3)}
+@media (max-width:760px){.site{flex-direction:column}.side{flex:none;padding:14px 16px 0;gap:12px;border-right:0;border-bottom:1px solid var(--line)}.nav{flex-direction:row;overflow-x:auto;gap:4px;margin:0 -16px;padding:0 16px 10px}.nav a,.nav span{flex:none;white-space:nowrap}.main{padding:20px 16px 48px}.g4{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.g3{grid-template-columns:minmax(0,1fr)}.num{font-size:28px}.seg{width:100%}.seg a{flex:1;justify-content:center;padding:0 6px}}
+</style>
+</head>
+<body>
+<div class="site">
+<aside class="side">
+<div class="brand"><b>Mamdani Chess</b><span>Stats</span></div>
+<nav class="nav" aria-label="Sections">
+<a href="#overview">Overview</a><span>Games <i>soon</i></span><span>Quick match <i>soon</i></span><span>The road <i>soon</i></span><a href="#visitors">Visitors</a><a href="#health">Health</a>
+</nav>
+</aside>
+<main class="main"><div class="wrap">
+
+<div class="top">
+<div><h1>Stats</h1><p class="sub">{{.Range}}</p></div>
+<div class="seg" role="group" aria-label="Range">{{range .Ranges}}<a href="?days={{.Days}}"{{if .On}} class="on"{{end}}>{{.Label}}</a>{{end}}</div>
+</div>
+
+<section id="overview">
+<h2>Overview</h2>
+<div class="grid g4">
+<div class="card kpi"><div class="in"><span>Visitors</span><span class="num">{{.Visits.Visitors}}</span></div><div class="foot">{{.Visits.Views}} page views</div></div>
+<div class="card kpi"><div class="in"><span>Played a game</span><span class="num">{{.Funnel.Moved}}</span></div><div class="foot">{{share .Funnel.Moved .Funnel.Visited}}% of visitors made a move</div></div>
+<div class="card kpi"><div class="in"><span>Games</span><span class="num">{{.Funnel.Games}}</span></div><div class="foot">between players</div></div>
+<div class="card kpi"><div class="in"><span>Came back</span><span class="num">{{share .Visits.Returning .Visits.Visitors}}%</span></div><div class="foot">{{.Visits.Returning}} visited on 2 or more days</div></div>
+</div>
+<div class="card">
+<div><h3>From visit to game</h3><p class="sub">Of the {{.Funnel.Visited}} visitors, how many got each step further. On the right, the share lost since the step before.</p></div>
+<div class="rows">{{range .Steps}}
+<div class="row"><div class="row-top"><span>{{.Label}}</span><span class="val">{{.N}} <small>{{.Pct}}%</small></span></div>
+<div class="track thick"><i style="width:{{.Pct}}%;background:var(--o{{.Shade}})"></i></div>
+{{if or .Note .Drop}}<div class="row-top"><span class="note">{{.Note}}</span>{{if .Drop}}<span class="note">−{{.Drop}}%</span>{{end}}</div>{{end}}</div>{{end}}
+</div>
+</div>
+</section>
+
+<section id="visitors">
+<div><h2>Visitors</h2><p class="sub">A person counts once a day, however many pages they open</p></div>
+<div class="card">
+<div class="row-top"><div><h3>Visitors per day</h3><p class="sub">New and returning</p></div><div class="legend"><span><i class="dot" style="background:var(--c1)"></i>New</span><span><i class="dot" style="background:var(--c3)"></i>Returning</span></div></div>
+<div class="bars">{{$max := .DayMax}}{{range .Visits.Days}}<div class="col" title="{{.Day}}: {{.New}} new, {{.Returning}} returning">{{if .Returning}}<i style="height:{{pct .Returning $max}}%;background:var(--c3)"></i>{{end}}{{if .New}}<i style="height:{{pct .New $max}}%;background:var(--c1)"></i>{{end}}</div>{{end}}</div>
+<div class="axis">{{with .Visits.Days}}<span>{{(index . 0).Day}}</span><span>{{(index . (len . | sub1)).Day}}</span>{{end}}</div>
+</div>
+<div class="grid g3">
+{{template "list" dict "Title" "Countries" "Sub" "From a local IP lookup; IPs aren't kept" "Rows" .Visits.Countries "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Cities" "Sub" "Rough on mobile data" "Rows" .Visits.Cities "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Arrived via" "Sub" "The first page of each visit" "Rows" .Visits.Sources "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Devices" "Sub" "Under 640 px on the short side is a phone" "Rows" .Visits.Devices "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Systems" "Sub" "From the browser's user agent" "Rows" .Visits.Systems "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Browsers" "Sub" "In-app browsers are where shared links open" "Rows" .Visits.Browsers "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Pages" "Sub" "Page views; game codes are never stored" "Rows" .Visits.Pages "Of" .Visits.Views}}
+</div>
+</section>
+
+<section id="health">
+<h2>Health</h2>
+<div class="grid g3">
+<div class="tile"><span>Browser errors</span><span class="num">{{.Visits.Errors}}</span><span class="note">{{if .Visits.LatestError}}latest: {{.Visits.LatestError}}{{else}}none in this range{{end}}</span></div>
+</div>
+</section>
+
+<p class="foot-note">Counted by this server and kept in its own database. No IP addresses are stored; cities come from a local lookup file. Headless browsers and playtests aren't counted.</p>
+</div></main>
+</div>
+</body>
+</html>
+
+{{define "list"}}<div class="card"><div><h3>{{.Title}}</h3><p class="sub">{{.Sub}}</p></div>
+<div class="rows">{{$of := .Of}}{{$top := 0}}{{range $i, $r := .Rows}}{{if eq $i 0}}{{$top = $r.N}}{{end}}
+<div class="row"><div class="row-top"><span>{{$r.Label}}</span><span class="val">{{$r.N}} <small>{{share $r.N $of}}%</small></span></div><div class="track"><i style="width:{{pct $r.N $top}}%"></i></div></div>{{end}}
+{{if not .Rows}}<p class="note">Nothing yet</p>{{end}}</div></div>{{end}}
