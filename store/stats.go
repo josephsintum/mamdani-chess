@@ -207,9 +207,11 @@ func top(m map[string]int) []Count {
 }
 
 // Funnel counts visitors who got each step further, for games created in
-// the range. Moved: white made ply 0 or black ply 1. Finished: the game
-// ended with a result (not aborted, expired or retired). Again: finished
-// two or more games. Games: games created between players.
+// the range. Moved, Finished and Again count only guests who also visited
+// in the range, so each step is at most the one before. Moved: white made
+// ply 0 or black ply 1. Finished: the game ended with a result (not
+// aborted, expired or retired). Again: finished two or more games. Games:
+// all games created in the range.
 type Funnel struct {
 	Visited, Opened, Moved, Finished, Again, Games int
 }
@@ -219,6 +221,9 @@ const finishedReasons = `('checkmate','stalemate','fifty_moves','repetition','in
 func (s *Store) FunnelStats(ctx context.Context, from, to time.Time) (Funnel, error) {
 	var f Funnel
 	a, b := from.UnixMilli(), to.UnixMilli()
+	// Later steps count only guests who also visited in the range, so the
+	// funnel never rises.
+	const seen = `(SELECT DISTINCT visitor FROM visits WHERE at >= ? AND at < ?)`
 	for _, q := range []struct {
 		dst  *int
 		sql  string
@@ -229,15 +234,15 @@ func (s *Store) FunnelStats(ctx context.Context, from, to time.Time) (Funnel, er
 		{&f.Moved, `SELECT COUNT(*) FROM (
 			SELECT substr(white, 1, 12) g FROM games WHERE created_at >= ? AND created_at < ? AND EXISTS (SELECT 1 FROM turns WHERE game = code AND ply = 0)
 			UNION
-			SELECT substr(black, 1, 12) FROM games WHERE created_at >= ? AND created_at < ? AND black IS NOT NULL AND EXISTS (SELECT 1 FROM turns WHERE game = code AND ply = 1))`, []any{a, b, a, b}},
+			SELECT substr(black, 1, 12) FROM games WHERE created_at >= ? AND created_at < ? AND black IS NOT NULL AND EXISTS (SELECT 1 FROM turns WHERE game = code AND ply = 1)) WHERE g IN ` + seen, []any{a, b, a, b, a, b}},
 		{&f.Finished, `SELECT COUNT(*) FROM (
 			SELECT substr(white, 1, 12) g FROM games WHERE created_at >= ? AND created_at < ? AND result IN ` + finishedReasons + `
 			UNION
-			SELECT substr(black, 1, 12) FROM games WHERE created_at >= ? AND created_at < ? AND black IS NOT NULL AND result IN ` + finishedReasons + `)`, []any{a, b, a, b}},
+			SELECT substr(black, 1, 12) FROM games WHERE created_at >= ? AND created_at < ? AND black IS NOT NULL AND result IN ` + finishedReasons + `) WHERE g IN ` + seen, []any{a, b, a, b, a, b}},
 		{&f.Again, `SELECT COUNT(*) FROM (SELECT g FROM (
 			SELECT substr(white, 1, 12) g FROM games WHERE created_at >= ? AND created_at < ? AND result IN ` + finishedReasons + `
 			UNION ALL
-			SELECT substr(black, 1, 12) FROM games WHERE created_at >= ? AND created_at < ? AND black IS NOT NULL AND result IN ` + finishedReasons + `) GROUP BY g HAVING COUNT(*) >= 2)`, []any{a, b, a, b}},
+			SELECT substr(black, 1, 12) FROM games WHERE created_at >= ? AND created_at < ? AND black IS NOT NULL AND result IN ` + finishedReasons + `) WHERE g IN ` + seen + ` GROUP BY g HAVING COUNT(*) >= 2)`, []any{a, b, a, b, a, b}},
 		{&f.Games, `SELECT COUNT(*) FROM games WHERE created_at >= ? AND created_at < ?`, []any{a, b}},
 	} {
 		if err := s.db.QueryRowContext(ctx, q.sql, q.args...).Scan(q.dst); err != nil {
