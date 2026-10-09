@@ -79,3 +79,29 @@ func TestSearchesAndEvents(t *testing.T) {
 		t.Fatalf("matched %d others %d events %d", matched, others, events)
 	}
 }
+
+func TestSearchesAndCountEventsByRange(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTemp(t)
+	must(t, s.AddSearch(ctx, Search{StartedAt: t0.Add(time.Hour), EndedAt: t0.Add(time.Hour + time.Second), Guest: "bob000000000", Others: 2}))
+	must(t, s.AddSearch(ctx, Search{StartedAt: t0, EndedAt: t0.Add(19 * time.Second), Guest: "ann000000000", Matched: true}))
+	rows, err := s.Searches(ctx, t0.Add(-time.Minute), t0.Add(30*time.Minute))
+	must(t, err)
+	if len(rows) != 1 || rows[0].Guest != "ann000000000" || !rows[0].Matched || !rows[0].StartedAt.Equal(t0) || !rows[0].EndedAt.Equal(t0.Add(19*time.Second)) {
+		t.Fatalf("one in range: %+v", rows)
+	}
+	rows, err = s.Searches(ctx, time.Time{}, t0.Add(2*time.Hour))
+	must(t, err)
+	if len(rows) != 2 || rows[0].Guest != "ann000000000" || rows[1].Others != 2 {
+		t.Fatalf("both, oldest first: %+v", rows)
+	}
+
+	must(t, s.AddEvent(ctx, "practice", t0))
+	must(t, s.AddEvent(ctx, "practice", t0.Add(time.Hour)))
+	must(t, s.AddEvent(ctx, "restart", t0))
+	n, err := s.CountEvents(ctx, "practice", t0.Add(-time.Minute), t0.Add(time.Minute))
+	must(t, err)
+	if n != 1 {
+		t.Fatalf("practice in range: %d", n)
+	}
+}

@@ -47,6 +47,15 @@ func run() error {
 	if err := restore(context.Background(), st, hub, time.Now()); err != nil {
 		return err
 	}
+	if err := restartEvent(context.Background(), st); err != nil {
+		return fmt.Errorf("restart event: %w", err)
+	}
+	start := time.Now()
+	if done, failed, err := backfillStats(context.Background(), st); err != nil {
+		return fmt.Errorf("backfill game stats: %w", err)
+	} else if done > 0 || failed > 0 {
+		slog.Info("game stats backfilled", "games", done, "failed", failed, "duration", time.Since(start))
+	}
 	handler := server.New(st, hub, web.Assets())
 	// Railway sets this to the deployed commit; locally it's empty ("dev").
 	handler.Version = os.Getenv("RAILWAY_GIT_COMMIT_SHA")

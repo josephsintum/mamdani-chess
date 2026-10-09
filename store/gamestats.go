@@ -114,3 +114,34 @@ func parseHist(s string) ([6]int, error) {
 	}
 	return h, nil
 }
+
+// Searches returns the searches that started in [from, to), oldest first.
+func (s *Store) Searches(ctx context.Context, from, to time.Time) ([]Search, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT started_at, ended_at, guest, matched, others FROM searches
+		 WHERE started_at >= ? AND started_at < ? ORDER BY started_at, rowid`,
+		from.UnixMilli(), to.UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Search
+	for rows.Next() {
+		var sr Search
+		var started, ended int64
+		if err := rows.Scan(&started, &ended, &sr.Guest, &sr.Matched, &sr.Others); err != nil {
+			return nil, err
+		}
+		sr.StartedAt, sr.EndedAt = time.UnixMilli(started), time.UnixMilli(ended)
+		out = append(out, sr)
+	}
+	return out, rows.Err()
+}
+
+// CountEvents counts the events of kind that happened in [from, to).
+func (s *Store) CountEvents(ctx context.Context, kind string, from, to time.Time) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE kind = ? AND at >= ? AND at < ?`,
+		kind, from.UnixMilli(), to.UnixMilli()).Scan(&n)
+	return n, err
+}

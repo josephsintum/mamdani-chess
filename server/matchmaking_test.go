@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,7 +11,63 @@ import (
 	"time"
 
 	"mamdani-chess/game"
+	"mamdani-chess/store"
 )
+
+func searches(t *testing.T, s *Server) []store.Search {
+	t.Helper()
+	rows, err := s.store.Searches(t.Context(), time.Time{}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
+// Every search is logged: matched or not, how long it took, and how many
+// others were looking when it started.
+func TestSearchLogged(t *testing.T) {
+	s, ts := newTestServer(t)
+	alice, bob, carol := newPlayer(t, ts), newPlayer(t, ts), newPlayer(t, ts)
+	// Alice searches alone and gives up.
+	ctx, cancel := context.WithCancel(t.Context())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/match", nil)
+	resp, err := alice.c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	sseReader{t: t, sc: bufio.NewScanner(resp.Body)}.next() // queued
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	// The log is written as each stream ends.
+	for deadline := time.Now().Add(2 * time.Second); len(searches(t, s)) < 1 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	// Bob and Carol find each other.
+	bs, _ := bob.queue()
+	cs, _ := carol.queue()
+	if matchedCode(bs) == "" || matchedCode(cs) == "" {
+		t.Fatal("no match")
+	}
+	var rows []store.Search
+	for deadline := time.Now().Add(2 * time.Second); len(rows) < 3 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+		rows = searches(t, s)
+	}
+	matched, others := 0, 0
+	for _, r := range rows {
+		if r.Matched {
+			matched++
+		}
+		others += r.Others
+		if len(r.Guest) != 12 || r.EndedAt.Before(r.StartedAt) {
+			t.Errorf("bad row %+v", r)
+		}
+	}
+	if len(rows) != 3 || matched != 2 || others != 1 { // Carol saw Bob looking; Alice and Bob saw nobody
+		t.Fatalf("rows %+v", rows)
+	}
+}
 
 // queue opens the quick-match stream and reads its "queued" event.
 func (p *player) queue() (sseReader, int) {
