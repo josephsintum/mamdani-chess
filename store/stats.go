@@ -74,11 +74,16 @@ func (s *Store) VisitStats(ctx context.Context, from, to time.Time, loc *time.Lo
 	visitors := map[string]*visitorDays{}
 	dayVisitors := map[string]map[string]bool{} // day → visitors seen
 	pages := map[string]int{}
+	var earliest *time.Time // the first visit in the range
 	for rows.Next() {
 		var at int64
 		var v Visit
 		if err := rows.Scan(&at, &v.Visitor, &v.Path, &v.Referrer, &v.Country, &v.City, &v.Device, &v.OS, &v.Browser); err != nil {
 			return st, err
+		}
+		if earliest == nil { // rows come in time order
+			t := time.UnixMilli(at)
+			earliest = &t
 		}
 		st.Views++
 		pages[v.Path]++
@@ -124,10 +129,22 @@ func (s *Store) VisitStats(ctx context.Context, from, to time.Time, loc *time.Lo
 		systems[orUnknown(vd.os)]++
 		browsers[orUnknown(vd.browser)]++
 	}
-	for day, who := range dayVisitors {
+	// Every day of the range gets a row, quiet ones at zero, so the chart
+	// shows the gaps. "All" (a zero from) starts at the first visit's day.
+	start := from
+	if start.IsZero() {
+		if earliest == nil {
+			start = to // no visits: no days
+		} else {
+			start = *earliest
+		}
+	}
+	y, m, d := start.In(loc).Date()
+	for t := time.Date(y, m, d, 0, 0, 0, 0, loc); t.Before(to); t = t.AddDate(0, 0, 1) {
+		day := t.Format("2006-01-02")
 		dc := DayCount{Day: day}
-		dayStart := dayStartOf(day, loc).UnixMilli()
-		for w := range who {
+		dayStart := t.UnixMilli()
+		for w := range dayVisitors[day] {
 			if first[w] >= dayStart {
 				dc.New++
 			} else {
@@ -136,7 +153,6 @@ func (s *Store) VisitStats(ctx context.Context, from, to time.Time, loc *time.Lo
 		}
 		st.Days = append(st.Days, dc)
 	}
-	sort.Slice(st.Days, func(i, j int) bool { return st.Days[i].Day < st.Days[j].Day })
 	st.Countries, st.Cities, st.Sources = top(countries), top(cities), top(sources)
 	st.Devices, st.Systems, st.Browsers, st.Pages = top(devices), top(systems), top(browsers), top(pages)
 
@@ -148,11 +164,6 @@ func (s *Store) VisitStats(ctx context.Context, from, to time.Time, loc *time.Lo
 	}
 	st.LatestError = latest.String
 	return st, nil
-}
-
-func dayStartOf(day string, loc *time.Location) time.Time {
-	t, _ := time.ParseInLocation("2006-01-02", day, loc)
-	return t
 }
 
 func orUnknown(s string) string {
