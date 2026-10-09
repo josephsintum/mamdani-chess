@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -98,6 +99,9 @@ func parseUA(ua string) (os, browser string) {
 	return os, browser
 }
 
+// hostLen is the longest a host name can be.
+const hostLen = 253
+
 // referrerOf keeps a referrer's host, or the page's own ref:<tag>; never a
 // path or query, and nothing for our own site.
 func referrerOf(raw, ourHost string) string {
@@ -117,6 +121,9 @@ func referrerOf(raw, ourHost string) string {
 	host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 	if host == strings.TrimPrefix(strings.ToLower(ourHost), "www.") {
 		return ""
+	}
+	if len(host) > hostLen {
+		host = host[:hostLen]
 	}
 	return host
 }
@@ -141,9 +148,14 @@ func clientIP(r *http.Request) (netip.Addr, bool) {
 }
 
 // isRobot reports a visit that isn't a person: headless Chrome (the
-// playtest, agent-browser) or any request the playtest marks.
+// playtest, agent-browser), a crawler that runs scripts (Googlebot and the
+// like name themselves bot, crawler or spider) or any request the
+// playtest marks.
 func isRobot(r *http.Request) bool {
-	return strings.Contains(r.UserAgent(), "HeadlessChrome") || r.Header.Get("X-Playtest") != ""
+	ua := r.UserAgent()
+	lower := strings.ToLower(ua)
+	return strings.Contains(ua, "HeadlessChrome") || r.Header.Get("X-Playtest") != "" ||
+		strings.Contains(lower, "bot") || strings.Contains(lower, "crawler") || strings.Contains(lower, "spider")
 }
 
 // visitBody is what the page sends on every navigation: the path (the
@@ -164,6 +176,10 @@ type errorBody struct {
 
 // errorLen caps a reported message.
 const errorLen = 300
+
+// gameCode finds a game code in a page's or an API's URL, so an error
+// message (a URL in a stack, say) is stored without it.
+var gameCode = regexp.MustCompile(`(/games?)/[A-Z0-9]{6}`)
 
 // visit records a page view. Robots get a 204 and no row.
 func (s *Server) visit(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +221,7 @@ func (s *Server) browserError(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	msg := body.Message
+	msg := gameCode.ReplaceAllString(body.Message, "$1")
 	if len(msg) > errorLen {
 		msg = msg[:errorLen]
 	}

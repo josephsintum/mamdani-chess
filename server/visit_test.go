@@ -1,16 +1,28 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"mamdani-chess/store"
 )
+
+func TestVisitorOf(t *testing.T) {
+	id := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	for in, want := range map[string]string{id: "0123456789ab", "0123456789ab": "0123456789ab", "abc": "abc", "": ""} {
+		if got := visitorOf(in); got != want {
+			t.Errorf("visitorOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
 
 func TestPageOf(t *testing.T) {
 	for in, want := range map[string]string{
@@ -74,6 +86,11 @@ func TestReferrerOf(t *testing.T) {
 	if got := referrerOf("http://localhost:8080/rules", "localhost:8080"); got != "" {
 		t.Errorf("own host with a port: referrerOf = %q, want empty", got)
 	}
+	// A host is at most 253 characters, so a longer one is cut there.
+	long := strings.Repeat("a", 300) + ".example"
+	if got := referrerOf("https://"+long+"/x", "mamdanichess.com"); got != long[:253] {
+		t.Errorf("a long host: referrerOf = %d chars, want 253", len(got))
+	}
 }
 
 func TestClientIP(t *testing.T) {
@@ -106,6 +123,30 @@ func TestIsRobot(t *testing.T) {
 	if isRobot(r) {
 		t.Error("a phone is a robot")
 	}
+	for _, ua := range []string{
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
+		"Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 334.0.4.32.98",
+	} {
+		r.Header.Set("User-Agent", ua)
+		if isRobot(r) {
+			t.Errorf("a person's browser is a robot: %q", ua)
+		}
+	}
+	for _, ua := range []string{
+		"Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+		"Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+		"facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php) SomeCrawler",
+		"Mozilla/5.0 (compatible; Baiduspider/2.0)",
+		"Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)",
+	} {
+		r.Header.Set("User-Agent", ua)
+		if !isRobot(r) {
+			t.Errorf("not a robot: %q", ua)
+		}
+	}
+	r.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1")
 	r.Header.Set("X-Playtest", "1")
 	if !isRobot(r) {
 		t.Error("the playtest header not a robot")
@@ -146,7 +187,18 @@ func TestVisitStoresNothingIdentifying(t *testing.T) {
 		t.Fatalf("POST /api/visit: %d", resp.StatusCode)
 	}
 	if len(resp.Cookies()) != 1 || resp.Cookies()[0].Name != "guest" {
-		t.Errorf("a first visit set cookies %v, want the guest cookie", resp.Cookies())
+		t.Fatalf("a first visit set cookies %v, want the guest cookie", resp.Cookies())
+	}
+	// The visitor key is the first 12 hex characters of the guest ID (the
+	// cookie's SHA-256), never the cookie or the whole ID.
+	sum := sha256.Sum256([]byte(resp.Cookies()[0].Value))
+	id := hex.EncodeToString(sum[:])
+	keys, err := s.store.Visitors(t.Context(), time.Time{}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 1 || !regexp.MustCompile(`^[0-9a-f]{12}$`).MatchString(keys[0]) || !strings.HasPrefix(id, keys[0]) {
+		t.Errorf("stored visitor keys %q, want [%q]", keys, id[:12])
 	}
 	st := lastVisit(t, s)
 	got := []any{st.Views, st.Pages, st.Sources, st.Countries, st.Cities, st.Devices, st.Systems, st.Browsers}
@@ -194,5 +246,17 @@ func TestVisitAndErrorBodies(t *testing.T) {
 	st := lastVisit(t, s)
 	if st.Errors != 1 || len(st.LatestError) != 300 {
 		t.Errorf("errors %d, latest %d chars; want 1 and 300", st.Errors, len(st.LatestError))
+	}
+}
+
+// A game code in an error message (a URL in a stack, say) is never stored.
+func TestErrorDropsGameCodes(t *testing.T) {
+	s, ts := newTestServer(t)
+	alice := newPlayer(t, ts)
+	if status, _ := alice.post("/api/error", `{"path":"/game/K7F3QZ","message":"failed: https://mamdanichess.com/game/K7F3QZ?instant and /api/games/AB12CD/stream"}`); status != http.StatusNoContent {
+		t.Errorf("error report: %d", status)
+	}
+	if st := lastVisit(t, s); st.LatestError != "failed: https://mamdanichess.com/game?instant and /api/games/stream" {
+		t.Errorf("stored %q", st.LatestError)
 	}
 }
