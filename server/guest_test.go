@@ -56,6 +56,10 @@ func TestTheAppShellSetsTheGuestCookie(t *testing.T) {
 		if len(set) != 1 || set[0].Name != guestCookie || len(set[0].Value) != 32 || !set[0].HttpOnly {
 			t.Fatalf("GET %s on a fresh browser set %v, want one guest cookie", path, set)
 		}
+		// A shared cache must never keep it: it would hand one guest to many.
+		if cc := resp.Header.Get("Cache-Control"); cc != "private, no-cache" {
+			t.Errorf("GET %s: Cache-Control %q, want private, no-cache", path, cc)
+		}
 		resp, err = alice.c.Get(ts.URL + path)
 		if err != nil {
 			t.Fatal(err)
