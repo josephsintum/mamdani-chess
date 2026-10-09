@@ -75,7 +75,8 @@ func TestUnknownAPIPath(t *testing.T) {
 
 func TestGuestCookie(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
-	if set := c.do(http.MethodGet, "/api/me", nil).header.Get("Set-Cookie"); !regexp.MustCompile(`^guest=[0-9a-f]{32}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax$`).MatchString(set) {
+	fresh := regexp.MustCompile(`^guest=[0-9a-f]{32}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax$`)
+	if set := c.do(http.MethodGet, "/api/me", nil).header.Get("Set-Cookie"); !fresh.MatchString(set) {
 		t.Errorf("Set-Cookie = %q", set)
 	}
 	if set := c.do(http.MethodGet, "/api/me", http.Header{"X-Forwarded-Proto": {"https"}}).header.Get("Set-Cookie"); !strings.HasSuffix(set, "; HttpOnly; Secure; SameSite=Lax") {
@@ -85,6 +86,16 @@ func TestGuestCookie(t *testing.T) {
 	p.get("/api/me")
 	if again := p.fetch(http.MethodGet, "/api/me"); again.header.Values("Set-Cookie") != nil {
 		t.Errorf("a guest with a cookie got another: %q", again.header.Values("Set-Cookie"))
+	}
+	// The app shell sets it too, so a fresh browser's first API requests
+	// (the visit beacon and a game's stream, which race) share one guest.
+	for _, path := range []string{"/", "/game/ABCDEF"} {
+		if set := c.do(http.MethodGet, path, nil).header.Get("Set-Cookie"); !fresh.MatchString(set) {
+			t.Errorf("GET %s: Set-Cookie = %q", path, set)
+		}
+		if again := p.fetch(http.MethodGet, path); again.header.Values("Set-Cookie") != nil {
+			t.Errorf("GET %s with a cookie set another: %q", path, again.header.Values("Set-Cookie"))
+		}
 	}
 }
 
