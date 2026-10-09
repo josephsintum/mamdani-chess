@@ -1,6 +1,7 @@
 package store
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -31,5 +32,26 @@ func TestVisitRoundTripAndPrune(t *testing.T) {
 	must(t, s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM browser_errors`).Scan(&n))
 	if n != 0 {
 		t.Fatalf("%d errors left, want 0", n)
+	}
+}
+
+func TestVisitors(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTemp(t)
+	seedVisits(t, s)
+	got, err := s.Visitors(ctx, day(1, 0), day(4, 0))
+	must(t, err)
+	if want := []string{"ann000000000", "bob000000000", "cat000000000"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("visitors = %v, want %v", got, want)
+	}
+	got, err = s.Visitors(ctx, day(2, 0), day(3, 0))
+	must(t, err)
+	if want := []string{"ann000000000", "bob000000000"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Oct 2 = %v, want %v", got, want)
+	}
+	got, err = s.Visitors(ctx, day(10, 0), day(11, 0))
+	must(t, err)
+	if len(got) != 0 {
+		t.Errorf("a quiet day = %v, want none", got)
 	}
 }

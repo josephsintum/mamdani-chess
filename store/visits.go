@@ -34,6 +34,26 @@ func (s *Store) AddBrowserError(ctx context.Context, e BrowserError) error {
 	return err
 }
 
+// Visitors returns the distinct visitor keys seen with from <= at < to,
+// sorted.
+func (s *Store) Visitors(ctx context.Context, from, to time.Time) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT visitor FROM visits WHERE at >= ? AND at < ? ORDER BY visitor`, from.UnixMilli(), to.UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
 // PruneVisits deletes visits and browser errors from before the cutoff and
 // returns how many rows went.
 func (s *Store) PruneVisits(ctx context.Context, before time.Time) (int64, error) {

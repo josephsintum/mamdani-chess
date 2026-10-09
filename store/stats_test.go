@@ -70,6 +70,52 @@ func TestVisitStats(t *testing.T) {
 	}
 }
 
+// Every day of the range has a row, quiet ones at zero, so the chart shows
+// the gaps. With no start ("all") the days run from the first visit's day.
+func TestVisitStatsFillsQuietDays(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTemp(t)
+	seedVisits(t, s)
+	st, err := s.VisitStats(ctx, day(1, 0), day(6, 0), newYork)
+	must(t, err)
+	want := []DayCount{{"2026-10-01", 1, 0}, {"2026-10-02", 1, 1}, {"2026-10-03", 0, 2}, {"2026-10-04", 0, 0}, {"2026-10-05", 0, 0}}
+	if !reflect.DeepEqual(st.Days, want) {
+		t.Errorf("days = %v, want %v", st.Days, want)
+	}
+	st, err = s.VisitStats(ctx, time.Time{}, day(4, 0), newYork)
+	must(t, err)
+	// cat's first visit was Sep 1, so Sep 1 to Oct 3: 33 days.
+	if len(st.Days) != 33 || st.Days[0] != (DayCount{"2026-09-01", 1, 0}) || st.Days[1] != (DayCount{"2026-09-02", 0, 0}) || st.Days[32] != (DayCount{"2026-10-03", 0, 2}) {
+		t.Errorf("all time: %d days, first %v, last %v", len(st.Days), st.Days[0], st.Days[len(st.Days)-1])
+	}
+	st, err = s.VisitStats(ctx, day(10, 0), day(12, 0), newYork)
+	must(t, err)
+	if want := []DayCount{{"2026-10-10", 0, 0}, {"2026-10-11", 0, 0}}; !reflect.DeepEqual(st.Days, want) {
+		t.Errorf("a quiet range: days = %v, want %v", st.Days, want)
+	}
+	empty, _ := openTemp(t)
+	st, err = empty.VisitStats(ctx, time.Time{}, day(4, 0), newYork)
+	must(t, err)
+	if len(st.Days) != 0 {
+		t.Errorf("all time with no visits: days = %v, want none", st.Days)
+	}
+}
+
+// Across the autumn clock change each day is still one row.
+func TestVisitStatsFillsAcrossDST(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTemp(t)
+	st, err := s.VisitStats(ctx, time.Date(2026, 10, 31, 0, 0, 0, 0, newYork), time.Date(2026, 11, 3, 0, 0, 0, 0, newYork), newYork)
+	must(t, err)
+	var got []string
+	for _, d := range st.Days {
+		got = append(got, d.Day)
+	}
+	if want := []string{"2026-10-31", "2026-11-01", "2026-11-02"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("days = %v, want %v", got, want)
+	}
+}
+
 // A visit at 03:00 UTC on Oct 4 is still Oct 3 in New York.
 func TestVisitStatsGroupsDaysInZone(t *testing.T) {
 	ctx := t.Context()
