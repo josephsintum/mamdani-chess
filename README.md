@@ -74,6 +74,7 @@ pnpm --dir web check     # Svelte and TypeScript type checks
 | `web/` | The SvelteKit app |
 | `names/` | Random guest names |
 | `docs/superpowers/` | Design spec and implementation plans |
+| `docs/architecture/` | Architecture diagram: how a move travels from the board to SQLite and back ([source](docs/architecture/mamdani-chess.architecture.json); open `mamdani-chess.html` in a browser) |
 
 ## Credits
 

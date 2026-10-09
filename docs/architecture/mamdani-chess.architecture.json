@@ -1,0 +1,851 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mamdani Chess: how a move travels",
+    "output": "docs/architecture/mamdani-chess.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "git@github.com:josephsintum/mamdani-chess.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "746665328c0202d4cfc0977d42cbaa0e512b4aab"
+    }
+  },
+  "components": [
+    {
+      "id": "thirdparty",
+      "type": "external",
+      "label": "Google Fonts, Instagram",
+      "sublabel": "web fonts, reel iframe",
+      "pos": [
+        250,
+        60
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/app.html",
+          "line": 9,
+          "end_line": 13,
+          "label": "Google Fonts links"
+        },
+        {
+          "path": "web/src/routes/+page.svelte",
+          "line": 164,
+          "end_line": 173,
+          "label": "Instagram reel iframe"
+        }
+      ]
+    },
+    {
+      "id": "shell",
+      "type": "frontend",
+      "label": "App shell, pages",
+      "sublabel": "layout, home, rules, about",
+      "pos": [
+        265,
+        230
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/app.html",
+          "line": 1,
+          "end_line": 20,
+          "label": "HTML shell"
+        },
+        {
+          "path": "web/src/routes/+layout.svelte",
+          "line": 1,
+          "end_line": 10,
+          "label": "layout, Toaster"
+        }
+      ]
+    },
+    {
+      "id": "clock",
+      "type": "frontend",
+      "label": "Clocks",
+      "sublabel": "count down on server time",
+      "pos": [
+        515,
+        230
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/clock.ts",
+          "line": 9,
+          "end_line": 30,
+          "label": "timeLeft, paused"
+        },
+        {
+          "path": "web/src/routes/game/[code]/+page.svelte",
+          "line": 226,
+          "end_line": 228,
+          "label": "100 ms tick"
+        }
+      ]
+    },
+    {
+      "id": "players",
+      "type": "external",
+      "label": "Players",
+      "sublabel": "phone or desktop",
+      "icon": "person",
+      "pos": [
+        40,
+        400
+      ],
+      "size": [
+        130,
+        64
+      ]
+    },
+    {
+      "id": "board",
+      "type": "frontend",
+      "label": "Board",
+      "sublabel": "legal dots, tap or drag",
+      "pos": [
+        265,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/Board.svelte",
+          "line": 82,
+          "end_line": 91,
+          "label": "targets from view.legal"
+        },
+        {
+          "path": "web/src/lib/Board.svelte",
+          "line": 251,
+          "end_line": 264,
+          "label": "drag starts after 6 px"
+        },
+        {
+          "path": "web/src/lib/Board.svelte",
+          "line": 218,
+          "end_line": 225,
+          "label": "onmove"
+        }
+      ]
+    },
+    {
+      "id": "page",
+      "type": "frontend",
+      "label": "Game page",
+      "sublabel": "optimistic move, receive()",
+      "pos": [
+        515,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/routes/game/[code]/+page.svelte",
+          "line": 292,
+          "end_line": 308,
+          "label": "move(): guess, then send"
+        },
+        {
+          "path": "web/src/routes/game/[code]/+page.svelte",
+          "line": 114,
+          "end_line": 139,
+          "label": "receive(view)"
+        },
+        {
+          "path": "web/src/routes/game/[code]/+page.svelte",
+          "line": 311,
+          "end_line": 330,
+          "label": "resend an unsent move"
+        }
+      ]
+    },
+    {
+      "id": "sender",
+      "type": "frontend",
+      "label": "Move sender",
+      "sublabel": "fetch, 502-504 = unsent",
+      "pos": [
+        760,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/game.ts",
+          "line": 53,
+          "end_line": 72,
+          "label": "trySendMove"
+        }
+      ]
+    },
+    {
+      "id": "dicetray",
+      "type": "frontend",
+      "label": "Dice tray",
+      "sublabel": "throws each d8",
+      "pos": [
+        30,
+        570
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/DiceTray.svelte",
+          "line": 6,
+          "end_line": 10,
+          "label": "steps shown so far"
+        },
+        {
+          "path": "web/src/routes/game/[code]/+page.svelte",
+          "line": 705,
+          "label": "DiceTray in the page"
+        }
+      ]
+    },
+    {
+      "id": "animator",
+      "type": "frontend",
+      "label": "Animator",
+      "sublabel": "plays a turn step by step",
+      "pos": [
+        265,
+        570
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/animator.svelte.ts",
+          "line": 15,
+          "end_line": 30,
+          "label": "Animator: view, shown"
+        },
+        {
+          "path": "web/src/lib/animator.svelte.ts",
+          "line": 53,
+          "label": "receive(next)"
+        },
+        {
+          "path": "web/src/lib/dice.ts",
+          "line": 41,
+          "end_line": 46,
+          "label": "dicePace, shared timing"
+        }
+      ]
+    },
+    {
+      "id": "stream",
+      "type": "messagebus",
+      "label": "Live connection",
+      "sublabel": "EventSource, backoff",
+      "pos": [
+        760,
+        570
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/routes/game/[code]/+page.svelte",
+          "line": 169,
+          "end_line": 200,
+          "label": "EventSource per game"
+        },
+        {
+          "path": "web/src/lib/reconnect.ts",
+          "line": 11,
+          "end_line": 14,
+          "label": "retryDelay"
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "Browser storage",
+      "sublabel": "local + session storage",
+      "pos": [
+        515,
+        740
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/tips.ts",
+          "line": 53,
+          "end_line": 73,
+          "label": "tips seen, tips off"
+        },
+        {
+          "path": "web/src/lib/lobby.ts",
+          "line": 43,
+          "end_line": 52,
+          "label": "remembered name"
+        },
+        {
+          "path": "web/src/routes/game/[code]/+page.svelte",
+          "line": 147,
+          "end_line": 158,
+          "label": "rematch note"
+        }
+      ]
+    },
+    {
+      "id": "http",
+      "type": "backend",
+      "label": "Go HTTP server",
+      "sublabel": "net/http mux :8080",
+      "pos": [
+        1000,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "server/server.go",
+          "line": 56,
+          "end_line": 70,
+          "label": "routes"
+        },
+        {
+          "path": "server/games.go",
+          "line": 118,
+          "end_line": 138,
+          "label": "gameMove"
+        },
+        {
+          "path": "cmd/server/main.go",
+          "line": 35,
+          "end_line": 54,
+          "label": "wiring: store, hub, server"
+        }
+      ]
+    },
+    {
+      "id": "guest",
+      "type": "security",
+      "label": "Guest identity",
+      "sublabel": "HttpOnly cookie, SHA-256 id",
+      "pos": [
+        995,
+        230
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "server/guest.go",
+          "line": 10,
+          "end_line": 40,
+          "label": "guestID, cookie"
+        }
+      ]
+    },
+    {
+      "id": "actor",
+      "type": "backend",
+      "label": "Game actor",
+      "sublabel": "one goroutine per game",
+      "pos": [
+        1270,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "game/game.go",
+          "line": 123,
+          "end_line": 180,
+          "label": "loop: calls run one at a time"
+        },
+        {
+          "path": "game/game.go",
+          "line": 361,
+          "end_line": 396,
+          "label": "Move: turn, seq, apply, save"
+        },
+        {
+          "path": "game/game.go",
+          "line": 251,
+          "end_line": 268,
+          "label": "do/try: send on calls chan"
+        }
+      ]
+    },
+    {
+      "id": "hub",
+      "type": "backend",
+      "label": "Game hub",
+      "sublabel": "codes, create, restore",
+      "pos": [
+        1270,
+        230
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "game/hub.go",
+          "line": 41,
+          "end_line": 118,
+          "label": "NewHub, create, go g.loop()"
+        },
+        {
+          "path": "game/restore.go",
+          "line": 16,
+          "end_line": 74,
+          "label": "Restore saved games"
+        },
+        {
+          "path": "cmd/server/main.go",
+          "line": 85,
+          "end_line": 100,
+          "label": "restore at boot"
+        }
+      ]
+    },
+    {
+      "id": "match",
+      "type": "messagebus",
+      "label": "Quick match queue",
+      "sublabel": "pairs two longest waiting",
+      "pos": [
+        1525,
+        230
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "match/match.go",
+          "line": 103,
+          "end_line": 128,
+          "label": "pair"
+        },
+        {
+          "path": "server/server.go",
+          "line": 49,
+          "end_line": 55,
+          "label": "queue creates via hub"
+        },
+        {
+          "path": "server/matchmaking.go",
+          "line": 14,
+          "end_line": 20,
+          "label": "GET /api/match (SSE)"
+        }
+      ]
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "SQLite store",
+      "sublabel": "WAL, /data/mamdani.db",
+      "pos": [
+        1530,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "store/store.go",
+          "line": 20,
+          "end_line": 27,
+          "label": "Open: modernc sqlite, WAL"
+        },
+        {
+          "path": "store/games.go",
+          "line": 82,
+          "end_line": 88,
+          "label": "AddTurn, EndGame"
+        },
+        {
+          "path": "game/save.go",
+          "line": 57,
+          "end_line": 65,
+          "label": "failed save retires game"
+        }
+      ]
+    },
+    {
+      "id": "sse",
+      "type": "messagebus",
+      "label": "SSE streams",
+      "sublabel": "event: state, 15 s ping",
+      "pos": [
+        1000,
+        570
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "server/games.go",
+          "line": 69,
+          "end_line": 111,
+          "label": "gameStream"
+        },
+        {
+          "path": "server/sse.go",
+          "line": 46,
+          "end_line": 58,
+          "label": "writeEvent + Flush"
+        }
+      ]
+    },
+    {
+      "id": "rules",
+      "type": "backend",
+      "label": "Rules engine",
+      "sublabel": "Pot-Hole + Mamdani",
+      "pos": [
+        1270,
+        570
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "rules/game.go",
+          "line": 55,
+          "label": "Play(move, dice)"
+        },
+        {
+          "path": "rules/turn.go",
+          "line": 178,
+          "end_line": 183,
+          "label": "savingRoll"
+        }
+      ]
+    },
+    {
+      "id": "dice",
+      "type": "security",
+      "label": "CryptoDice",
+      "sublabel": "fair d8, crypto/rand",
+      "pos": [
+        1270,
+        760
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "game/dice.go",
+          "line": 20,
+          "end_line": 29,
+          "label": "CryptoDice.D8"
+        },
+        {
+          "path": "rules/turn.go",
+          "line": 8,
+          "end_line": 11,
+          "label": "Dice interface"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Player's device: SvelteKit static app (untrusted)",
+      "wraps": [
+        "shell",
+        "clock",
+        "players",
+        "board",
+        "page",
+        "sender",
+        "dicetray",
+        "animator",
+        "stream",
+        "storage"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Railway service \"web\": one Go binary, SQLite on /data",
+      "wraps": [
+        "guest",
+        "hub",
+        "match",
+        "http",
+        "actor",
+        "sqlite",
+        "sse",
+        "rules",
+        "dice"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Single writer: the game's goroutine",
+      "wraps": [
+        "actor",
+        "rules",
+        "dice"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "pick-move",
+      "from": "players",
+      "to": "board",
+      "label": "tap or drag",
+      "variant": "emphasis"
+    },
+    {
+      "id": "on-move",
+      "from": "board",
+      "to": "page",
+      "label": "onmove(move)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "send-move",
+      "from": "page",
+      "to": "sender",
+      "label": "trySendMove",
+      "variant": "emphasis"
+    },
+    {
+      "id": "post-move",
+      "from": "sender",
+      "to": "http",
+      "label": "POST /move",
+      "variant": "emphasis"
+    },
+    {
+      "id": "who-is-it",
+      "from": "http",
+      "to": "guest",
+      "label": "cookie to guest id",
+      "variant": "security"
+    },
+    {
+      "id": "call-actor",
+      "from": "http",
+      "to": "actor",
+      "label": "Move() via chan",
+      "variant": "emphasis"
+    },
+    {
+      "id": "play",
+      "from": "actor",
+      "to": "rules",
+      "label": "Play(move, dice)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "roll",
+      "from": "rules",
+      "to": "dice",
+      "label": "D8() rolls"
+    },
+    {
+      "id": "save-turn",
+      "from": "actor",
+      "to": "sqlite",
+      "label": "AddTurn first",
+      "variant": "emphasis"
+    },
+    {
+      "id": "broadcast",
+      "from": "actor",
+      "to": "sse",
+      "label": "broadcast(view)",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "push-state",
+      "from": "sse",
+      "to": "stream",
+      "label": "event: state",
+      "variant": "emphasis"
+    },
+    {
+      "id": "deliver-view",
+      "from": "stream",
+      "to": "page",
+      "label": "receive(view)",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "bottom"
+    },
+    {
+      "id": "animate",
+      "from": "page",
+      "to": "animator",
+      "label": "anim.receive",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "redraw",
+      "from": "animator",
+      "to": "board",
+      "label": "glide, effects",
+      "variant": "emphasis"
+    },
+    {
+      "id": "throw-dice",
+      "from": "animator",
+      "to": "dicetray",
+      "label": "dice steps"
+    },
+    {
+      "id": "set-clock",
+      "from": "page",
+      "to": "clock",
+      "label": "server time offset"
+    },
+    {
+      "id": "remember",
+      "from": "page",
+      "to": "storage",
+      "label": "tips, rematch note",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "start-loop",
+      "from": "hub",
+      "to": "actor",
+      "label": "go g.loop()"
+    },
+    {
+      "id": "pair",
+      "from": "match",
+      "to": "hub",
+      "label": "CreatePair"
+    },
+    {
+      "id": "embeds",
+      "from": "shell",
+      "to": "thirdparty",
+      "label": "fonts, reel",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "orange",
+      "title": "Primary path: one move",
+      "items": [
+        "The board offers only the view's legal moves; a tap or drag calls onmove.",
+        "The page shows the move at once (its guess) and POSTs it with the seq it was made from.",
+        "The server hashes the cookie, hands Move() to the game's goroutine, plays it with the d8s, and saves the turn before anyone sees it.",
+        "POST answers 204; the new view arrives on the live connection as an SSE \"state\" event.",
+        "receive() drops the guess, sets the clock offset and hands the view to the animator, which replays the dice on the board and in the tray."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "On the device",
+      "items": [
+        "No network or a 502-504 (a deploy) keeps the move on the board and resends it every 1.5 s; the same seq means a copy is refused.",
+        "A refused move glides back and the reply's view resyncs at once.",
+        "The live connection reconnects with backoff and on the browser's online event; a new stream replaces the old only once it is open.",
+        "A hidden tab jumps to the end of a roll when it comes back.",
+        "Storage holds only conveniences: the remembered name, tips seen, a rematch note."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Trust",
+      "items": [
+        "Guests only: the HttpOnly cookie is the login; only its SHA-256 leaves guest.go.",
+        "The server rolls every die and lists the legal moves; the browser only replays and offers them.",
+        "A stale seq or the wrong turn is refused, unchanged."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Persistence and restarts",
+      "items": [
+        "A failed save or a panic retires that game, never the server.",
+        "At boot the hub restores unfinished games and games ended in the last day.",
+        "After a day idle with nobody watching, a game leaves memory; one still waiting for Black expires."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Other routes on the same hub",
+      "items": [
+        "Quick match: GET /api/match is an SSE line; pairs become a game via CreatePair.",
+        "Practice: one guest holds both seats; not saved, never listed.",
+        "Resign, rematch, live games list, /healthz, link previews, static files."
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Build and deploy",
+      "items": [
+        "Dockerfile: SvelteKit build, embedded in the Go binary (embedweb), distroless image.",
+        "Railway deploys main after CI; health check is /healthz.",
+        "Only third parties: Google Fonts and the Instagram reel iframe on the home and About pages."
+      ]
+    }
+  ]
+}

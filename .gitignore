@@ -3,3 +3,6 @@ bin/
 
 # JetBrains IDE settings
 .idea/
+
+# Archify scratch output (receipts, screenshots, drafts)
+.archify/
