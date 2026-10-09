@@ -1,12 +1,34 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"mamdani-chess/names"
+	"mamdani-chess/store"
 )
+
+// logSearch writes one quick-match search. A failure is logged, never
+// shown: the search itself has already happened.
+func (s *Server) logSearch(guest string, started time.Time, matched bool, others int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.store.AddSearch(ctx, store.Search{StartedAt: started, EndedAt: time.Now(), Guest: visitorOf(guest), Matched: matched, Others: others}); err != nil {
+		s.log.Error("log search", "err", err)
+	}
+}
+
+// logEvent counts one event (a practice game, a reconnect). Failures are
+// logged, never shown.
+func (s *Server) logEvent(kind string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.store.AddEvent(ctx, kind, time.Now()); err != nil {
+		s.log.Error("log event", "kind", kind, "err", err)
+	}
+}
 
 // matchStream puts the caller in the quick-match queue for as long as the
 // stream is open. It sends "queued" at once, then "matched" with the new
@@ -31,8 +53,14 @@ func (s *Server) matchStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
+	started := time.Now()
+	others := s.match.LookingFor(guest)
 	t := s.match.Join(guest)
-	defer t.Leave()
+	matched := false
+	defer func() {
+		t.Leave()
+		s.logSearch(guest, started, matched, others)
+	}()
 	queued, _ := json.Marshal(map[string]int{"looking": s.match.Looking()})
 	if writeEvent(w, fl, "queued", queued) != nil {
 		return
@@ -49,6 +77,7 @@ func (s *Server) matchStream(w http.ResponseWriter, r *http.Request) {
 			// The stream ends here. Without the long retry, EventSource
 			// would reconnect and queue the guest again before the page
 			// has gone to the game.
+			matched = true
 			data, _ := json.Marshal(map[string]string{"code": code})
 			writeLastEvent(w, fl, "matched", data, time.Hour)
 			return

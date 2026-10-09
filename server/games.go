@@ -23,6 +23,7 @@ func (s *Server) createGame(w http.ResponseWriter, r *http.Request) {
 // and ends their previous one.
 func (s *Server) createPractice(w http.ResponseWriter, r *http.Request) {
 	g := s.games.CreatePractice(guestID(w, r))
+	s.logEvent("practice")
 	writeJSON(w, http.StatusCreated, map[string]string{"code": g.Code()})
 }
 
@@ -82,6 +83,9 @@ func (s *Server) gameStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer g.Leave(sub)
+	if r.URL.Query().Get("again") == "1" {
+		s.logEvent("reconnect")
+	}
 	fl, ok := startSSE(w)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)

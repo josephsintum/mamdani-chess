@@ -235,7 +235,7 @@
 			if (disposed) return;
 			clearTimeout(retry);
 			const gen = ++generation;
-			const es = new EventSource(`/api/games/${code}/stream`);
+			const es = new EventSource(`/api/games/${code}/stream${view ? '?again=1' : ''}`);
 			streams.add(es);
 			es.onopen = () => {
 				if (gen !== generation) {
