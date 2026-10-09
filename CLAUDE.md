@@ -17,6 +17,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
 - Stack: Go server (SSE out, JSON POST in, SQLite), SvelteKit static frontend with a custom board (no chessground). One Railway service.
 - Guests only, all games public, one clock (10+5), quick match only, emoji reactions instead of chat.
 - Visual design: "road works", dark only. Potholes are a dark hole with an orange ring; small traffic cones on its front edge count the rounds left. The Mamdani's repair is celebrated (cone, sparks, 👍).
+- Metrics are first party: our own `visits` table and `/stats` page, no analytics service, no IP addresses stored.
 
 ## Working rules
 
@@ -63,6 +64,7 @@ A browser chess variant to play with friends: the original Pot-Hole Chess (Spice
   - In a game: "What's on the board" (`GameHelp.svelte`), a legend of the dice, potholes, marks and the Mamdani; first-game tips (`tips.ts`): one toast the first time each thing happens, once per browser (localStorage), then none for 4 turns (`TIP_GAP`), switchable in the legend.
   - Home: a "Questions" FAQ, and "Live now" only while games are being played. `/about`: unofficial and ad-free (not affiliated with Zohran Mamdani), credits, what the site keeps. Header and `SiteFooter` link How to play · Rules · Practice · About (on phones the header's links take a second row).
   - Checked: two code reviews and a phone check (Chromium and WebKit, portrait 320×568 to 412×915, landscape 568×320 to 915×412), all findings fixed.
+- **Done: stats, plan 1** ([spec](docs/superpowers/specs/2026-10-08-stats-design.md), [plan](docs/superpowers/plans/2026-10-08-stats-1-visits.md)): the page reports every page view and uncaught error to `POST /api/visit` and `/api/error`; `visits` and `browser_errors` in SQLite (12 hex of the guest ID, the route, referrer host, country and city from a local DB-IP file, device from the screen, OS and browser from the user agent), pruned after 400 days; `/stats` (Basic Auth, `STATS_PASSWORD`) shows Overview, Visitors and Health. Plan 2 (game stats, quick-match log) is next.
 - **Left from the rename:** the canvas's Rules and Header artboards (still "Pothole Chess", a d6, one-round potholes) and the live rules doc's title.
 - **Pending:** a playtest with friends, on their phones.
 
@@ -84,6 +86,7 @@ Milestone 07 (launch). Its brainstorm has started ([notes](docs/superpowers/spec
 - **Checking a deploy:** `curl <url>/healthz` shows the deployed commit (`version`), so a deploy is live without creating a game; then `tools/sse-check.sh <url>` (live updates arrive at once) and `pnpm --dir web playtest --base <url> --turn-ms 15000`. Both of those create games, which are saved on production.
 - **Production logs:** `railway logs -s web -n 5000 --json` returns the current deployment's logs. `--since` alone stops at 500 lines without saying so, and `--since` with `--until` returned nothing (railway 5.62). Game events (created, ended, aborted, rematch) log at INFO, and a restart logs one `games restored` summary (with its duration); each restored game logs at DEBUG. Successful requests log at DEBUG, refused or failed ones at INFO, and requests over 1 s (streams excepted) at WARN.
 - **Agents in a browser:** agent-browser 0.8.4 doesn't find its own Chromium here; point it at Playwright's with `--executable-path` (or `AGENT_BROWSER_EXECUTABLE_PATH`), e.g. `~/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell`. Give each player its own `--session`, since a guest is a cookie.
+- **Stats:** `GET /stats` with the password from `STATS_PASSWORD` (any user name); off when the variable is unset. `GEOIP_PATH` names the MMDB file (the image has it at `/geo/dbip-city-lite.mmdb`; `go run` has none, so cities are Unknown); `STATS_TZ` groups the days (default `America/New_York`). The device is phone when the screen's short side is under 640 px, else tablet on a touch screen, else desktop. Playtests and headless browsers aren't counted (`X-Playtest` header, `HeadlessChrome`).
 - **Instant mode:** dev builds only. `/game/CODE?instant`, or the sandbox's Instant checkbox, turns off every animation and plays the dice in 0 ms (`setInstant` in `motion.ts`), so a whole game takes seconds.
 - **Dice timing:** `web/src/lib/dice-timing.json` is the one table of how long each dice step plays. The server's clock pause mirrors it (`pauseFor` and `playTime` in `game/clock.go`), and `TestDiceTimingMatchesTheBrowser` fails if they drift apart, so change both together.
 - **SvelteKit 3 and Svelte 5 traps hit so far:**

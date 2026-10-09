@@ -2,7 +2,10 @@ module mamdani-chess
 
 go 1.27.1
 
-require modernc.org/sqlite v1.60.1
+require (
+	github.com/oschwald/maxminddb-golang/v2 v2.7.0
+	modernc.org/sqlite v1.60.1
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

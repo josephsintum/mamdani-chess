@@ -26,8 +26,12 @@ var homePreview = preview{
 	Description: "Chess where potholes open under your pieces. Play a friend or a stranger, no sign-up.",
 }
 
-// index serves the app shell with the preview tags for r's page.
+// index serves the app shell with the preview tags for r's page. It sets
+// the guest cookie on a fresh browser, so the page's first requests (the
+// visit beacon and a game's stream, which race) carry the same one instead
+// of each minting its own.
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
+	cookieValue(w, r)
 	b, err := fs.ReadFile(s.assets, "index.html")
 	if err != nil {
 		http.Error(w, "app not built", http.StatusInternalServerError)
@@ -39,7 +43,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	} else {
 		b = append(tags, b...)
 	}
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "private, no-cache") // it can set the guest cookie: never in a shared cache
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(b))
 }

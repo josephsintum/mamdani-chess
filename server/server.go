@@ -31,6 +31,14 @@ type Server struct {
 	// Version is the deployed build (a commit), reported by /healthz so a
 	// deploy can be checked without touching game data. "" reads as "dev".
 	Version string
+	// Geo names a visitor's country and city for the stats page; nil
+	// without a database (then they're "Unknown").
+	Geo GeoLookup
+	// StatsPassword guards GET /stats (Basic Auth, any user name). Empty
+	// means the page is off: the path serves the app shell like any other.
+	StatsPassword string
+	// StatsZone groups the stats page's days; nil means UTC.
+	StatsZone *time.Location
 }
 
 // New returns a Server for the games in hub that serves the frontend from
@@ -61,12 +69,15 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	s.mux.HandleFunc("GET /api/games", s.liveGames)
 	s.mux.HandleFunc("POST /api/games", s.createGame)
 	s.mux.HandleFunc("POST /api/practice", s.createPractice)
+	s.mux.HandleFunc("POST /api/visit", s.visit)
+	s.mux.HandleFunc("POST /api/error", s.browserError)
 	s.mux.HandleFunc("GET /api/games/{code}", s.gameView)
 	s.mux.HandleFunc("GET /api/games/{code}/stream", s.gameStream)
 	s.mux.HandleFunc("POST /api/games/{code}/move", s.gameMove)
 	s.mux.HandleFunc("POST /api/games/{code}/resign", s.gameResign)
 	s.mux.HandleFunc("POST /api/games/{code}/rematch", s.gameRematch)
 	s.mux.HandleFunc("/api/", s.apiNotFound)
+	s.mux.HandleFunc("GET /stats", s.stats)
 	s.mux.HandleFunc("/", s.static)
 	return s
 }
