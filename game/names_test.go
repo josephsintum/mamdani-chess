@@ -67,7 +67,7 @@ func TestARerollDoesntRenameAPlayerMidGame(t *testing.T) {
 
 func TestCreatePairSeatsBothPlayers(t *testing.T) {
 	st := openStore(t)
-	g, err := NewHub(odd{}, st).CreatePair("alice", "bob")
+	g, err := NewHub(odd{}, st).CreatePair("alice", "bob", false)
 	if err != nil {
 		t.Fatal(err)
 	}

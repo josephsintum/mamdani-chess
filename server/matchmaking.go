@@ -20,9 +20,12 @@ func (s *Server) logSearch(guest string, started time.Time, matched bool, others
 	}
 }
 
-// logEvent counts one event (a practice game, a reconnect). Failures are
-// logged, never shown.
-func (s *Server) logEvent(kind string) {
+// logEvent counts one event (a practice game, a reopened game stream) that
+// r caused, unless a playtest sent r. Failures are logged, never shown.
+func (s *Server) logEvent(r *http.Request, kind string) {
+	if isRobot(r) {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := s.store.AddEvent(ctx, kind, time.Now()); err != nil {
@@ -55,11 +58,16 @@ func (s *Server) matchStream(w http.ResponseWriter, r *http.Request) {
 	}
 	started := time.Now()
 	others := s.match.LookingFor(guest)
-	t := s.match.Join(guest)
+	// A playtest's game is marked and its search isn't logged, so the
+	// stats leave both out.
+	playtest := isRobot(r)
+	t := s.match.Join(guest, playtest)
 	matched := false
 	defer func() {
 		t.Leave()
-		s.logSearch(guest, started, matched, others)
+		if !playtest {
+			s.logSearch(guest, started, matched, others)
+		}
 	}()
 	queued, _ := json.Marshal(map[string]int{"looking": s.match.Looking()})
 	if writeEvent(w, fl, "queued", queued) != nil {

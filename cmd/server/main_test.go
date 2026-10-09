@@ -32,14 +32,14 @@ func TestRestoreAfterARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := game.NewHub(odd{}, st)
-	playing, _ := h.Create("alice")
+	playing, _ := h.Create("alice", false)
 	sub, _ := playing.Join("bob")
 	defer playing.Leave(sub)
 	m, _ := rules.ParseMove("e2e4")
 	if err := playing.Move("alice", m, 0); err != nil {
 		t.Fatal(err)
 	}
-	waiting, _ := h.Create("carol") // nobody joins
+	waiting, _ := h.Create("carol", false) // nobody joins
 	st.Close()
 
 	st, err = store.Open(path)

@@ -54,8 +54,8 @@ func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 		mux:       http.NewServeMux(),
 		done:      make(chan struct{}),
 	}
-	s.match = match.New(func(white, black string) (string, error) {
-		g, err := hub.CreatePair(white, black)
+	s.match = match.New(func(white, black string, playtest bool) (string, error) {
+		g, err := hub.CreatePair(white, black, playtest)
 		if err != nil {
 			return "", err
 		}

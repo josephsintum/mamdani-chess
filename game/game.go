@@ -80,6 +80,8 @@ type Game struct {
 	practice bool
 	// kind is how the game was made: friend or quick (rematches inherit it).
 	kind string
+	// playtest: a playtest started the game (rematches inherit it).
+	playtest bool
 	// quit stops the game after the current call: the guest started
 	// another practice game.
 	quit bool
@@ -105,22 +107,23 @@ type call struct {
 // watching; onExit runs when it stops.
 func newGame(h *Hub, sg store.Game, onExit func()) *Game {
 	return &Game{
-		code:    sg.Code,
-		kind:    sg.Kind,
-		hub:     h,
-		dice:    h.dice,
-		store:   h.store,
-		idle:    h.Idle,
-		calls:   make(chan call),
-		done:    make(chan struct{}),
-		onExit:  onExit,
-		created: sg.CreatedAt,
-		g:       rules.NewGame(),
-		seats:   [2]string{sg.White, sg.Black},
-		names:   [2]string{sg.WhiteName, sg.BlackName},
-		subs:    map[*Sub]struct{}{},
-		streams: map[string]int{},
-		clock:   newClock(),
+		code:     sg.Code,
+		kind:     sg.Kind,
+		playtest: sg.Playtest,
+		hub:      h,
+		dice:     h.dice,
+		store:    h.store,
+		idle:     h.Idle,
+		calls:    make(chan call),
+		done:     make(chan struct{}),
+		onExit:   onExit,
+		created:  sg.CreatedAt,
+		g:        rules.NewGame(),
+		seats:    [2]string{sg.White, sg.Black},
+		names:    [2]string{sg.WhiteName, sg.BlackName},
+		subs:     map[*Sub]struct{}{},
+		streams:  map[string]int{},
+		clock:    newClock(),
 	}
 }
 
