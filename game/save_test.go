@@ -64,15 +64,15 @@ func (f *failing) err() error {
 	}
 	return nil
 }
-func (f *failing) CreateGame(context.Context, store.Game) error            { return f.err() }
-func (f *failing) SeatBlack(context.Context, string, string, string) error { return f.err() }
+func (f *failing) CreateGame(context.Context, store.Game) error                       { return f.err() }
+func (f *failing) SeatBlack(context.Context, string, string, string, time.Time) error { return f.err() }
 func (f *failing) EnsureGuest(context.Context, string, func() string) (string, error) {
 	return "", f.err()
 }
 func (f *failing) AddTurn(context.Context, string, store.Turn) error {
 	return f.err()
 }
-func (f *failing) EndGame(context.Context, string, store.Result, *store.Turn) error {
+func (f *failing) EndGame(context.Context, string, store.Result, *store.Turn, *store.GameStats) error {
 	return f.err()
 }
 
@@ -267,7 +267,7 @@ type ended struct {
 	results []store.Result
 }
 
-func (e *ended) EndGame(_ context.Context, _ string, r store.Result, _ *store.Turn) error {
+func (e *ended) EndGame(_ context.Context, _ string, r store.Result, _ *store.Turn, _ *store.GameStats) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.results = append(e.results, r)

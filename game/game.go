@@ -63,6 +63,7 @@ type Game struct {
 	lost    [2][]string // piece codes lost to potholes, by color; only ever grow
 	taken   [2][]string // piece codes captured, by the capturer's color; only ever grow
 	stats   StatsJSON
+	road    road
 	clock   clock
 	rematch rematch
 	// failed is set when a save fails. The loop then retires the game
@@ -77,6 +78,8 @@ type Game struct {
 	// practice: one guest holds both seats and moves for the side to move;
 	// there's no clock (see CreatePractice).
 	practice bool
+	// kind is how the game was made: friend or quick (rematches inherit it).
+	kind string
 	// quit stops the game after the current call: the guest started
 	// another practice game.
 	quit bool
@@ -103,6 +106,7 @@ type call struct {
 func newGame(h *Hub, sg store.Game, onExit func()) *Game {
 	return &Game{
 		code:    sg.Code,
+		kind:    sg.Kind,
 		hub:     h,
 		dice:    h.dice,
 		store:   h.store,
@@ -199,7 +203,12 @@ func (g *Game) end(now time.Time, r rules.Result, final *store.Turn) {
 	}
 	g.clock.deadline = time.Time{}
 	saved := savedResult(now, r)
-	g.save("result", func(ctx context.Context) error { return g.store.EndGame(ctx, g.code, saved, final) })
+	var st *store.GameStats
+	if !g.practice && isFinished(r.Reason) {
+		s := g.road.stats(r, g.last, g.lost)
+		st = &s
+	}
+	g.save("result", func(ctx context.Context) error { return g.store.EndGame(ctx, g.code, saved, final, st) })
 	if g.failed != nil {
 		return
 	}
@@ -285,7 +294,7 @@ func (g *Game) Join(guest string) (*Sub, error) {
 				if name, err = g.store.EnsureGuest(ctx, guest, names.Random); err != nil {
 					return err
 				}
-				return g.store.SeatBlack(ctx, g.code, guest, name)
+				return g.store.SeatBlack(ctx, g.code, guest, name, time.Now())
 			})
 			if g.failed != nil {
 				return
@@ -405,6 +414,7 @@ func (g *Game) apply(m rules.Move, dice rules.Dice) error {
 	g.last = ev
 	g.log = append(g.log, logEntry(before.SAN(m), color, ev))
 	g.tally(ev)
+	g.road.add(ev, &g.g.Pos)
 	return nil
 }
 
