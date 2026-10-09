@@ -66,6 +66,7 @@ func (g *Game) offerRematch(guest string, decline bool) error {
 			WhiteName: g.names[rules.Black],
 			BlackName: g.names[rules.White],
 			RematchOf: g.code,
+			Playtest:  g.playtest,
 		})
 		if err != nil {
 			return fmt.Errorf("%w: create rematch: %w", ErrInternal, err)

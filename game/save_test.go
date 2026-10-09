@@ -115,7 +115,7 @@ func TestCreateDoesNotBlockLookupsWhileSaving(t *testing.T) {
 	h := NewHub(odd{}, st)
 	created := make(chan *Game)
 	go func() {
-		g, _ := h.Create("alice")
+		g, _ := h.Create("alice", false)
 		created <- g
 	}()
 	<-st.entered // the write has started
@@ -170,7 +170,7 @@ func (f *failingCreate) CreateGame(context.Context, store.Game) error {
 func TestAFailedSaveFreesItsCode(t *testing.T) {
 	st := &failingCreate{fail: true}
 	h := withCodes(NewHub(odd{}, st), "RETRY1", "RETRY1")
-	if _, err := h.Create("alice"); !errors.Is(err, errDiskFull) {
+	if _, err := h.Create("alice", false); !errors.Is(err, errDiskFull) {
 		t.Fatalf("create: %v, want the store's error", err)
 	}
 	st.fail = false

@@ -46,19 +46,20 @@ func NewHub(dice rules.Dice, st Store) *Hub {
 }
 
 // Create starts a friend game with creator in White's seat, giving them a
-// name first if they have none.
-func (h *Hub) Create(creator string) (*Game, error) {
+// name first if they have none. playtest marks a game a playtest started
+// (the stats leave it out).
+func (h *Hub) Create(creator string, playtest bool) (*Game, error) {
 	name, err := h.name(creator)
 	if err != nil {
 		return nil, err
 	}
-	return h.create(store.Game{Kind: "friend", White: creator, WhiteName: name})
+	return h.create(store.Game{Kind: "friend", White: creator, WhiteName: name, Playtest: playtest})
 }
 
 // CreatePair starts a game between two guests, both seated (quick match),
 // giving each a name first if they have none. White's first-move deadline
-// starts at once.
-func (h *Hub) CreatePair(white, black string) (*Game, error) {
+// starts at once. playtest is as for Create.
+func (h *Hub) CreatePair(white, black string, playtest bool) (*Game, error) {
 	whiteName, err := h.name(white)
 	if err != nil {
 		return nil, err
@@ -67,7 +68,7 @@ func (h *Hub) CreatePair(white, black string) (*Game, error) {
 	if err != nil {
 		return nil, err
 	}
-	return h.create(store.Game{Kind: "quick", White: white, WhiteName: whiteName, Black: black, BlackName: blackName})
+	return h.create(store.Game{Kind: "quick", White: white, WhiteName: whiteName, Black: black, BlackName: blackName, Playtest: playtest})
 }
 
 // name returns the guest's name, creating it if they have none.
