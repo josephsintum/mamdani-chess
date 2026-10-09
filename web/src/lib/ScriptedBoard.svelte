@@ -18,7 +18,8 @@
 		still = false,
 		id,
 		ending = 0,
-		onmove = () => {}
+		onmove = () => {},
+		onrefuse
 	}: {
 		anim: Animator;
 		legal?: MoveJSON[];
@@ -33,6 +34,8 @@
 		/** Bump to play an ending set by hand (a result with no turn) again. */
 		ending?: number;
 		onmove?: (move: MoveJSON) => void;
+		/** A tap on a piece that can't move now (Board's onrefuse). */
+		onrefuse?: (sq: string) => void;
 	} = $props();
 
 	let view = $derived(anim.view!);
@@ -81,4 +84,5 @@
 	{scan}
 	{reroll}
 	{onmove}
+	{onrefuse}
 />

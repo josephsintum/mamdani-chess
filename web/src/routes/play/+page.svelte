@@ -2,11 +2,13 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Header from '#lib/Header.svelte';
+	import SoundToggle from '#lib/SoundToggle.svelte';
 	import { FriendGame } from '#lib/friend.svelte.ts';
 	import { fetchView, matchCard, sideName, type MatchCard, type MatchSide } from '#lib/game.ts';
 	import { reducedMotion } from '#lib/motion.ts';
 	import { formatElapsed, me, type Me } from '#lib/lobby.ts';
 	import { retryDelay } from '#lib/reconnect.ts';
+	import { load, loop, play as playSound } from '#lib/sound.ts';
 
 	// Quick match: the guest is in the queue while this page's stream is
 	// open. Cancel, Back or closing the tab all leave it.
@@ -54,6 +56,7 @@
 	}
 
 	onMount(() => {
+		load(['notify']);
 		let es: EventSource | undefined;
 		let retry: ReturnType<typeof setTimeout> | undefined;
 		let done = false; // matched, or the page has gone: open nothing more
@@ -74,6 +77,7 @@
 				done = true;
 				stream.close(); // before the server ends the stream, so it isn't reopened
 				const { code } = JSON.parse(e.data) as { code: string };
+				playSound('notify');
 				void matched(code);
 			});
 			// A network error reconnects by itself. An error answer (a proxy's
@@ -151,7 +155,8 @@
 		<button class="cancel go" onclick={() => play(found!.code)}>Go now</button>
 	{:else}
 		{@render ring(false, formatElapsed(elapsed))}
-		<div class="text">
+		<!-- Elevator music while waiting; it stops when this goes. -->
+		<div class="text" {@attach () => loop('waiting')}>
 			<h1>Looking for an opponent</h1>
 			<p>You'll be paired with the next player who taps Play online. Colors are picked at random.</p>
 			<p class="sr-only" aria-live="polite">{connected ? 'In the queue.' : 'Connecting…'}</p>
@@ -161,6 +166,7 @@
 			<li>Standard rules</li>
 			<li>Random colors</li>
 		</ul>
+		<SoundToggle />
 		<a class="cancel" href="/">Cancel</a>
 		<p class="hint">{connected ? 'Keep this tab open. Closing it takes you out of the queue.' : 'Connecting…'}</p>
 		{#if elapsed >= OFFER_FRIEND_MS}

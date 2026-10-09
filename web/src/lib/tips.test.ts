@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { viewOf } from './test-boards.ts';
-import { markSeen, seenTips, setTipsOn, tipFor, tipsOn, type Tip } from './tips.ts';
+import { markSeen, seenTips, setTipsOn, TIP_GAP, tipFor, tipsOn, type Tip } from './tips.ts';
 import type { EventJSON } from './game.ts';
 
 const turn = (...kinds: EventJSON['kind'][]) => viewOf({ last: kinds.map((kind) => ({ kind })) });
@@ -23,6 +23,13 @@ describe('tipFor', () => {
 		expect(tipFor({ ...v, you: 'black' }, new Set(), false)).toBeNull();
 		expect(tipFor({ ...v, you: 'spectator' }, new Set(), false)).toBeNull();
 		expect(tipFor({ ...v, mamdani: '' }, new Set(), false)).toBeNull();
+	});
+
+	it('stays quiet for a few turns after a tip', () => {
+		const at = (seq: number) => ({ ...turn('moved', 'rolled_pothole'), seq });
+		expect(tipFor(at(3), new Set(), true, 0)).toBeNull();
+		expect(tipFor(at(TIP_GAP), new Set(), true, 0)).toBe('roll');
+		expect(tipFor(at(1), new Set(), true)).toBe('roll');
 	});
 });
 

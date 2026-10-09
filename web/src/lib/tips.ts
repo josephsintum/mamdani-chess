@@ -1,6 +1,6 @@
 // Tips during your first games: one line the first time each part of the
-// game happens in front of you. Each shows once per browser, at most one
-// per turn, and the help dialog can switch them off.
+// game happens in front of you. Each shows once per browser, with a few
+// quiet turns after each (TIP_GAP), and the help dialog can switch them off.
 
 import type { EventJSON, View } from './game.ts';
 import { HOLE_ROUNDS } from './wire.gen.ts';
@@ -26,15 +26,20 @@ const byEvent: Partial<Record<EventJSON['kind'], Tip>> = {
 	repaired: 'repaired'
 };
 
+/** Turns after a tip before the next one may show. */
+export const TIP_GAP = 4;
+
 // The rarer moment first: a turn that saves a piece also rolled the dice.
 const rarestFirst: Tip[] = ['repaired', 'reset', 'saving', 'fell', 'opened', 'roll'];
 
 /**
  * The tip for a view, or null: something the turn did that you haven't had
  * a tip for (only for a turn that played out in front of you, `live`),
- * else, on your move, that the Mamdani is yours to move too.
+ * else, on your move, that the Mamdani is yours to move too. None while
+ * the last tip (shown at turn `lastSeq`) is under TIP_GAP turns old.
  */
-export function tipFor(view: View, seen: ReadonlySet<Tip>, live: boolean): Tip | null {
+export function tipFor(view: View, seen: ReadonlySet<Tip>, live: boolean, lastSeq?: number): Tip | null {
+	if (lastSeq !== undefined && view.seq - lastSeq < TIP_GAP) return null;
 	if (live) {
 		const happened = new Set(view.last.map((e) => byEvent[e.kind]));
 		const tip = rarestFirst.find((t) => happened.has(t) && !seen.has(t));

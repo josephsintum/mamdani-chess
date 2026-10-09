@@ -7,10 +7,13 @@
 	import MoveLog from '#lib/MoveLog.svelte';
 	import ScriptedBoard from '#lib/ScriptedBoard.svelte';
 	import SiteFooter from '#lib/SiteFooter.svelte';
+	import SoundToggle from '#lib/SoundToggle.svelte';
 	import { Animator } from '#lib/animator.svelte.ts';
 	import { createPractice, fetchView, gameExists, isStale, reasons, sideName, trySendMove, type MoveJSON, type View } from '#lib/game.ts';
 	import { applyMove } from '#lib/pieces.ts';
 	import { retryDelay } from '#lib/reconnect.ts';
+	import { load, loadSoon, play } from '#lib/sound.ts';
+	import { moveSound, turnCues } from '#lib/soundCues.ts';
 
 	// Practice: you play both sides of a game on the server, with its rules
 	// engine and dice but no clock. It isn't saved or listed, and starting a
@@ -19,9 +22,15 @@
 
 	const KEY = 'practice';
 	const anim = new Animator();
+	// Sounds as in a game. Every move is made here and sounded at once, so a
+	// turn's sounds skip the move; nobody wins or loses practice.
+	anim.onreveal = (v, from, to, jumped) => {
+		for (const c of turnCues(v, from, to, { skipMove: true, jumped })) play(c.sound, c.delayMs);
+	};
 	let code = $state('');
 	let flipped = $state(false);
 	let gone = $state(false); // the server no longer has the game (a restart)
+	let sending = $state(false); // a move is on its way, until its turn comes back
 	let error = $state('');
 	let starting = $state(false);
 
@@ -57,7 +66,11 @@
 					else gone = true;
 				}, retryDelay(failures++));
 			};
-			es.addEventListener('state', (e) => anim.receive(JSON.parse(e.data) as View, { hidden: document.hidden }));
+			es.addEventListener('state', (e) => {
+				const next = JSON.parse(e.data) as View;
+				if (next.seq !== anim.view?.seq) sending = false; // the move's turn is back
+				anim.receive(next, { hidden: document.hidden });
+			});
 		};
 		connect();
 		close = () => {
@@ -80,6 +93,7 @@
 				// Blocked storage: a reload starts a new game.
 			}
 			gone = false;
+			sending = false;
 			follow(code);
 		} catch {
 			error = 'Could not start a practice game. Try again in a moment.';
@@ -91,21 +105,30 @@
 		const before = view;
 		const c = code;
 		if (!before) return;
+		play(moveSound(before.board, m));
 		// Shown at once; the server's turn (with its dice) replaces it.
 		anim.receive({ ...before, ...applyMove(before, m), legal: [], last: [] });
+		// Until the move's turn comes back on the stream, the board takes no
+		// taps: a piece tapped now isn't refused, its turn just isn't back yet.
+		sending = true;
 		const out = await trySendMove(c, m, before.seq);
 		if (c !== code || !alive) return; // a new game took over meanwhile
 		if (out === 'sent') {
 			error = '';
 			return;
 		}
+		sending = false;
 		error = out === 'unsent' ? 'The move didn’t reach the server. Check your connection.' : out.refused;
+		play('error');
 		// Undo the guess: the server's state, or the board before the move.
 		const now = (out !== 'unsent' && out.state) || (await fetchView(c).catch(() => before));
 		if (c === code && !isStale(anim.view, now)) anim.receive(now);
 	}
 
 	onMount(() => {
+		// Only what practice plays: nobody joins, wins or loses.
+		load(['move', 'capture', 'die', 'dice', 'reroll', 'pothole', 'closed', 'saved', 'fell', 'check', 'error']);
+		loadSoon(['mamdani-fell', 'repair', 'checkmate']);
 		let saved: string | null = null;
 		try {
 			saved = sessionStorage.getItem(KEY);
@@ -158,10 +181,11 @@
 					{anim}
 					legal={view.legal ?? []}
 					{flipped}
-					interactive={!gone}
+					interactive={!gone && !sending}
 					id="practice-{code}"
 					ending={view.result ? 1 : 0}
 					onmove={(m) => void move(m)}
+					onrefuse={() => play('error')}
 				/>
 				<div class="phone-dice"><DiceSummary {view} shown={anim.shown} wrap /></div>
 			{:else}
@@ -175,6 +199,7 @@
 			<div class="actions">
 				<button type="button" class="primary" onclick={() => void start()} disabled={starting}>New game</button>
 				<button type="button" onclick={() => (flipped = !flipped)} aria-pressed={flipped}>Flip board</button>
+				<SoundToggle />
 				<GameHelp />
 			</div>
 		</div>

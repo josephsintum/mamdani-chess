@@ -80,6 +80,24 @@ describe('Animator', () => {
 		expect(a.animating).toBe(false);
 	});
 
+	it('reveals a live turn step by step, or all at once when it jumps; never on load', () => {
+		const a = new Animator(100);
+		const calls: [number, number, number, boolean | undefined][] = [];
+		a.onreveal = (v, from, to, jumped) => calls.push([v.seq, from, to, jumped]);
+		a.receive(view(0, roll)); // the first view: shown at once, silently
+		a.receive(view(1, roll), { hidden: true }); // live, in a hidden tab
+		a.receive(view(2, roll)); // live: the move, then one step at a time
+		vi.advanceTimersByTime(100);
+		a.finish(); // back mid-roll: the rest at once
+		a.receive(view(9, roll)); // turns skipped (a reconnect): silent
+		expect(calls).toEqual([
+			[1, 0, 4, true],
+			[2, 0, 1, undefined],
+			[2, 1, 2, undefined],
+			[2, 2, 4, true]
+		]);
+	});
+
 	it('keeps playing when an update for the same turn arrives', () => {
 		const a = new Animator(100);
 		a.receive(view(0));
