@@ -92,7 +92,7 @@ section{display:flex;flex-direction:column;gap:16px}
 <div class="axis">{{with .Section.Days}}<span>{{(index . 0).Day}}</span><span>{{(index . (len . | sub1)).Day}}</span>{{end}}</div>
 </div>
 <div class="grid g2">
-{{template "list" dict "Title" "How games end" "Sub" (printf "%d games created in the range" .Section.Games) "Rows" .Section.Ends "Of" .Section.Games}}
+{{template "list" dict "Title" "How games end" "Sub" (printf "%d games created in the range" .Section.Games) "Rows" .Section.Ends "Top" (top .Section.Ends) "Of" .Section.Games}}
 <div class="card"><div><h3>Game length</h3><p class="sub">Moves by both sides, games that got going</p></div>
 <div class="hist">{{$m := .LengthMax}}{{range .Section.Lengths}}<div class="hcol">{{.N}}<i style="height:{{pct .N $m}}%"></i></div>{{end}}</div>
 <div class="hlab">{{range .Section.Lengths}}<span>{{.Label}}</span>{{end}}</div>
@@ -100,13 +100,13 @@ section{display:flex;flex-direction:column;gap:16px}
 </div>
 </div>
 <div class="grid g21">
-<div class="card"><div class="row-top"><div><h3>When people play</h3><p class="sub">Games started, by weekday and time</p></div><div class="scale"><span>Fewer</span><i style="background:var(--s0)"></i><i style="background:var(--s1)"></i><i style="background:var(--s2)"></i><i style="background:var(--s3)"></i><i style="background:var(--s4)"></i><span>More</span></div></div>
+<div class="card"><div class="row-top"><div><h3>When people play</h3><p class="sub">Games that got going, by weekday and start time</p></div><div class="scale"><span>Fewer</span><i style="background:var(--s0)"></i><i style="background:var(--s1)"></i><i style="background:var(--s2)"></i><i style="background:var(--s3)"></i><i style="background:var(--s4)"></i><span>More</span></div></div>
 <div class="heat"><div class="h"><span></span><span>12a</span><span>2a</span><span>4a</span><span>6a</span><span>8a</span><span>10a</span><span>12p</span><span>2p</span><span>4p</span><span>6p</span><span>8p</span><span>10p</span></div>
 {{range .HeatRows}}<div><span>{{.Day}}</span>{{range .Cells}}<i class="l{{.Level}}" title="{{.Title}}"></i>{{end}}</div>{{end}}</div>
 </div>
 <div class="card"><div><h3>Friend links</h3><p class="sub">{{.Section.Friend.Links}} links made</p></div>
 <div class="rows">{{$links := .Section.Friend.Links}}{{range .FriendRows}}<div class="row"><div class="row-top"><span>{{.Label}}</span><span class="val">{{.N}} <small>{{share .N $links}}%</small></span></div><div class="track thick"><i style="width:{{pct .N $links}}%"></i></div></div>{{end}}</div>
-<div class="list"><div><span>Median time to join</span><span class="val">{{or .Section.Friend.MedianJoin "–"}}</span></div><div><span>Rematches in the range</span><span class="val">{{.Section.Friend.Rematches}}</span></div></div>
+<div class="list"><div><span>Median time to join</span><span class="val">{{or .Section.Friend.MedianJoin "–"}}</span></div><div><span>Rematches of friend games</span><span class="val">{{.Section.Friend.Rematches}}</span></div></div>
 </div>
 </div>
 </section>
@@ -126,10 +126,10 @@ section{display:flex;flex-direction:column;gap:16px}
 </section>
 
 <section id="road">
-<div><h2>The road</h2><p class="sub">Potholes, falls and the Mamdani, from the dice of the {{.Section.Road.Games}} games that got going</p></div>
+<div><h2>The road</h2><p class="sub">Potholes, falls and the Mamdani, from the {{.Section.Road.Games}} games with a stats row</p></div>
 <div class="grid g4">
 <div class="tile"><span>Potholes a game</span><span class="num">{{.PerGame .Section.Road.Opened}}</span><span class="note">{{.Section.Road.Opened}} opened</span></div>
-<div class="tile"><span>Falls a game</span><span class="num">{{.PerGame .Section.Road.Fell}}</span><span class="note">{{.Section.Road.Fell}} pieces · {{share .Section.Road.NoFall .Section.Road.Games}}% of games had none</span></div>
+<div class="tile"><span>Falls a game</span><span class="num">{{.PerGame .Section.Road.Fell}}</span><span class="note">{{.Section.Road.Fell}} pieces, the Mamdani included ·{{share .Section.Road.NoFall .Section.Road.Games}}% of games had none</span></div>
 <div class="tile"><span>Saving rolls saved</span><span class="num">{{share .Section.Road.Saved .Section.Road.SavingRolls}}%</span><span class="note">{{.Section.Road.Saved}} of {{.Section.Road.SavingRolls}}</span></div>
 <div class="tile"><span>Ended by a roll</span><span class="num">{{share .Section.Road.MateByRoll .Section.Road.Games}}%</span><span class="note">{{.Section.Road.MateByRoll}} mates by the dice</span></div>
 </div>
@@ -154,13 +154,13 @@ section{display:flex;flex-direction:column;gap:16px}
 <div class="axis">{{with .Visits.Days}}<span>{{(index . 0).Day}}</span><span>{{(index . (len . | sub1)).Day}}</span>{{end}}</div>
 </div>
 <div class="grid g3">
-{{template "list" dict "Title" "Countries" "Sub" "From a local IP lookup; IPs aren't kept" "Rows" .Visits.Countries "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Cities" "Sub" "Rough on mobile data" "Rows" .Visits.Cities "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Arrived via" "Sub" "The first page of each visit" "Rows" .Visits.Sources "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Devices" "Sub" "Under 640 px on the short side is a phone" "Rows" .Visits.Devices "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Systems" "Sub" "From the browser's user agent" "Rows" .Visits.Systems "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Browsers" "Sub" "In-app browsers are where shared links open" "Rows" .Visits.Browsers "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Pages" "Sub" "Page views; game codes are never stored" "Rows" .Visits.Pages "Of" .Visits.Views}}
+{{template "list" dict "Title" "Countries" "Sub" "From a local IP lookup; IPs aren't kept" "Rows" .Visits.Countries "Top" (top .Visits.Countries) "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Cities" "Sub" "Rough on mobile data" "Rows" .Visits.Cities "Top" (top .Visits.Cities) "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Arrived via" "Sub" "The first page of each visit" "Rows" .Visits.Sources "Top" (top .Visits.Sources) "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Devices" "Sub" "Under 640 px on the short side is a phone" "Rows" .Visits.Devices "Top" (top .Visits.Devices) "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Systems" "Sub" "From the browser's user agent" "Rows" .Visits.Systems "Top" (top .Visits.Systems) "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Browsers" "Sub" "In-app browsers are where shared links open" "Rows" .Visits.Browsers "Top" (top .Visits.Browsers) "Of" .Visits.Visitors}}
+{{template "list" dict "Title" "Pages" "Sub" "Page views; game codes are never stored" "Rows" .Visits.Pages "Top" (top .Visits.Pages) "Of" .Visits.Views}}
 </div>
 </section>
 
@@ -168,7 +168,7 @@ section{display:flex;flex-direction:column;gap:16px}
 <h2>Health</h2>
 <div class="grid g3">
 <div class="tile"><span>Browser errors</span><span class="num">{{.Visits.Errors}}</span><span class="note">{{if .Visits.LatestError}}latest: {{.Visits.LatestError}}{{else}}none in this range{{end}}</span></div>
-<div class="tile"><span>Reconnects</span><span class="num">{{.Section.Reconnects}}</span><span class="note">a live stream dropped and came back</span></div>
+<div class="tile"><span>Streams reopened</span><span class="num">{{.Section.Reconnects}}</span><span class="note">the page reopened a game stream after an error; the browser's own retries aren't counted</span></div>
 <div class="tile"><span>Server restarts</span><span class="num">{{.Section.Restarts}}</span><span class="note">each one pauses the games in progress</span></div>
 </div>
 </section>
@@ -182,6 +182,6 @@ section{display:flex;flex-direction:column;gap:16px}
 {{define "chip"}}{{with .C}}{{if .Text}}<span class="chip {{.Dir}}" title="{{$.Before}}">{{if eq .Dir "up"}}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 8.5 4.5 5.5 6.5 7.5 10.5 3.5M7.5 3.5H10.5V6.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>{{else if eq .Dir "down"}}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 3.5 4.5 6.5 6.5 4.5 10.5 8.5M7.5 8.5H10.5V5.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>{{end}}{{.Text}}</span>{{end}}{{end}}{{end}}
 
 {{define "list"}}<div class="card"><div><h3>{{.Title}}</h3><p class="sub">{{.Sub}}</p></div>
-<div class="rows">{{$of := .Of}}{{$top := 0}}{{range $i, $r := .Rows}}{{if eq $i 0}}{{$top = $r.N}}{{end}}
-<div class="row"><div class="row-top"><span>{{$r.Label}}</span><span class="val">{{$r.N}} <small>{{share $r.N $of}}%</small></span></div><div class="track"><i style="width:{{pct $r.N $top}}%"></i></div></div>{{end}}
+<div class="rows">{{$of := .Of}}{{range .Rows}}
+<div class="row"><div class="row-top"><span>{{.Label}}</span><span class="val">{{.N}} <small>{{share .N $of}}%</small></span></div><div class="track"><i style="width:{{pct .N $.Top}}%"></i></div></div>{{end}}
 {{if not .Rows}}<p class="note">Nothing yet</p>{{end}}</div></div>{{end}}

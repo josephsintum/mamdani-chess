@@ -23,6 +23,7 @@ var statsTemplate = template.Must(template.New("stats").Funcs(template.FuncMap{
 		return fmt.Sprintf("%.1f", 100*float64(n)/float64(of))
 	},
 	"share": share,
+	"top":   top,
 	"sub1":  func(n int) int { return n - 1 },
 	"dict": func(kv ...any) map[string]any {
 		m := map[string]any{}
@@ -122,6 +123,16 @@ func ptsChange(n, of, bn, bof int) change {
 	return change{signed(d) + " pts", dirOf(d)}
 }
 
+// top is the largest count, which a list's longest bar stands for (0 for
+// none).
+func top(rows []store.Count) int {
+	n := 0
+	for _, r := range rows {
+		n = max(n, r.N)
+	}
+	return n
+}
+
 // share is n as a whole percentage of of, 0 when of is 0.
 func share(n, of int) int {
 	if of == 0 {
@@ -160,7 +171,7 @@ type countRow struct {
 	N     int
 }
 
-// PerGame is n over the games that got going, to one decimal.
+// PerGame is n over the games with a stats row, to one decimal.
 func (p statsPage) PerGame(n int) string {
 	if p.Section.Road.Games == 0 {
 		return "0"
@@ -178,7 +189,7 @@ type heatCell struct {
 	Title string
 }
 
-var heatBlocks = [12]string{"12–2 am", "2–4 am", "4–6 am", "6–8 am", "8–10 am", "10–12 am", "12–2 pm", "2–4 pm", "4–6 pm", "6–8 pm", "8–10 pm", "10–12 pm"}
+var heatBlocks = [12]string{"12–2 am", "2–4 am", "4–6 am", "6–8 am", "8–10 am", "10 am–12 pm", "12–2 pm", "2–4 pm", "4–6 pm", "6–8 pm", "8–10 pm", "10 pm–12 am"}
 
 // heatRows shades each weekday × two-hour block by its share of the
 // busiest block: 0 for none, then up to a quarter, half, 85%, and the rest.
