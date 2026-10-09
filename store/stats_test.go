@@ -112,9 +112,20 @@ func TestFunnelStats(t *testing.T) {
 	must(t, s.EndGame(ctx, "G00002", Result{EndedAt: day(3, 13), Reason: "aborted"}, nil))
 	must(t, s.CreateGame(ctx, Game{Code: "G00003", White: dan, WhiteName: "d", CreatedAt: day(3, 14)}))
 	must(t, s.AddTurn(ctx, "G00003", Turn{Ply: 0, Move: "d2d4", At: day(3, 14)}))
+	// A second finished game between ann and bob, by resignation.
+	must(t, s.CreateGame(ctx, Game{Code: "G00004", White: ann, WhiteName: "a", Black: bob, BlackName: "b", CreatedAt: day(3, 15)}))
+	must(t, s.EndGame(ctx, "G00004", Result{EndedAt: day(3, 16), Reason: "resignation", Winner: "white"}, nil))
 	f, err := s.FunnelStats(ctx, day(1, 0), day(4, 0))
 	must(t, err)
-	want := Funnel{Visited: 3, Opened: 2, Moved: 3, Finished: 2, Again: 0, Games: 3}
+	// By hand: visits come from ann, bob and cat (Visited 3); ann and bob
+	// opened /game or /play (Opened 2). dan never visited, so he is left out
+	// of the later steps. Moved: ann and bob in G00001 (dan's G00003 move
+	// does not count) = 2. Finished: G00001 and G00004 give ann and bob = 2.
+	// Again: both finished two games = 2. Games: all four.
+	want := Funnel{Visited: 3, Opened: 2, Moved: 2, Finished: 2, Again: 2, Games: 4}
+	if f.Moved > f.Opened || f.Opened > f.Visited {
+		t.Errorf("funnel rises: %+v", f)
+	}
 	if f != want {
 		t.Fatalf("funnel = %+v, want %+v", f, want)
 	}
