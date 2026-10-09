@@ -157,8 +157,12 @@ async function quickMatch(first, second) {
 
 async function playGame(browser, n) {
 	const device = opts.phone ? { ...devices['iPhone 15'], defaultBrowserType: undefined } : {};
-	const mark = { ...device, extraHTTPHeaders: { 'X-Playtest': '1' } };
-	const contexts = [await browser.newContext(mark), await browser.newContext(mark)];
+	const contexts = [await browser.newContext(device), await browser.newContext(device)];
+	// The server doesn't count playtest visits. The header goes on our own
+	// requests only: on a cross-origin one (the fonts) it fails CORS.
+	for (const c of contexts) {
+		await c.route(`${opts.base}/**`, (route) => route.continue({ headers: { ...route.request().headers(), 'x-playtest': '1' } }));
+	}
 	const [w, b] = await Promise.all(contexts.map((c) => c.newPage()));
 	const errors = [];
 	const sides = [

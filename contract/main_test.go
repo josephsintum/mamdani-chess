@@ -108,7 +108,7 @@ func startServer(dir string) (*server, error) {
 	defer logFile.Close() // the server has its own copy
 	s.cmd = exec.Command(bin)
 	s.cmd.Dir = root
-	s.cmd.Env = append(os.Environ(), "PORT="+strconv.Itoa(port), "DB_PATH="+filepath.Join(dir, "contract.db"))
+	s.cmd.Env = append(os.Environ(), "PORT="+strconv.Itoa(port), "DB_PATH="+filepath.Join(dir, "contract.db"), "STATS_PASSWORD=contract")
 	s.cmd.Stderr = logFile
 	if err := s.cmd.Start(); err != nil {
 		return nil, err

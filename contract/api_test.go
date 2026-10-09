@@ -1,10 +1,12 @@
 package contract
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"os"
 	"reflect"
 	"regexp"
 	"slices"
@@ -636,4 +638,42 @@ func TestFirstMoveAbort(t *testing.T) {
 	g := c.seated()
 	v := g.a.until(func(v view) bool { return v.Status == game.Over })
 	expectJSON(t, []any{v.Status, v.get("result")}, `["over",{"draw":false,"reason":"aborted"}]`)
+}
+
+// A page view is a 204 that gives a new visitor the guest cookie; robots
+// get the 204 and nothing else.
+func TestVisit(t *testing.T) {
+	c := newCheck(t, 5*time.Second)
+	res := c.do(http.MethodPost, "/api/visit", http.Header{"Content-Type": {"application/json"}})
+	// c.do sends no body: a bad body is a 400 in the API's usual shape.
+	expectJSON(t, []any{res.status, res.body}, `[400,"{\"error\":\"bad request body\"}\n"]`)
+	p := c.players(1)[0]
+	status, body := p.post("/api/visit", `{"path":"/game/ABCDEF","w":390,"h":844,"touch":true,"referrer":""}`)
+	if status != 204 || body != "" {
+		t.Errorf("POST /api/visit: %d %q", status, body)
+	}
+	if status, _ := p.post("/api/error", `{"path":"/","message":"TypeError: x"}`); status != 204 {
+		t.Errorf("POST /api/error: %d", status)
+	}
+	if status := c.do(http.MethodGet, "/api/visit", nil).status; status != 404 {
+		t.Errorf("GET /api/visit: %d, want 404", status)
+	}
+}
+
+// /stats is Basic Auth with STATS_PASSWORD, and reads as HTML.
+func TestStatsPage(t *testing.T) {
+	c := newCheck(t, 5*time.Second)
+	if os.Getenv("BASE_URL") != "" && os.Getenv("STATS_PASSWORD") == "" {
+		t.Skip("BASE_URL without STATS_PASSWORD: can't check the page on a running server")
+	}
+	res := c.do(http.MethodGet, "/stats", nil)
+	expectJSON(t, []any{res.status, header(res, "WWW-Authenticate")}, `[401,"Basic realm=\"stats\""]`)
+	pass := os.Getenv("STATS_PASSWORD")
+	if pass == "" {
+		pass = "contract"
+	}
+	res = c.do(http.MethodGet, "/stats?days=7", http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(":"+pass))}})
+	if res.status != 200 || !strings.Contains(res.body, "<h1>Stats</h1>") || !strings.Contains(res.body, "7 days") {
+		t.Errorf("GET /stats: %d, HTML %v", res.status, strings.Contains(res.body, "<h1>Stats</h1>"))
+	}
 }
