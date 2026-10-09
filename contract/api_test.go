@@ -566,7 +566,7 @@ func TestAppAndPreviews(t *testing.T) {
 	home := c.do(http.MethodGet, "/", http.Header{"Accept-Encoding": {"br, gzip"}})
 	html := home.body
 	expectJSON(t, []any{home.status, header(home, "Content-Type"), header(home, "Cache-Control"), header(home, "Content-Encoding")},
-		`[200,"text/html; charset=utf-8","no-cache",null]`)
+		`[200,"text/html; charset=utf-8","private, no-cache",null]`)
 	for _, want := range []string{
 		"<title>Mamdani Chess</title>\n<meta name=\"description\" content=\"Chess where potholes open under your pieces.",
 		`<meta property="og:image" content="` + base + `/og.png" />`,

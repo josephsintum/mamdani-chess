@@ -290,8 +290,8 @@ func TestStaticAndFallback(t *testing.T) {
 		path, wantBody, wantCache string
 		wantStatus                int
 	}{
-		{"/", "app shell", "no-cache", 200},
-		{"/game/K7F3QZ", "app shell", "no-cache", 200},
+		{"/", "app shell", "private, no-cache", 200},
+		{"/game/K7F3QZ", "app shell", "private, no-cache", 200},
 		{"/favicon.svg", "<svg/>", "no-cache", 200},
 		{"/_app/immutable/app.js", "console.log(1)", "public, max-age=31536000, immutable", 200},
 		{"/_app/immutable/gone.js", "404 page not found", "no-cache", 404},

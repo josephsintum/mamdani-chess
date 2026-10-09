@@ -43,7 +43,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	} else {
 		b = append(tags, b...)
 	}
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "private, no-cache") // it can set the guest cookie: never in a shared cache
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(b))
 }
