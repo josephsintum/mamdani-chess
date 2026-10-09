@@ -129,7 +129,7 @@ section{display:flex;flex-direction:column;gap:16px}
 <div><h2>The road</h2><p class="sub">Potholes, falls and the Mamdani, from the {{.Section.Road.Games}} games with a stats row</p></div>
 <div class="grid g4">
 <div class="tile"><span>Potholes a game</span><span class="num">{{.PerGame .Section.Road.Opened}}</span><span class="note">{{.Section.Road.Opened}} opened</span></div>
-<div class="tile"><span>Falls a game</span><span class="num">{{.PerGame .Section.Road.Fell}}</span><span class="note">{{.Section.Road.Fell}} pieces, the Mamdani included ·{{share .Section.Road.NoFall .Section.Road.Games}}% of games had none</span></div>
+<div class="tile"><span>Falls a game</span><span class="num">{{.PerGame .Section.Road.Fell}}</span><span class="note">{{.Section.Road.Fell}} pieces, the Mamdani included · {{share .Section.Road.NoFall .Section.Road.Games}}% of games had none</span></div>
 <div class="tile"><span>Saving rolls saved</span><span class="num">{{share .Section.Road.Saved .Section.Road.SavingRolls}}%</span><span class="note">{{.Section.Road.Saved}} of {{.Section.Road.SavingRolls}}</span></div>
 <div class="tile"><span>Ended by a roll</span><span class="num">{{share .Section.Road.MateByRoll .Section.Road.Games}}%</span><span class="note">{{.Section.Road.MateByRoll}} mates by the dice</span></div>
 </div>
