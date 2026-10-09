@@ -651,20 +651,24 @@ func TestFirstMoveAbort(t *testing.T) {
 	expectJSON(t, []any{v.Status, v.get("result")}, `["over",{"draw":false,"reason":"aborted"}]`)
 }
 
-// A page view is a 204 that gives a new visitor the guest cookie; robots
-// get the 204 and nothing else.
+// A page view or an error report is a 204 with no body. The 204s are sent
+// as the playtest (X-Playtest), so a run against production (BASE_URL)
+// stores nothing there.
 func TestVisit(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
 	res := c.do(http.MethodPost, "/api/visit", http.Header{"Content-Type": {"application/json"}})
 	// c.do sends no body: a bad body is a 400 in the API's usual shape.
 	expectJSON(t, []any{res.status, res.body}, `[400,"{\"error\":\"bad request body\"}\n"]`)
 	p := c.players(1)[0]
-	status, body := p.post("/api/visit", `{"path":"/game/ABCDEF","w":390,"h":844,"touch":true,"referrer":""}`)
-	if status != 204 || body != "" {
-		t.Errorf("POST /api/visit: %d %q", status, body)
+	asPlaytest := func(path, body string) reply {
+		t.Helper()
+		return readReply(t, p.send(c.ctx, http.MethodPost, path, http.Header{"Content-Type": {"application/json"}, "X-Playtest": {"1"}}, body))
 	}
-	if status, _ := p.post("/api/error", `{"path":"/","message":"TypeError: x"}`); status != 204 {
-		t.Errorf("POST /api/error: %d", status)
+	if r := asPlaytest("/api/visit", `{"path":"/game/ABCDEF","w":390,"h":844,"touch":true,"referrer":""}`); r.status != 204 || r.body != "" {
+		t.Errorf("POST /api/visit: %d %q", r.status, r.body)
+	}
+	if r := asPlaytest("/api/error", `{"path":"/","message":"TypeError: x"}`); r.status != 204 || r.body != "" {
+		t.Errorf("POST /api/error: %d %q", r.status, r.body)
 	}
 	if status := c.do(http.MethodGet, "/api/visit", nil).status; status != 404 {
 		t.Errorf("GET /api/visit: %d, want 404", status)
@@ -674,15 +678,16 @@ func TestVisit(t *testing.T) {
 // /stats is Basic Auth with STATS_PASSWORD, and reads as HTML.
 func TestStatsPage(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
-	if os.Getenv("BASE_URL") != "" && os.Getenv("STATS_PASSWORD") == "" {
-		t.Skip("BASE_URL without STATS_PASSWORD: can't check the page on a running server")
+	// The server the checks start has STATS_PASSWORD=contract; a running
+	// one (BASE_URL) needs its own from the environment.
+	pass := "contract"
+	if os.Getenv("BASE_URL") != "" {
+		if pass = os.Getenv("STATS_PASSWORD"); pass == "" {
+			t.Skip("BASE_URL without STATS_PASSWORD: can't check the page on a running server")
+		}
 	}
 	res := c.do(http.MethodGet, "/stats", nil)
 	expectJSON(t, []any{res.status, header(res, "WWW-Authenticate")}, `[401,"Basic realm=\"stats\""]`)
-	pass := os.Getenv("STATS_PASSWORD")
-	if pass == "" {
-		pass = "contract"
-	}
 	res = c.do(http.MethodGet, "/stats?days=7", http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(":"+pass))}})
 	if res.status != 200 || !strings.Contains(res.body, "<h1>Stats</h1>") || !strings.Contains(res.body, "7 days") {
 		t.Errorf("GET /stats: %d, HTML %v", res.status, strings.Contains(res.body, "<h1>Stats</h1>"))
