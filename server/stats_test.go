@@ -36,6 +36,37 @@ func TestStatsRange(t *testing.T) {
 	}
 }
 
+// The page names the zone its days and hours are in: a US zone by its
+// region, any other by its city, each with today's abbreviation.
+func TestZoneLabel(t *testing.T) {
+	for _, c := range []struct {
+		zone string
+		at   time.Time
+		want string
+	}{
+		{"America/Los_Angeles", time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC), "Pacific time (PDT)"},
+		{"America/Los_Angeles", time.Date(2026, 12, 1, 12, 0, 0, 0, time.UTC), "Pacific time (PST)"},
+		{"America/New_York", time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC), "Eastern time (EDT)"},
+		{"Europe/London", time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), "London time (BST)"},
+		{"UTC", time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), "UTC"},
+	} {
+		loc, err := time.LoadLocation(c.zone)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := zoneLabel(loc, c.at); got != c.want {
+			t.Errorf("%s on %s: %q, want %q", c.zone, c.at.Format("Jan 2"), got, c.want)
+		}
+	}
+	var b strings.Builder
+	if err := statsTemplate.Execute(&b, statsPage{Range: "Oct 13 – Oct 19, 2026", Zone: "Pacific time (PDT)"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "Oct 13 – Oct 19, 2026 · Pacific time (PDT)") {
+		t.Error("the page doesn't name its zone under the range")
+	}
+}
+
 // The page says when its counters are from an older version.
 func TestStatsSaysWhenCountersAreStale(t *testing.T) {
 	for _, stale := range []bool{false, true} {
