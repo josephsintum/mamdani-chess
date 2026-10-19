@@ -52,7 +52,7 @@ func run() error {
 	handler := server.New(st, hub, web.Assets())
 	// Railway sets this to the deployed commit; locally it's empty ("dev").
 	handler.Version = os.Getenv("RAILWAY_GIT_COMMIT_SHA")
-	// The stats page (spec: docs/superpowers/specs/2026-10-08-stats-design.md).
+	// The stats page.
 	handler.StatsPassword = os.Getenv("STATS_PASSWORD")
 	zone := envOr("STATS_TZ", "America/New_York")
 	if handler.StatsZone, err = time.LoadLocation(zone); err != nil {
