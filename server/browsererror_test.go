@@ -36,6 +36,9 @@ func TestIsRobot(t *testing.T) {
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 		"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
 		"Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 334.0.4.32.98",
+		// Cubot phones carry "bot" in their model name.
+		"Mozilla/5.0 (Linux; Android 11; CUBOT KINGKONG 7 Build/RP1A.200720.011) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.104 Mobile Safari/537.36",
+		"Mozilla/5.0 (Linux; Android 10; CUBOT_X30) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
 	} {
 		r.Header.Set("User-Agent", ua)
 		if isRobot(r) {
@@ -48,6 +51,9 @@ func TestIsRobot(t *testing.T) {
 		"facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php) SomeCrawler",
 		"Mozilla/5.0 (compatible; Baiduspider/2.0)",
 		"Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)",
+		"Twitterbot/1.0",
+		"DuckDuckBot/1.1; (+http://duckduckgo.com/duckduckbot.html)",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15 (Applebot/0.1; +http://www.apple.com/go/applebot)",
 	} {
 		r.Header.Set("User-Agent", ua)
 		if !isRobot(r) {
