@@ -78,7 +78,9 @@ var migrations = []string{
 	// game that got going, written with its result; open_hist counts the
 	// turns that ended with 0..5 holes open. searches logs quick-match
 	// searches (nothing about who searched). events counts practice
-	// games, reopened game streams and restarts.
+	// games, reopened game streams and restarts. stats_days holds the
+	// daily counters the stats page reads (day in STATS_TZ, a key, an
+	// amount); stats_state says which counters version and zone wrote them.
 	`ALTER TABLE games ADD COLUMN kind TEXT NOT NULL DEFAULT 'friend';
 	 ALTER TABLE games ADD COLUMN joined_at INTEGER;
 	 ALTER TABLE games ADD COLUMN playtest INTEGER NOT NULL DEFAULT 0;
@@ -110,7 +112,18 @@ var migrations = []string{
 		at   INTEGER NOT NULL,
 		kind TEXT NOT NULL
 	 );
-	 CREATE INDEX events_at ON events(at);`,
+	 CREATE INDEX events_at ON events(at);
+	 CREATE TABLE stats_days (
+		day TEXT NOT NULL,
+		key TEXT NOT NULL,
+		n   INTEGER NOT NULL,
+		PRIMARY KEY (day, key)
+	 ) WITHOUT ROWID;
+	 CREATE TABLE stats_state (
+		id      INTEGER PRIMARY KEY CHECK (id = 1),
+		version INTEGER NOT NULL,
+		zone    TEXT NOT NULL
+	 );`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

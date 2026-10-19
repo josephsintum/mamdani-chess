@@ -65,14 +65,6 @@ type gameRow struct {
 	stats                *GameStats
 }
 
-func isFinished(reason string) bool {
-	switch reason {
-	case "checkmate", "stalemate", "fifty_moves", "repetition", "insufficient_material", "timeout", "timeout_vs_insufficient", "resignation":
-		return true
-	}
-	return false
-}
-
 func msTime(n sql.NullInt64) time.Time {
 	if !n.Valid {
 		return time.Time{}
