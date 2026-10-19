@@ -52,8 +52,7 @@ func run() error {
 	handler := server.New(st, hub, web.Assets())
 	// Railway sets this to the deployed commit; locally it's empty ("dev").
 	handler.Version = os.Getenv("RAILWAY_GIT_COMMIT_SHA")
-	// The stats page (specs: docs/superpowers/specs/2026-10-08-stats-design.md
-	// and 2026-10-19-stats-counters-design.md).
+	// The stats page.
 	handler.StatsPassword = os.Getenv("STATS_PASSWORD")
 	srv := &http.Server{
 		Addr:              ":" + port,
