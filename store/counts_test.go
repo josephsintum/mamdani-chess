@@ -43,7 +43,7 @@ func TestEndKey(t *testing.T) {
 func TestCountEnded(t *testing.T) {
 	created := time.Date(2026, 10, 5, 21, 0, 0, 0, time.UTC)
 	c := counts{}
-	countEnded(c, time.UTC, gameFacts{Created: created, Kind: "friend", Result: "timeout", Winner: "black", HasClock: true, WinnerMS: 20_000,
+	countEnded(c, time.UTC, gameFacts{Created: created, Kind: "friend", Result: "timeout", Winner: "black", Moves: 44, HasClock: true, WinnerMS: 20_000,
 		Stats: &GameStats{Moves: 44, Fell: 1, WhiteLost: 1, BlackLost: 0, OpenHist: [6]int{0, 3}}})
 	for _, k := range []string{"end.timeout", "clock.decided", "left.lt30s", "len.41-50", "friend.finished", "road.games", "decided.less"} {
 		if c[dayKey{"2026-10-05", k}] != 1 {

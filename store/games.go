@@ -174,7 +174,7 @@ func (s *Store) EndGame(ctx context.Context, code string, r Result, final *Turn,
 	}
 	if !playtest {
 		f.Created = time.UnixMilli(created)
-		if f.WinnerMS, f.HasClock, err = lastClock(ctx, tx, code, r.Winner); err != nil {
+		if err := lastTurn(ctx, tx, code, &f); err != nil {
 			return err
 		}
 		c := counts{}
@@ -200,22 +200,22 @@ func noChange(ctx context.Context, db querier, code string) error {
 	return nil
 }
 
-// lastClock is the winner's clock after a game's last turn: one
-// primary-key seek. It reports false with no winner or no turn.
-func lastClock(ctx context.Context, db querier, code, winner string) (int64, bool, error) {
-	if winner == "" {
-		return 0, false, nil
-	}
+// lastTurn reads a game's last turn into f, by one primary-key seek: the
+// moves played (its ply + 1) and the winner's clock after it. A game with
+// no turn keeps zero moves and no clock.
+func lastTurn(ctx context.Context, db querier, code string, f *gameFacts) error {
+	var ply int
 	var white, black sql.NullInt64
-	err := db.QueryRowContext(ctx, `SELECT white_ms, black_ms FROM turns WHERE game = ? ORDER BY ply DESC LIMIT 1`, code).Scan(&white, &black)
+	err := db.QueryRowContext(ctx, `SELECT ply, white_ms, black_ms FROM turns WHERE game = ? ORDER BY ply DESC LIMIT 1`, code).Scan(&ply, &white, &black)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, false, nil
+		return nil
 	}
 	if err != nil {
-		return 0, false, err
+		return err
 	}
-	ms, ok := winnerClock(winner, white, black)
-	return ms, ok, nil
+	f.Moves = ply + 1
+	f.WinnerMS, f.HasClock = winnerClock(f.Winner, white, black)
+	return nil
 }
 
 // ExpireWaiting ends every game still waiting for Black that was created

@@ -129,6 +129,15 @@ var migrations = []string{
 		version INTEGER NOT NULL,
 		zone    TEXT NOT NULL
 	 );`,
+	// 10: past a day's cap, a browser error or an event folds into the
+	// newest row (of its kind) instead of adding one: n is how many reports
+	// that row stands for, so a rebuild recounts every one. Every start now
+	// prunes searches and events by time and totals them from the cutoff
+	// day, so the time indexes migration 9 dropped come back.
+	`ALTER TABLE browser_errors ADD COLUMN n INTEGER NOT NULL DEFAULT 1;
+	 ALTER TABLE events ADD COLUMN n INTEGER NOT NULL DEFAULT 1;
+	 CREATE INDEX searches_started_at ON searches(started_at);
+	 CREATE INDEX events_at ON events(at);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

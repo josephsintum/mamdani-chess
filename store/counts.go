@@ -1,14 +1,18 @@
 package store
 
 import (
+	"slices"
 	"strconv"
 	"time"
 )
 
 // countersVersion is what the stats_days keys mean. Bump it whenever a
 // key's meaning changes (a new bucket edge, a new rule for what counts):
-// the next start rebuilds every counter from the raw rows.
-const countersVersion = 1
+// the next start rebuilds every counter from the raw rows. Searches,
+// events and errors are pruned after 400 days, so their counters for older
+// days are kept as they were: a new search bucket edge can't re-bucket
+// them, and their old keys drop out of the histograms.
+const countersVersion = 2 // 2: lengths come from the turns, for every game that got going
 
 // counts is what one write adds to the daily counters: an amount per day
 // and key. Zero amounts are never kept, so they are never written.
@@ -38,8 +42,8 @@ func (c counts) minus(other counts) counts {
 	return out
 }
 
-// dayOf is t's day in loc, as stats_days stores it.
-func dayOf(t time.Time, loc *time.Location) string {
+// DayOf is t's day in loc, as stats_days stores it.
+func DayOf(t time.Time, loc *time.Location) string {
 	return t.In(loc).Format("2006-01-02")
 }
 
@@ -59,6 +63,7 @@ type gameFacts struct {
 	Joined   time.Time // when Black sat down; zero when unknown
 	Result   string    // "" while the game is on
 	Winner   string    // "white", "black" or ""
+	Moves    int       // turns saved: the last ply + 1
 	WinnerMS int64     // the winner's clock after the last turn
 	HasClock bool      // WinnerMS is known: there is a winner and a turn
 	Stats    *GameStats
@@ -72,7 +77,7 @@ func (f gameFacts) friendLink() bool { return f.Kind == "friend" && !f.Rematch }
 
 // countCreated counts a new game.
 func countCreated(c counts, loc *time.Location, f gameFacts) {
-	day := dayOf(f.Created, loc)
+	day := DayOf(f.Created, loc)
 	if f.Kind == "quick" {
 		c.add(day, "games.quick", 1)
 	} else {
@@ -91,7 +96,7 @@ func countJoined(c counts, loc *time.Location, f gameFacts) {
 	if !f.friendLink() || !f.HasBlack {
 		return
 	}
-	day := dayOf(f.Created, loc)
+	day := DayOf(f.Created, loc)
 	c.add(day, "friend.joined", 1)
 	if !f.Joined.IsZero() {
 		c.add(day, "join."+joinBucket(between(f.Created, f.Joined)), 1)
@@ -118,14 +123,14 @@ func endKey(f gameFacts) string {
 // countEnded counts a game's end, with what the road did to it when its
 // stats are known.
 func countEnded(c counts, loc *time.Location, f gameFacts) {
-	day := dayOf(f.Created, loc)
+	day := DayOf(f.Created, loc)
 	c.add(day, "end."+endKey(f), 1)
 	got := isFinished(f.Result)
 	if got {
 		c.add(day, "got_going", 1)
 		c.add(day, "heat."+strconv.Itoa(f.Created.In(loc).Hour()/2), 1)
-		if f.Stats != nil {
-			c.add(day, "len."+lengthBucket(f.Stats.Moves), 1)
+		if f.Moves > 0 { // a game resigned before its first move has no length
+			c.add(day, "len."+lengthBucket(f.Moves), 1)
 		}
 		if f.Result == "timeout" {
 			c.add(day, "clock.decided", 1)
@@ -177,7 +182,7 @@ func countEnded(c counts, loc *time.Location, f gameFacts) {
 
 // countSearch counts a quick-match search on the day it started.
 func countSearch(c counts, loc *time.Location, sr Search) {
-	day := dayOf(sr.StartedAt, loc)
+	day := DayOf(sr.StartedAt, loc)
 	c.add(day, "search", 1)
 	if sr.Others == 0 {
 		c.add(day, "search.alone", 1)
@@ -192,23 +197,20 @@ func countSearch(c counts, loc *time.Location, sr Search) {
 	}
 }
 
-// countEvent counts a practice game, a reopened stream or a restart.
-func countEvent(c counts, loc *time.Location, kind string, at time.Time) {
-	c.add(dayOf(at, loc), "event."+kind, 1)
+// countEvent counts n practice games, reopened streams or restarts (a row
+// past the day's cap stands for more than one).
+func countEvent(c counts, loc *time.Location, kind string, at time.Time, n int) {
+	c.add(DayOf(at, loc), "event."+kind, n)
 }
 
-// countError counts a browser error.
-func countError(c counts, loc *time.Location, at time.Time) {
-	c.add(dayOf(at, loc), "errors", 1)
+// countError counts n browser errors.
+func countError(c counts, loc *time.Location, at time.Time, n int) {
+	c.add(DayOf(at, loc), "errors", n)
 }
 
-func isFinished(reason string) bool {
-	switch reason {
-	case "checkmate", "stalemate", "fifty_moves", "repetition", "insufficient_material", "timeout", "timeout_vs_insufficient", "resignation":
-		return true
-	}
-	return false
-}
+// isFinished reports a result of a game that got going: played to the
+// end, not aborted, expired or retired.
+func isFinished(reason string) bool { return slices.Contains(finished, reason) }
 
 // bucket is one bar of a histogram: its key suffix, its label on the page
 // and the largest value it holds.

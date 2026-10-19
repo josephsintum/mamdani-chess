@@ -59,7 +59,7 @@ func (s *Store) AddGameStats(ctx context.Context, code string, st GameStats) err
 	}
 	if !playtest && result.Valid && result.String != "retired" {
 		f.Created, f.Result, f.Winner = time.UnixMilli(created), result.String, winner.String
-		if f.WinnerMS, f.HasClock, err = lastClock(ctx, tx, code, f.Winner); err != nil {
+		if err := lastTurn(ctx, tx, code, &f); err != nil {
 			return err
 		}
 		before := counts{}
@@ -137,8 +137,9 @@ func (s *Store) HasGameStats(ctx context.Context, code string) (bool, error) {
 func (s *Store) AddSearch(ctx context.Context, sr Search) error {
 	c := counts{}
 	countSearch(c, s.zone, sr)
-	return s.insertCounted(ctx, c,
-		`INSERT INTO searches (started_at, ended_at, matched, others) VALUES (?, ?, ?, ?)`,
+	// No cap yet: milestone 07's per-IP limits will bound searches.
+	return s.insertFolded(ctx, c, "", "", 0,
+		`INSERT INTO searches (started_at, ended_at, matched, others) VALUES (?, ?, ?, ?)`, "",
 		sr.StartedAt.UnixMilli(), sr.EndedAt.UnixMilli(), sr.Matched, sr.Others)
 }
 
@@ -146,25 +147,11 @@ func (s *Store) AddSearch(ctx context.Context, sr Search) error {
 // counts it.
 func (s *Store) AddEvent(ctx context.Context, kind string, at time.Time) error {
 	c := counts{}
-	countEvent(c, s.zone, kind, at)
-	return s.insertCounted(ctx, c, `INSERT INTO events (at, kind) VALUES (?, ?)`, at.UnixMilli(), kind)
-}
-
-// insertCounted runs one raw insert and adds its counts, in one
-// transaction (one commit, as the insert alone was).
-func (s *Store) insertCounted(ctx context.Context, c counts, query string, args ...any) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-		return err
-	}
-	if err := addCounts(ctx, tx, c); err != nil {
-		return err
-	}
-	return tx.Commit()
+	countEvent(c, s.zone, kind, at, 1)
+	return s.insertFolded(ctx, c, DayOf(at, s.zone), "event."+kind, eventRowsPerDay,
+		`INSERT INTO events (at, kind) VALUES (?, ?)`,
+		`UPDATE events SET at = ?, n = n + 1 WHERE rowid = (SELECT rowid FROM events WHERE kind = ?2 ORDER BY rowid DESC LIMIT 1)`,
+		at.UnixMilli(), kind)
 }
 
 // formatHist writes [6]int as "9,14,19,22,18,18"; parseHist reads it back.
