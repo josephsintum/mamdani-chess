@@ -220,3 +220,17 @@ func TestMigration6RetiresRules2Games(t *testing.T) {
 		t.Fatalf("loaded %+v, want only NEW002", got)
 	}
 }
+
+// A database that ran PR #25's migration 8 (game stats, no counters) gains
+// stats_days and stats_state from a later migration, so counted writes
+// work once it upgrades.
+func TestCountersMigrateAfterGameStats(t *testing.T) {
+	ctx := t.Context()
+	s := openAt(t, 8, `DROP TABLE IF EXISTS stats_days`, `DROP TABLE IF EXISTS stats_state`)
+	if _, err := s.EnsureCounters(ctx, t0); err != nil {
+		t.Fatalf("EnsureCounters: %v", err)
+	}
+	if err := s.CreateGame(ctx, Game{Code: "NEW003", White: "a", CreatedAt: t0}); err != nil {
+		t.Fatalf("CreateGame: %v", err)
+	}
+}
