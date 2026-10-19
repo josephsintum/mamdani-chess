@@ -9,10 +9,8 @@ import (
 	"mamdani-chess/store"
 )
 
-// pages are the routes an error report can name; anything else is "other".
-var pages = map[string]bool{"/": true, "/game": true, "/play": true, "/practice": true, "/how-to-play": true, "/rules": true, "/about": true}
-
-// pageOf reduces a path to its route, so a game code is never stored.
+// pageOf reduces a path to its route (a game, or one of pages), so a game
+// code is never stored; anything else is "other".
 func pageOf(path string) string {
 	path, _, _ = strings.Cut(path, "?")
 	if path == "" {
@@ -22,7 +20,8 @@ func pageOf(path string) string {
 		return "/"
 	}
 	first, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
-	if route := "/" + first; pages[route] {
+	route := "/" + first
+	if _, ok := pages[route]; ok || route == "/game" {
 		return route
 	}
 	return "other"

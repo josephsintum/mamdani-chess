@@ -5,8 +5,9 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	plugins: [
 		sveltekit({
-			// SPA: one index.html; the Go server falls back to it for every route.
-			adapter: adapter({ fallback: 'index.html', precompress: true })
+			// The content pages are prerendered (each +page.ts); every other route is
+			// the SPA shell, 200.html, which the Go server falls back to.
+			adapter: adapter({ fallback: '200.html', precompress: true })
 		})
 	],
 	build: {

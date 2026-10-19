@@ -96,8 +96,8 @@ func TestStatsNeedsPassword(t *testing.T) {
 		b, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, resp.Header, string(b)
 	}
-	// No password configured: the app shell, as for any unknown path.
-	if status, _, body := get("", ""); status != 200 || !strings.Contains(body, "app shell") {
+	// No password configured: a 404 (with the app shell), as for any unknown path.
+	if status, _, body := get("", ""); status != 404 || !strings.Contains(body, "app shell") {
 		t.Errorf("without STATS_PASSWORD: %d %q", status, body)
 	}
 	s.StatsPassword = "hunter2"

@@ -563,17 +563,31 @@ func TestNames(t *testing.T) {
 // The app, static files and link previews.
 func TestAppAndPreviews(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
-	home := c.do(http.MethodGet, "/", http.Header{"Accept-Encoding": {"br, gzip"}})
+	home := c.do(http.MethodGet, "/", nil) // Go's client asks for gzip and unzips it
 	html := home.body
-	expectJSON(t, []any{home.status, header(home, "Content-Type"), header(home, "Cache-Control"), header(home, "Content-Encoding")},
-		`[200,"text/html; charset=utf-8","private, no-cache",null]`)
+	expectJSON(t, []any{home.status, header(home, "Content-Type"), header(home, "Cache-Control")},
+		`[200,"text/html; charset=utf-8","private, no-cache"]`)
+	// A page carries per-request tags, so it's gzipped as it's sent (never
+	// brotli, which the build's precompressed copies use).
+	for accept, want := range map[string]any{"br, gzip": "gzip", "identity": nil} {
+		res := c.do(http.MethodGet, "/", http.Header{"Accept-Encoding": {accept}})
+		if got := header(res, "Content-Encoding"); got != want {
+			t.Errorf("GET / with Accept-Encoding %q: Content-Encoding %v, want %v", accept, got, want)
+		}
+	}
 	for _, want := range []string{
-		"<title>Mamdani Chess</title>\n<meta name=\"description\" content=\"Chess where potholes open under your pieces.",
+		"<title>Mamdani Chess</title>",
+		"<meta name=\"description\" content=\"Chess where potholes open under your pieces.",
 		`<meta property="og:image" content="` + base + `/og.png" />`,
+		`<link rel="canonical" href="https://mamdanichess.com/"/>`, // from the page's <svelte:head>
+		"Every move rolls the dice.",                               // prerendered, for search engines
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the home page lacks %q", want)
 		}
+	}
+	if n := strings.Count(html, "<title>"); n != 1 {
+		t.Errorf("the home page has %d titles", n)
 	}
 	found := regexp.MustCompile(`(_app/immutable/entry/start\.[^"']+\.js)`).FindStringSubmatch(html)
 	if found == nil {
@@ -593,8 +607,21 @@ func TestAppAndPreviews(t *testing.T) {
 	gone := c.do(http.MethodGet, "/_app/immutable/nope.js", nil)
 	expectJSON(t, []any{gone.status, gone.body, header(gone, "Cache-Control")}, `[404,"404 page not found\n","no-cache"]`)
 	route := c.do(http.MethodGet, "/game/ABCDEF", nil)
-	if route.status != 200 || !strings.Contains(route.body, "og:title") {
-		t.Errorf("/game/ABCDEF: %d, og:title %v", route.status, strings.Contains(route.body, "og:title"))
+	if route.status != 200 || !strings.Contains(route.body, "og:title") || !strings.Contains(route.body, `<meta name="robots" content="noindex" />`) {
+		t.Errorf("/game/ABCDEF: %d, og:title %v, noindex %v", route.status, strings.Contains(route.body, "og:title"), strings.Contains(route.body, "noindex"))
+	}
+	if missing := c.do(http.MethodGet, "/no-such-page", nil); missing.status != 404 || !strings.Contains(missing.body, "noindex") {
+		t.Errorf("/no-such-page: %d, noindex %v", missing.status, strings.Contains(missing.body, "noindex"))
+	}
+	robots := c.do(http.MethodGet, "/robots.txt", nil)
+	sitemap := c.do(http.MethodGet, "/sitemap.xml", nil)
+	if robots.status != 200 || !strings.Contains(robots.body, "Sitemap: https://mamdanichess.com/sitemap.xml") {
+		t.Errorf("/robots.txt: %d %q", robots.status, robots.body)
+	}
+	// The type comes from the OS's MIME table: text/xml on Linux,
+	// application/xml on macOS.
+	if sitemap.status != 200 || !strings.Contains(sitemap.header.Get("Content-Type"), "xml") || !strings.Contains(sitemap.body, "<loc>https://mamdanichess.com/rules</loc>") {
+		t.Errorf("/sitemap.xml: %d %v", sitemap.status, header(sitemap, "Content-Type"))
 	}
 	if status := c.do(http.MethodPost, "/", nil).status; status != 405 {
 		t.Errorf("POST /: %d, want 405", status)

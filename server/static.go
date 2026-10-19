@@ -11,19 +11,16 @@ import (
 	"strings"
 )
 
-// static serves the built SvelteKit app. Paths that aren't files fall back
-// to index.html so client-side routes like /game/K7F3QZ load the app.
+// static serves the built SvelteKit app. Paths that aren't files are pages
+// (see page), so client-side routes like /game/K7F3QZ load the app.
 func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
-	if name == "" {
-		name = "index.html"
-	}
 	info, err := fs.Stat(s.assets, name)
-	if err != nil || info.IsDir() {
+	if name == "" || err != nil || info.IsDir() || isPageFile(name) {
 		if strings.HasPrefix(name, "_app/") {
 			// A missing build asset (an old chunk after a deploy, say) is a
 			// real 404: the app shell in its place can't run as a script.
@@ -31,10 +28,7 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		name = "index.html"
-	}
-	if name == "index.html" {
-		s.index(w, r) // with the page's link preview tags
+		s.page(w, r) // with the page's link preview tags
 		return
 	}
 	file, info, encoding := s.compressed(r, name, info)

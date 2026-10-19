@@ -85,8 +85,8 @@ func startServer(dir string) (*server, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := os.Stat(filepath.Join(root, "web", "build", "index.html")); err != nil {
-		return nil, errors.New("web/build has no index.html: run `pnpm --dir web build` first")
+	if _, err := os.Stat(filepath.Join(root, "web", "build", "200.html")); err != nil {
+		return nil, errors.New("web/build has no 200.html (the app shell): run `pnpm --dir web build` first")
 	}
 	bin := filepath.Join(dir, "server")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/server")

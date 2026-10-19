@@ -2,13 +2,15 @@ package server
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"html"
 	"io/fs"
 	"net/http"
+	"path"
 	"slices"
+	"strconv"
 	"strings"
-	"time"
 
 	"mamdani-chess/game"
 	"mamdani-chess/rules"
@@ -26,45 +28,152 @@ var homePreview = preview{
 	Description: "Chess where potholes open under your pieces. Play a friend or a stranger, no sign-up.",
 }
 
-// index serves the app shell with the preview tags for r's page. It sets
-// the guest cookie on a fresh browser, so the page's first requests (the
-// name lookup and a game's stream, which race) carry the same one instead
-// of each minting its own.
-func (s *Server) index(w http.ResponseWriter, r *http.Request) {
+// siteHost is the site's one address. Search engines list its pages there,
+// whichever host served them, and its aliases redirect to it.
+const siteHost = "mamdanichess.com"
+
+// aliases are the other hosts the Railway service answers on. Railway has
+// no redirect setting, so the server redirects their pages.
+var aliases = map[string]bool{"www." + siteHost: true, "mamdani-chess.up.railway.app": true}
+
+// shell is the SPA's fallback page, for every route that isn't prerendered.
+const shell = "200.html"
+
+// route is one of the app's routes other than a game's.
+type route struct {
+	preview        // what a link to it shows
+	file    string // its prerendered HTML (its +page.ts), or "" for the shell
+}
+
+// pages are the app's routes other than a game's. Only the prerendered
+// ones are listed by search engines (and in web/static/sitemap.xml).
+var pages = map[string]route{
+	"/":            {homePreview, "index.html"},
+	"/play":        {preview{Title: "Quick match · Mamdani Chess", Description: "Get paired with the next player looking for a game."}, ""},
+	"/how-to-play": {preview{Title: "How to play · Mamdani Chess", Description: "Potholes, dice and the Mamdani, played out on the board."}, "how-to-play.html"},
+	"/rules":       {preview{Title: "Rules · Mamdani Chess", Description: "Every rule of Mamdani Chess: potholes, the Mamdani and saving rolls."}, "rules.html"},
+	"/practice":    {preview{Title: "Practice · Mamdani Chess", Description: "Play both sides and try the potholes out on your own."}, ""},
+	"/about":       {preview{Title: "About · Mamdani Chess", Description: "An unofficial, ad-free fan project: credits and what the site keeps."}, "about.html"},
+}
+
+// isPageFile reports whether name is one of the build's page files, which
+// are only served through page, with their tags.
+func isPageFile(name string) bool {
+	if name == shell {
+		return true
+	}
+	for _, pg := range pages {
+		if pg.file != "" && pg.file == name {
+			return true
+		}
+	}
+	return false
+}
+
+// gameRoute is the code in a game's path, /game/CODE.
+func gameRoute(p string) (string, bool) {
+	code, ok := strings.CutPrefix(p, "/game/")
+	return code, ok && code != "" && !strings.Contains(code, "/")
+}
+
+// page serves the HTML for r's route with the preview tags for it. The
+// content pages are prerendered, so search engines read them without
+// running a script, and only they are listed; every other route gets the
+// shell. A path that is no route is a 404. It sets the guest cookie on a
+// fresh browser, so the page's first requests (the name lookup and a
+// game's stream, which race) carry the same one instead of each minting
+// its own.
+func (s *Server) page(w http.ResponseWriter, r *http.Request) {
+	if aliases[strings.ToLower(r.Host)] {
+		// One address for search engines, bookmarks and the guest cookie
+		// (which belongs to one host). Only pages move: a tab opened on the
+		// alias still loads its scripts and the API there until it reloads.
+		http.Redirect(w, r, "https://"+siteHost+r.URL.RequestURI(), http.StatusMovedPermanently)
+		return
+	}
+	p := r.URL.Path
+	pg, known := pages[path.Clean(p)]
+	_, isGame := gameRoute(path.Clean(p))
+	if c := path.Clean(p); c != p && (known || isGame) {
+		// A prerendered page loads its files by relative paths, which a
+		// trailing slash breaks. The target starts with a known route, so
+		// it can't lead off the site.
+		target := c
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+		return
+	}
 	cookieValue(w, r)
-	b, err := fs.ReadFile(s.assets, "index.html")
+	listed := pg.file != ""
+	var b []byte
+	var err error
+	if listed {
+		b, err = fs.ReadFile(s.assets, pg.file)
+	}
+	if !listed || err != nil {
+		listed = false
+		b, err = fs.ReadFile(s.assets, shell)
+	}
 	if err != nil {
 		http.Error(w, "app not built", http.StatusInternalServerError)
 		return
 	}
-	tags := []byte(previewTags(s.preview(r.URL.Path), baseURL(r), r.URL.Path))
-	if i := bytes.Index(b, []byte("</head>")); i >= 0 {
-		b = slices.Concat(b[:i], tags, b[i:])
-	} else {
-		b = append(tags, b...)
+	status := http.StatusOK
+	if !known && !isGame {
+		status = http.StatusNotFound
 	}
+	head := len(b)
+	if i := bytes.Index(b, []byte("</head>")); i >= 0 {
+		head = i
+	}
+	// A prerendered page has its own <title>, from its <svelte:head>.
+	title := !bytes.Contains(b[:head], []byte("<title>"))
+	tags := []byte(previewTags(s.preview(p), baseURL(r), p, title) + seoTags(p, listed))
+	b = slices.Concat(b[:head], tags, b[head:])
 	w.Header().Set("Cache-Control", "private, no-cache") // it can set the guest cookie: never in a shared cache
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(b))
+	w.Header().Add("Vary", "Accept-Encoding")
+	if accepts(r.Header.Get("Accept-Encoding"), "gzip") {
+		// The tags differ per request, so the build's precompressed copies
+		// can't be used; a prerendered page is up to 160 KB.
+		var z bytes.Buffer
+		zw := gzip.NewWriter(&z)
+		zw.Write(b)
+		zw.Close()
+		b = z.Bytes()
+		w.Header().Set("Content-Encoding", "gzip")
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+	w.WriteHeader(status)
+	if r.Method != http.MethodHead {
+		w.Write(b)
+	}
+}
+
+// seoTags tells search engines what to do with the page at p: the home
+// page names the site, and the shell's pages (games, quick match,
+// practice, a 404) stay out of search results. A listed page's canonical
+// link is in its <svelte:head>, so it goes away when the app navigates on.
+func seoTags(p string, listed bool) string {
+	if !listed {
+		return "<meta name=\"robots\" content=\"noindex\" />\n"
+	}
+	if p == "/" {
+		return `<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Mamdani Chess","url":"https://` + siteHost + `/"}</script>` + "\n"
+	}
+	return ""
 }
 
 // preview describes the page at path. A game link reads the game's last
 // published state, so it never waits on the game.
 func (s *Server) preview(path string) preview {
-	switch path {
-	case "/play":
-		return preview{Title: "Quick match · Mamdani Chess", Description: "Get paired with the next player looking for a game."}
-	case "/how-to-play":
-		return preview{Title: "How to play · Mamdani Chess", Description: "Potholes, dice and the Mamdani, played out on the board."}
-	case "/rules":
-		return preview{Title: "Rules · Mamdani Chess", Description: "Every rule of Mamdani Chess: potholes, the Mamdani and saving rolls."}
-	case "/practice":
-		return preview{Title: "Practice · Mamdani Chess", Description: "Play both sides and try the potholes out on your own."}
-	case "/about":
-		return preview{Title: "About · Mamdani Chess", Description: "An unofficial, ad-free fan project: credits and what the site keeps."}
+	if pg, ok := pages[path]; ok {
+		return pg.preview
 	}
-	code, ok := strings.CutPrefix(path, "/game/")
-	if !ok || strings.Contains(code, "/") {
+	code, ok := gameRoute(path)
+	if !ok {
 		return homePreview
 	}
 	g, ok := s.games.Get(code)
@@ -147,12 +256,14 @@ func baseURL(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
-// previewTags is the <title> and Open Graph tags for p, for the page at
-// path on base.
-func previewTags(p preview, base, path string) string {
+// previewTags is the <title> (if title) and Open Graph tags for p, for the
+// page at path on base.
+func previewTags(p preview, base, path string, title bool) string {
 	esc := html.EscapeString
 	var b strings.Builder
-	fmt.Fprintf(&b, "<title>%s</title>\n", esc(p.Title))
+	if title {
+		fmt.Fprintf(&b, "<title>%s</title>\n", esc(p.Title))
+	}
 	tag := func(attr, key, value string) {
 		fmt.Fprintf(&b, "<meta %s=\"%s\" content=\"%s\" />\n", attr, key, esc(value))
 	}

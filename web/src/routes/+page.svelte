@@ -57,6 +57,8 @@
 
 <svelte:head>
 	<title>Mamdani Chess</title>
+	<!-- Here, not from the server, so it goes when the app navigates on. -->
+	<link rel="canonical" href="https://mamdanichess.com/" />
 </svelte:head>
 
 <svelte:document onvisibilitychange={update} />

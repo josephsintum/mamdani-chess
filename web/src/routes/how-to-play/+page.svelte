@@ -72,6 +72,8 @@
 
 <svelte:head>
 	<title>How to play · Mamdani Chess</title>
+	<!-- Here, not from the server, so it goes when the app navigates on. -->
+	<link rel="canonical" href="https://mamdanichess.com/how-to-play" />
 </svelte:head>
 
 <Header />

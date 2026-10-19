@@ -41,9 +41,12 @@ func newTestServerWith(t *testing.T, dice rules.Dice) (*Server, *httptest.Server
 	}
 	t.Cleanup(func() { st.Close() })
 	assets := fstest.MapFS{
-		"index.html":            {Data: []byte("<!doctype html><html><head><meta charset=\"utf-8\"></head><body>app shell</body></html>")},
+		"200.html":              {Data: []byte("<!doctype html><html><head><meta charset=\"utf-8\"></head><body>app shell</body></html>")},
+		"index.html":            {Data: []byte("<!doctype html><html><head><meta charset=\"utf-8\"><title>Mamdani Chess</title></head><body>home page</body></html>")},
+		"rules.html":            {Data: []byte("<!doctype html><html><head><meta charset=\"utf-8\"><title>Rules · Mamdani Chess</title></head><body>rules page</body></html>")},
 		"_app/immutable/app.js": {Data: []byte("console.log(1)")},
 		"favicon.svg":           {Data: []byte("<svg/>")},
+		"google1234.html":       {Data: []byte("google-site-verification: verification")},
 		"favicon.svg.br":        {Data: []byte("brotli bytes")},
 		"favicon.svg.gz":        {Data: svgGzip},
 	}
@@ -290,8 +293,16 @@ func TestStaticAndFallback(t *testing.T) {
 		path, wantBody, wantCache string
 		wantStatus                int
 	}{
-		{"/", "app shell", "private, no-cache", 200},
+		{"/", "home page", "private, no-cache", 200},
+		{"/rules", "rules page", "private, no-cache", 200},
+		{"/index", "app shell", "private, no-cache", 404},
+		{"/google1234.html", "verification", "no-cache", 200},
 		{"/game/K7F3QZ", "app shell", "private, no-cache", 200},
+		{"/play", "app shell", "private, no-cache", 200},
+		{"/nope", "app shell", "private, no-cache", 404},
+		{"/game/K7F3QZ/nope", "app shell", "private, no-cache", 404},
+		{"/rules.html", "app shell", "private, no-cache", 404},
+		{"/200", "app shell", "private, no-cache", 404},
 		{"/favicon.svg", "<svg/>", "no-cache", 200},
 		{"/_app/immutable/app.js", "console.log(1)", "public, max-age=31536000, immutable", 200},
 		{"/_app/immutable/gone.js", "404 page not found", "no-cache", 404},
