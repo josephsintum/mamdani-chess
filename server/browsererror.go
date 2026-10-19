@@ -30,15 +30,19 @@ func pageOf(path string) string {
 
 // isRobot reports a request that isn't a person: headless Chrome (the
 // playtest, agent-browser), a crawler that runs scripts (Googlebot and the
-// like name themselves bot, crawler or spider) or any request the
-// playtest marks. The stats count none of what a robot does: its games
+// like name themselves crawler, spider, or bot followed by a version or a
+// name: Googlebot/2.1, Slackbot-LinkExpanding) or any request the
+// playtest marks. A phone model with bot in its name (CUBOT KINGKONG 7)
+// is a person. The stats count none of what a robot does: its games
 // (marked playtest), quick-match searches, events and errors.
 func isRobot(r *http.Request) bool {
 	ua := r.UserAgent()
 	lower := strings.ToLower(ua)
 	return strings.Contains(ua, "HeadlessChrome") || r.Header.Get("X-Playtest") != "" ||
-		strings.Contains(lower, "bot") || strings.Contains(lower, "crawler") || strings.Contains(lower, "spider")
+		botName.MatchString(lower) || strings.Contains(lower, "crawler") || strings.Contains(lower, "spider")
 }
+
+var botName = regexp.MustCompile(`bot[/.-]`)
 
 type errorBody struct {
 	Path    string `json:"path"`
