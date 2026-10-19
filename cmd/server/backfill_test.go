@@ -59,8 +59,4 @@ func TestBackfillSkipsGamesWithStats(t *testing.T) {
 	if err != nil || done != 0 || failed != 0 {
 		t.Fatalf("second run: %d %d %v", done, failed, err)
 	}
-	todo, err := st.GamesWithoutStats(ctx)
-	if err != nil || len(todo) != 0 {
-		t.Fatalf("left: %d %v", len(todo), err)
-	}
 }

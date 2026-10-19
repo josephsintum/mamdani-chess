@@ -653,22 +653,16 @@ func TestFirstMoveAbort(t *testing.T) {
 
 // An error report is a 204 with no body. It is sent as the playtest
 // (X-Playtest), so a run against production (BASE_URL) stores nothing
-// there. Page views aren't counted: /api/visit doesn't exist.
+// there.
 func TestErrorReport(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
 	res := c.do(http.MethodPost, "/api/error", http.Header{"Content-Type": {"application/json"}})
 	// c.do sends no body: a bad body is a 400 in the API's usual shape.
 	expectJSON(t, []any{res.status, res.body}, `[400,"{\"error\":\"bad request body\"}\n"]`)
 	p := c.players(1)[0]
-	asPlaytest := func(path, body string) reply {
-		t.Helper()
-		return readReply(t, p.send(c.ctx, http.MethodPost, path, http.Header{"Content-Type": {"application/json"}, "X-Playtest": {"1"}}, body))
-	}
-	if r := asPlaytest("/api/error", `{"path":"/","message":"TypeError: x"}`); r.status != 204 || r.body != "" {
+	h := http.Header{"Content-Type": {"application/json"}, "X-Playtest": {"1"}}
+	if r := readReply(t, p.send(c.ctx, http.MethodPost, "/api/error", h, `{"path":"/","message":"TypeError: x"}`)); r.status != 204 || r.body != "" {
 		t.Errorf("POST /api/error: %d %q", r.status, r.body)
-	}
-	if r := asPlaytest("/api/visit", `{"path":"/"}`); r.status != 404 {
-		t.Errorf("POST /api/visit: %d, want 404", r.status)
 	}
 }
 

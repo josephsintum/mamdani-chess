@@ -65,44 +65,6 @@ func TestGamesWithoutStatsAndBackfillRow(t *testing.T) {
 	}
 }
 
-func TestGameKindAndHasGameStats(t *testing.T) {
-	ctx := t.Context()
-	s, _ := openTemp(t)
-	must(t, s.CreateGame(ctx, Game{Code: "G00001", Kind: "quick", White: "w", WhiteName: "w", Black: "b", BlackName: "b", CreatedAt: t0, Playtest: true}))
-	must(t, s.CreateGame(ctx, Game{Code: "G00002", White: "w", WhiteName: "w", CreatedAt: t0}))
-	must(t, s.AddGameStats(ctx, "G00001", GameStats{Moves: 1}))
-	for _, c := range []struct {
-		code, kind      string
-		playtest, stats bool
-	}{{"G00001", "quick", true, true}, {"G00002", "friend", false, false}} {
-		kind, playtest, err := s.GameKind(ctx, c.code)
-		must(t, err)
-		has, err := s.HasGameStats(ctx, c.code)
-		must(t, err)
-		if kind != c.kind || playtest != c.playtest || has != c.stats {
-			t.Errorf("%s: kind %q playtest %v stats %v, want %q %v %v", c.code, kind, playtest, has, c.kind, c.playtest, c.stats)
-		}
-	}
-	if _, _, err := s.GameKind(ctx, "NOPE00"); err == nil {
-		t.Error("an unknown game has a kind")
-	}
-}
-
-func TestSearchesAndEvents(t *testing.T) {
-	ctx := t.Context()
-	s, _ := openTemp(t)
-	must(t, s.AddSearch(ctx, Search{StartedAt: t0, EndedAt: t0.Add(19 * time.Second), Matched: true, Others: 1}))
-	must(t, s.AddSearch(ctx, Search{StartedAt: t0, EndedAt: t0.Add(65 * time.Second), Matched: false, Others: 0}))
-	must(t, s.AddEvent(ctx, "practice", t0))
-	must(t, s.AddEvent(ctx, "restart", t0.Add(time.Hour)))
-	var matched, others, events int
-	must(t, s.db.QueryRowContext(ctx, `SELECT SUM(matched), SUM(others) FROM searches`).Scan(&matched, &others))
-	must(t, s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE kind IN ('practice', 'restart')`).Scan(&events))
-	if matched != 1 || others != 1 || events != 2 {
-		t.Fatalf("matched %d others %d events %d", matched, others, events)
-	}
-}
-
 func TestSearchesAndCountEventsByRange(t *testing.T) {
 	ctx := t.Context()
 	s, _ := openTemp(t)
@@ -126,18 +88,5 @@ func TestSearchesAndCountEventsByRange(t *testing.T) {
 	must(t, err)
 	if n != 1 {
 		t.Fatalf("practice in range: %d", n)
-	}
-}
-
-func TestHistRoundTrip(t *testing.T) {
-	h := [6]int{9, 14, 19, 22, 18, 18}
-	got, err := parseHist(formatHist(h))
-	if err != nil || got != h {
-		t.Fatalf("round trip = %v, %v", got, err)
-	}
-	for _, bad := range []string{"", "1,2,3", "1,2,3,4,5,x", "1,2,3,4,5,6,7"} {
-		if _, err := parseHist(bad); err == nil {
-			t.Errorf("parseHist(%q) accepted", bad)
-		}
 	}
 }

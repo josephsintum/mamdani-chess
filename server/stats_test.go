@@ -69,39 +69,13 @@ func TestStatsNeedsPassword(t *testing.T) {
 	}
 }
 
-// The page shows the browser errors, escaped, and nothing about visitors.
-func TestStatsShowsErrorsAndNoVisitors(t *testing.T) {
-	s, ts := newTestServer(t)
-	s.StatsPassword = "hunter2"
-	if err := s.store.AddBrowserError(t.Context(), store.BrowserError{At: time.Now(), Path: "/game", Message: "TypeError: <x>"}); err != nil {
-		t.Fatal(err)
-	}
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/stats", nil)
-	req.SetBasicAuth("", "hunter2")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	body := string(b)
-	if !strings.Contains(body, "latest: TypeError: &lt;x&gt;") || strings.Contains(body, "<x>") {
-		t.Error("the error message is missing or not escaped")
-	}
-	for _, never := range []string{"Visitors", "Countries", "Cities", "Devices", "Browsers", "From visit to game"} {
-		if strings.Contains(body, never) {
-			t.Errorf("the page shows %q", never)
-		}
-	}
-}
-
 func TestChanges(t *testing.T) {
 	for _, c := range []struct {
 		now, before int
 		want        change
 	}{
-		{5, 4, change{"+25%", "up"}}, {1, 2, change{"−50%", "down"}}, {3, 3, change{"0%", "flat"}},
-		{3, 0, change{"new", "up"}}, {0, 0, change{"0%", "flat"}}, {0, 7, change{"−100%", "down"}}, {1000, 999, change{"0%", "flat"}},
+		// Up, down and flat are on the page in TestStatsComparesWithTheRangeBefore.
+		{3, 0, change{"new", "up"}}, {0, 0, change{"0%", "flat"}}, {1000, 999, change{"0%", "flat"}},
 	} {
 		if got := pctChange(c.now, c.before); got != c.want {
 			t.Errorf("pctChange(%d, %d) = %v, want %v", c.now, c.before, got, c.want)
@@ -111,7 +85,7 @@ func TestChanges(t *testing.T) {
 		n, of, bn, bof int
 		want           change
 	}{
-		{1, 5, 0, 4, change{"+20 pts", "up"}}, {1, 4, 1, 2, change{"−25 pts", "down"}}, {1, 3, 2, 6, change{"0 pts", "flat"}},
+		{1, 4, 1, 2, change{"−25 pts", "down"}}, {1, 3, 2, 6, change{"0 pts", "flat"}},
 		{1, 3, 0, 0, change{"new", "up"}}, {0, 0, 0, 0, change{"0 pts", "flat"}},
 	} {
 		if got := ptsChange(c.n, c.of, c.bn, c.bof); got != c.want {
@@ -174,11 +148,16 @@ func TestStatsComparesWithTheRangeBefore(t *testing.T) {
 	}
 }
 
+// The page shows the games, the road and the browser errors (escaped), and
+// nothing about visitors or which games were played.
 func TestStatsShowsTheGames(t *testing.T) {
 	s, ts := newTestServer(t)
 	s.StatsPassword = "hunter2"
 	ctx := t.Context()
 	now := time.Now()
+	if err := s.store.AddBrowserError(ctx, store.BrowserError{At: now, Path: "/game", Message: "TypeError: <x>"}); err != nil {
+		t.Fatal(err)
+	}
 	for _, g := range []struct {
 		code, kind, reason, winner string
 		st                         *store.GameStats
@@ -217,7 +196,7 @@ func TestStatsShowsTheGames(t *testing.T) {
 		"How full the road gets", "Did the road decide it?", "Lost less to the road, and won",
 		"found an opponent", "0:19", "Streams reopened", "Server restarts",
 		"from the 2 games with a stats row", "Rematches of friend games", "pieces, the Mamdani included",
-		"Mon 10 am–12 pm: 0 games", "Mon 10 pm–12 am: 0 games",
+		"Mon 10 am–12 pm: 0 games", "Mon 10 pm–12 am: 0 games", "latest: TypeError: &lt;x&gt;",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page lacks %q", want)
@@ -230,7 +209,7 @@ func TestStatsShowsTheGames(t *testing.T) {
 			t.Errorf("%s bar: %v, want width %s%%", label, m, want)
 		}
 	}
-	for _, never := range []string{"G00001", "G00002", "soon", "{{", "ZgotmplZ"} {
+	for _, never := range []string{"G00001", "G00002", "soon", "{{", "ZgotmplZ", "<x>", "Visitors", "Countries", "Cities", "Devices", "Browsers", "From visit to game"} {
 		if strings.Contains(body, never) {
 			t.Errorf("the page shows %q", never)
 		}

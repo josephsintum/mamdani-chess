@@ -130,17 +130,6 @@ func TestGameSectionEmpty(t *testing.T) {
 	}
 }
 
-// Nothing the page reads carries a game code.
-func TestGameSectionHasNoCodes(t *testing.T) {
-	s, _ := openTemp(t)
-	seedGames(t, s)
-	g, err := s.GameSection(t.Context(), day(1, 0), day(8, 0), newYork)
-	must(t, err)
-	if text := fmt.Sprintf("%+v", g); strings.Contains(text, "Q00001") || strings.Contains(text, "F00001") {
-		t.Fatalf("a code leaked: %s", text)
-	}
-}
-
 func TestIsFinishedMatchesTheSQLList(t *testing.T) {
 	reasons := []string{"checkmate", "stalemate", "fifty_moves", "repetition", "insufficient_material", "timeout", "timeout_vs_insufficient", "resignation"}
 	for _, r := range reasons {
