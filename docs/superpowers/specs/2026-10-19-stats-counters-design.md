@@ -34,7 +34,7 @@ Writes stay well under a millisecond on a slow vCPU. Reads grow with days, not g
 
 ## Storage
 
-Migration 8 (not yet released) gains:
+Migration 9 adds the two tables. (They were first written into migration 8, which PR #25 ships without them; a database that ran #25's migration 8 would never have got them. Code review, 2026-10-19.)
 
 ```sql
 CREATE TABLE stats_days (
@@ -83,7 +83,8 @@ A game's keys go on **the day it was created**, in `STATS_TZ`, whenever they bec
 | `AddBrowserError` | its own | `errors` |
 
 - **Playtests write no counters.** A game marked `playtest` counts nothing at any step (the store sees the mark in each `RETURNING`), and a playtest's searches, events and errors are never written (as now).
-- **Retired games** (ended only by migrations, which bypass counting) keep their creation keys and count no ending, live or in a rebuild. Any future migration that changes games bumps the counters version.
+- **Retired games** (ended only by migrations, which bypass counting) count nowhere: a rebuild skips them, as the scanning page did. Today's were retired by migrations 5 and 6, before the counters existed, so nothing live ever counted them. A future migration that retires or changes games bumps the counters version, so the next start rebuilds without them.
+- **Times are counted in whole milliseconds,** as the rows save them: a search's wait and a friend link's time to join are the difference of the two saved times, so a wait a fraction of a millisecond short of a bucket's edge lands in the same bucket live and in a rebuild.
 - **One counting function per step**, shared by the live writes and the rebuild: `countCreated`, `countJoined` and `countEnded` for a game (the rebuild calls whichever apply to each saved game), plus one each for a search, an event and an error.
 
 ## Reading the page
@@ -109,8 +110,8 @@ The store needs `STATS_TZ` before its first write, and the stats work must finis
 1. migrations;
 2. prune browser errors (at a `STATS_TZ` midnight);
 3. `ExpireWaiting` (counts `end.expired`);
-4. the `game_stats` backfill (counts each backfilled game's road keys);
-5. the rebuild, if needed;
+4. the rebuild, if needed;
+5. the `game_stats` backfill (counts each backfilled game's road keys onto the rebuilt counters; the other way round, a first start's backfill would write counts the rebuild then deletes);
 6. the `restart` event;
 7. `LoadForRestore` and `hub.Restore` (each restored game's 10-second grace starts here);
 8. listen.
@@ -119,10 +120,11 @@ Today the backfill and the restart event run after `hub.Restore`, while restored
 
 ## Rebuild
 
-- The code holds a counters version constant. At step 5 the store compares it and the zone with `stats_state`. If either differs, or `stats_state` is empty (the first deploy), it rebuilds; otherwise it does nothing.
+- The code holds a counters version constant. At step 4 the store compares it and the zone with `stats_state`. If either differs, or `stats_state` is empty (the first deploy), it rebuilds; otherwise it does nothing.
 - **A rebuild streams, sums in memory, then writes once per key.** One query streams every game with its `game_stats` row (a left join) and its last turn's clocks (a primary-key seek per game); then the searches, the events and the errors, each in one pass. Each row goes through the counting functions into a Go map from (day, key) to a count. Nothing loads a game's turns. Then, in one transaction: delete the counters, insert the map's rows in multi-row batches, and write the version and zone. At 400 days that is about 33,000 rows.
 - **Budget:** a rebuild of 100,000 games must take under 3 seconds on Railway, well inside its 30-second health check, and the benchmark (below) checks it. It holds the database only during the final transaction, and nothing else is running yet.
 - A rebuild runs only on a deploy that changes the counters version or `STATS_TZ`, never while serving. It logs `stats rebuilt` at INFO with the days and rows written and the time taken.
+- **Rolling back** to a build without counters, then forward again, leaves the writes made in between uncounted, with nothing marked stale. After such a rollback, bump the counters version so the next start rebuilds.
 - If it fails, it's logged at ERROR, the transaction rolls back, the server starts with the counters it had, and the next start tries again. The store remembers that the counters are stale, and the page shows one line: "These counts are from an older version: a rebuild failed, see the logs."
 
 ## Concurrency
@@ -132,8 +134,8 @@ SQLite has one writer, so upserts are serialized and no increment is lost; there
 ## Testing
 
 1. **Each write writes exactly its keys:** table tests for every store write, including a playtest game (none), a repeated `EndGame` or `SeatBlack` (none, and no error), a game ending after midnight (its creation day), a resignation and a timeout (no final turn: the clock comes from the last saved turn), `timeout_vs_insufficient` (a draw, not `clock.decided`), and zero amounts (not written).
-2. **Live counting equals a rebuild:** a few hundred random games, searches, events and errors written through the store's normal methods across many days, including a daylight-saving change, games ending the next day, friend links joined the next day, aborted, expired and retired games, rematches and playtests. The `stats_days` rows after live counting must equal the rows after a rebuild.
-3. **Startup order:** a test that the backfill and the rebuild finish before `hub.Restore`, and that the first start fills the counters from existing games.
+2. **Live counting equals a rebuild:** a few hundred random games, searches, events and errors written through the store's normal methods across many days, including a daylight-saving change, games ending the next day, friend links joined the next day, a wait and a join a fraction of a millisecond short of a bucket's edge, aborted, expired and retired games, rematches and playtests. The `stats_days` rows after live counting must equal the rows after a rebuild.
+3. **Startup order:** a test that the backfill and the rebuild finish before `hub.Restore`, that the rebuild runs before the backfill, and that the first start fills the counters from existing games. A database that ran #25's migration 8 gains the tables from migration 9.
 4. **The page from counters:** seeded counters render every section; each threshold line equals its bucket sum; the chips compare the right days; "All" has no chips; the stale-counters line shows when the version is behind.
 5. **Size:** benchmarks, reported in the PR: a page load over 20,000 synthetic games across 400 days (flat as games grow), a game end's write, and a rebuild of 100,000 games (under the 3-second budget once scaled for Railway).
 6. **Error spam:** past 200 errors in a day, the raw rows stop and the counter keeps counting.
