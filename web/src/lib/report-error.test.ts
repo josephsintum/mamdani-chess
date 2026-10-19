@@ -26,21 +26,15 @@ describe('reportError', () => {
 		expect(fetch).not.toHaveBeenCalled();
 	});
 
-	it('falls back to fetch and swallows a failure', async () => {
+	it('falls back to fetch, sends the path and the message cut to 300 characters, and swallows a failure', async () => {
 		vi.stubGlobal('navigator', {});
 		const fetch = vi.fn(() => Promise.reject(new Error('down')));
 		vi.stubGlobal('fetch', fetch);
-		expect(() => reportError('/', 'TypeError: x')).not.toThrow();
+		expect(() => reportError('/rules', 'x'.repeat(500))).not.toThrow();
 		await Promise.resolve();
-		expect(fetch).toHaveBeenCalledWith('/api/error', expect.objectContaining({ method: 'POST', keepalive: true }));
-	});
-
-	it('sends the path and the message, cut to 300 characters', () => {
-		vi.stubGlobal('navigator', {});
-		const fetch = vi.fn(() => Promise.resolve(new Response()));
-		vi.stubGlobal('fetch', fetch);
-		reportError('/rules', 'x'.repeat(500));
-		const [, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+		const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+		expect(url).toBe('/api/error');
+		expect(init).toMatchObject({ method: 'POST', keepalive: true });
 		expect(JSON.parse(init.body as string)).toEqual({ path: '/rules', message: 'x'.repeat(300) });
 	});
 

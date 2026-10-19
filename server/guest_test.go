@@ -41,44 +41,26 @@ func TestOnlyTheCookiesHashIsStored(t *testing.T) {
 }
 
 // The app shell sets the guest cookie, so a fresh browser's first requests
-// (the name lookup and a game's stream, which race) all carry the same one.
-// A browser that has the cookie keeps it.
+// (the name lookup and a game's stream, which race) all carry the same one,
+// and the API keeps it. Other shell paths, a second visit and the
+// Cache-Control are in contract's TestGuestCookie and TestStaticAndFallback.
 func TestTheAppShellSetsTheGuestCookie(t *testing.T) {
 	_, ts := newTestServer(t)
-	for _, path := range []string{"/", "/game/ABCDEF", "/practice"} {
-		alice := newPlayer(t, ts)
-		resp, err := alice.c.Get(ts.URL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		set := resp.Cookies()
-		if len(set) != 1 || set[0].Name != guestCookie || len(set[0].Value) != 32 || !set[0].HttpOnly {
-			t.Fatalf("GET %s on a fresh browser set %v, want one guest cookie", path, set)
-		}
-		// A shared cache must never keep it: it would hand one guest to many.
-		if cc := resp.Header.Get("Cache-Control"); cc != "private, no-cache" {
-			t.Errorf("GET %s: Cache-Control %q, want private, no-cache", path, cc)
-		}
-		resp, err = alice.c.Get(ts.URL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if again := resp.Header.Values("Set-Cookie"); again != nil {
-			t.Errorf("GET %s with the cookie set another: %q", path, again)
-		}
-		// The API sees the guest the shell made.
-		if resp, err = alice.c.Get(ts.URL + "/api/me"); err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("GET /api/me: %d", resp.StatusCode)
-		}
-		u, _ := url.Parse(ts.URL)
-		if got := alice.c.Jar.Cookies(u); len(got) != 1 || got[0].Value != set[0].Value {
-			t.Errorf("after /api/me the browser holds %v, want the shell's %s", got, set[0].Value)
-		}
+	alice := newPlayer(t, ts)
+	resp, err := alice.c.Get(ts.URL + "/game/ABCDEF")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	set := resp.Cookies()
+	if len(set) != 1 || set[0].Name != guestCookie || len(set[0].Value) != 32 || !set[0].HttpOnly {
+		t.Fatalf("the app shell on a fresh browser set %v, want one guest cookie", set)
+	}
+	if resp, err = alice.c.Get(ts.URL + "/api/me"); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Header.Values("Set-Cookie") != nil {
+		t.Errorf("GET /api/me: %d, Set-Cookie %q; want 200 and the shell's cookie kept", resp.StatusCode, resp.Header.Values("Set-Cookie"))
 	}
 }

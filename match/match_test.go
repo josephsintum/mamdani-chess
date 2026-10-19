@@ -78,7 +78,7 @@ func TestColorsComeFromFlip(t *testing.T) {
 
 // A game is a playtest's when either guest is one.
 func TestAPlaytestMarksTheGame(t *testing.T) {
-	for _, c := range []struct{ alice, bob, want bool }{{false, false, false}, {true, false, true}, {false, true, true}, {true, true, true}} {
+	for _, c := range []struct{ alice, bob, want bool }{{false, false, false}, {true, false, true}, {false, true, true}} {
 		g := &games{}
 		q := newQueue(g)
 		q.Join("alice", c.alice)

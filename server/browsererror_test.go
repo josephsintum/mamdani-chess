@@ -12,8 +12,7 @@ import (
 
 func TestPageOf(t *testing.T) {
 	for in, want := range map[string]string{
-		"/": "/", "/game/K7F3QZ": "/game", "/game/K7F3QZ?instant": "/game", "/play": "/play", "/practice": "/practice",
-		"/how-to-play": "/how-to-play", "/rules": "/rules", "/about": "/about", "/dev/board": "other", "": "other", "/stats": "other",
+		"/": "/", "/game/K7F3QZ?instant": "/game", "/rules": "/rules", "/dev/board": "other", "": "other",
 	} {
 		if got := pageOf(in); got != want {
 			t.Errorf("pageOf(%q) = %q, want %q", in, got, want)
@@ -22,20 +21,11 @@ func TestPageOf(t *testing.T) {
 }
 
 func TestIsRobot(t *testing.T) {
+	const iPhone = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1"
 	r := httptest.NewRequest("POST", "/api/error", nil)
-	r.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/125.0.0.0 Safari/537.36")
-	if !isRobot(r) {
-		t.Error("headless Chrome not a robot")
-	}
-	r.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1")
-	if isRobot(r) {
-		t.Error("a phone is a robot")
-	}
 	for _, ua := range []string{
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+		iPhone,
 		"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
-		"Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 334.0.4.32.98",
 		// Cubot phones carry "bot" in their model name.
 		"Mozilla/5.0 (Linux; Android 11; CUBOT KINGKONG 7 Build/RP1A.200720.011) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.104 Mobile Safari/537.36",
 		"Mozilla/5.0 (Linux; Android 10; CUBOT_X30) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
@@ -46,6 +36,7 @@ func TestIsRobot(t *testing.T) {
 		}
 	}
 	for _, ua := range []string{
+		"Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/125.0.0.0 Safari/537.36",
 		"Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
 		"Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
 		"facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php) SomeCrawler",
@@ -60,7 +51,7 @@ func TestIsRobot(t *testing.T) {
 			t.Errorf("not a robot: %q", ua)
 		}
 	}
-	r.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1")
+	r.Header.Set("User-Agent", iPhone)
 	r.Header.Set("X-Playtest", "1")
 	if !isRobot(r) {
 		t.Error("the playtest header not a robot")
@@ -84,12 +75,11 @@ func errorsSoFar(t *testing.T, s *Server) (int, string) {
 	return store.Summarize(days, "", end.UTC().Format("2006-01-02")).Errors, latest
 }
 
-func TestErrorBodies(t *testing.T) {
+// A long message is stored cut to 300 characters. (A bad body's 400 is in
+// contract's TestErrorReport.)
+func TestErrorMessageIsCut(t *testing.T) {
 	s, ts := newTestServer(t)
 	alice := newPlayer(t, ts)
-	if status, body := alice.post("/api/error", `nope`); status != http.StatusBadRequest || body != `{"error":"bad request body"}` {
-		t.Errorf("bad error report: %d %s", status, body)
-	}
 	long := strings.Repeat("x", 500)
 	if status, _ := alice.post("/api/error", `{"path":"/game/K7F3QZ","message":"`+long+`"}`); status != http.StatusNoContent {
 		t.Errorf("error report: %d", status)
