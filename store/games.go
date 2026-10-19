@@ -68,7 +68,7 @@ type SavedGame struct {
 	JoinedAt time.Time // when Black sat down; zero when unknown
 }
 
-// CreateGame saves a new game.
+// CreateGame saves a new game and counts it.
 func (s *Store) CreateGame(ctx context.Context, g Game) error {
 	kind := g.Kind
 	if kind == "" {
@@ -78,19 +78,61 @@ func (s *Store) CreateGame(ctx context.Context, g Game) error {
 	if g.Black != "" {
 		joined = g.CreatedAt.UnixMilli() // both seated from the start: quick match or a rematch
 	}
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO games (code, white, black, white_name, black_name, created_at, rematch_of, rules, kind, joined_at, playtest) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		g.Code, g.White, nullable(g.Black), nullable(g.WhiteName), nullable(g.BlackName), g.CreatedAt.UnixMilli(), nullable(g.RematchOf), rulesVersion, kind, joined, g.Playtest)
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY {
 		return ErrCodeTaken
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if !g.Playtest {
+		c := counts{}
+		countCreated(c, s.zone, gameFacts{Created: g.CreatedAt, Kind: kind, Rematch: g.RematchOf != ""})
+		if err := addCounts(ctx, tx, c); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
-// SeatBlack records the guest who took Black's seat, their name, and when.
+// SeatBlack records the guest who took Black's seat, their name, and when,
+// and counts the join. A seat already taken changes nothing and is no error.
 func (s *Store) SeatBlack(ctx context.Context, code, guest, name string, now time.Time) error {
-	return execOne(ctx, s.db, `UPDATE games SET black = ?, black_name = ?, joined_at = ? WHERE code = ?`, guest, nullable(name), now.UnixMilli(), code)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var created int64
+	var playtest bool
+	f := gameFacts{HasBlack: true, Joined: now}
+	err = tx.QueryRowContext(ctx,
+		`UPDATE games SET black = ?, black_name = ?, joined_at = ? WHERE code = ? AND black IS NULL
+		 RETURNING created_at, kind, rematch_of IS NOT NULL, playtest`,
+		guest, nullable(name), now.UnixMilli(), code).Scan(&created, &f.Kind, &f.Rematch, &playtest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return noChange(ctx, tx, code)
+	}
+	if err != nil {
+		return err
+	}
+	if !playtest {
+		f.Created = time.UnixMilli(created)
+		c := counts{}
+		countJoined(c, s.zone, f)
+		if err := addCounts(ctx, tx, c); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // AddTurn saves one move.
@@ -98,43 +140,125 @@ func (s *Store) AddTurn(ctx context.Context, code string, t Turn) error {
 	return addTurn(ctx, s.db, code, t)
 }
 
-// EndGame records how a game ended. final, if not nil, is the move that
-// ended it, saved in the same transaction.
+// EndGame records how a game ended and counts it. final, if not nil, is
+// the move that ended it, saved in the same transaction. A game that has
+// already ended changes nothing and is no error.
 func (s *Store) EndGame(ctx context.Context, code string, r Result, final *Turn, st *GameStats) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	var created int64
+	var playtest bool
+	f := gameFacts{Result: r.Reason, Winner: r.Winner, Stats: st}
+	err = tx.QueryRowContext(ctx,
+		`UPDATE games SET ended_at = ?, result = ?, winner = ? WHERE code = ? AND ended_at IS NULL
+		 RETURNING created_at, kind, rematch_of IS NOT NULL, black IS NOT NULL, playtest`,
+		r.EndedAt.UnixMilli(), r.Reason, nullable(r.Winner), code).Scan(&created, &f.Kind, &f.Rematch, &f.HasBlack, &playtest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return noChange(ctx, tx, code)
+	}
+	if err != nil {
+		return err
+	}
 	if final != nil {
 		if err := addTurn(ctx, tx, code, *final); err != nil {
 			return err
 		}
 	}
-	if err := execOne(ctx, tx,
-		`UPDATE games SET ended_at = ?, result = ?, winner = ? WHERE code = ?`,
-		r.EndedAt.UnixMilli(), r.Reason, nullable(r.Winner), code); err != nil {
-		return err
-	}
 	if st != nil {
-		if err := addGameStats(ctx, tx, code, *st); err != nil {
+		if _, err := addGameStats(ctx, tx, code, *st); err != nil {
+			return err
+		}
+	}
+	if !playtest {
+		f.Created = time.UnixMilli(created)
+		if f.WinnerMS, f.HasClock, err = lastClock(ctx, tx, code, r.Winner); err != nil {
+			return err
+		}
+		c := counts{}
+		countEnded(c, s.zone, f)
+		if err := addCounts(ctx, tx, c); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
+// noChange explains a guarded update that changed no row: nil when the
+// game exists (it had already ended, or its seat was taken); an error when
+// it was never saved.
+func noChange(ctx context.Context, db querier, code string) error {
+	var exists bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM games WHERE code = ?)`, code).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("no saved game %s", code)
+	}
+	return nil
+}
+
+// lastClock is the winner's clock after a game's last turn: one
+// primary-key seek. It reports false with no winner or no turn.
+func lastClock(ctx context.Context, db querier, code, winner string) (int64, bool, error) {
+	if winner == "" {
+		return 0, false, nil
+	}
+	var white, black sql.NullInt64
+	err := db.QueryRowContext(ctx, `SELECT white_ms, black_ms FROM turns WHERE game = ? ORDER BY ply DESC LIMIT 1`, code).Scan(&white, &black)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	ms, ok := winnerClock(winner, white, black)
+	return ms, ok, nil
+}
+
 // ExpireWaiting ends every game still waiting for Black that was created
-// before cutoff, with result "expired". It returns how many it ended.
+// before cutoff, with result "expired", and counts them. It returns how
+// many it ended.
 func (s *Store) ExpireWaiting(ctx context.Context, cutoff, now time.Time) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx,
 		`UPDATE games SET ended_at = ?, result = 'expired'
-		 WHERE ended_at IS NULL AND black IS NULL AND created_at < ?`,
+		 WHERE ended_at IS NULL AND black IS NULL AND created_at < ?
+		 RETURNING created_at, kind, rematch_of IS NOT NULL, playtest`,
 		now.UnixMilli(), cutoff.UnixMilli())
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	var n int64
+	c := counts{}
+	for rows.Next() {
+		var created int64
+		var playtest bool
+		f := gameFacts{Result: "expired"}
+		if err := rows.Scan(&created, &f.Kind, &f.Rematch, &playtest); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		n++
+		if !playtest {
+			f.Created = time.UnixMilli(created)
+			countEnded(c, s.zone, f)
+		}
+	}
+	rows.Close() // one connection: close before the next statement
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if err := addCounts(ctx, tx, c); err != nil {
+		return 0, err
+	}
+	return n, tx.Commit()
 }
 
 // LoadForRestore returns every unfinished game and every game that ended
@@ -221,25 +345,15 @@ type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+type querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 func addTurn(ctx context.Context, db execer, code string, t Turn) error {
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO turns (game, ply, move, dice, white_ms, black_ms, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		code, t.Ply, t.Move, formatDice(t.Dice), t.WhiteMS, t.BlackMS, t.At.UnixMilli())
 	return err
-}
-
-// execOne runs an UPDATE that must change exactly one row.
-func execOne(ctx context.Context, db execer, query string, args ...any) error {
-	res, err := db.ExecContext(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-	if n, err := res.RowsAffected(); err != nil {
-		return err
-	} else if n != 1 {
-		return fmt.Errorf("updated %d games, want 1", n)
-	}
-	return nil
 }
 
 func nullable(s string) any {

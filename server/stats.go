@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	_ "embed"
 	"fmt"
@@ -145,20 +146,23 @@ func share(n, of int) int {
 type statsPage struct {
 	Range, Days string
 	Ranges      []statsRangeOption
-	Errors      store.ErrorStats
+	LatestError string
+	// Stale says the counters are from an older version: a rebuild failed.
+	Stale bool
 	// Each KPI against the range of the same length before; empty for
 	// all time. Before names that range.
 	Before                           string
 	Games, GotGoing, Practice, Found change
 
-	Section                                 store.GameSection
-	QuickTotal, FriendTotal, PracticeTotal  int
-	DayKindMax, LengthMax, WaitMax, OpenMax int
-	OpenPct                                 [6]int // each open-holes count as a percentage of turns
-	Decisive                                int
-	FriendRows                              []countRow
-	DecidedRows                             []countRow
-	HeatRows                                []heatRow
+	Section                                store.Summary
+	QuickTotal, FriendTotal, PracticeTotal int
+	DayKindMax, OpenMax                    int
+	OpenPct                                [6]int // each open-holes count as a percentage of turns
+	LeftKnown, JoinKnown                   int    // games with a winner's clock; joins with a known time
+	Decisive                               int
+	FriendRows                             []countRow
+	DecidedRows                            []countRow
+	HeatRows                               []heatRow
 }
 
 // countRow is a labelled count, with the colour of its bar when it has one.
@@ -236,30 +240,41 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "stats need the password", http.StatusUnauthorized)
 		return
 	}
-	loc := s.StatsZone
-	if loc == nil {
-		loc = time.UTC
-	}
+	ctx, cancel := context.WithTimeout(r.Context(), statsTimeout)
+	defer cancel()
+	loc := s.store.Zone()
 	days := r.URL.Query().Get("days")
 	from, to, label := statsRange(days, time.Now(), loc)
-	section, err := s.store.GameSection(r.Context(), from, to, loc)
-	if err != nil {
-		s.internalError(w, "game section", err)
-		return
-	}
-	errs, err := s.store.BrowserErrors(r.Context(), from, to)
-	if err != nil {
-		s.internalError(w, "browser errors", err)
-		return
-	}
-	page := statsPage{Range: label, Days: days, Errors: errs}
+	fromDay, toDay := "", dayOf(to, loc)
+	readFrom := ""
+	var prevFrom time.Time
 	if !from.IsZero() {
-		prevFrom := rangeBefore(from, to)
-		prev, err := s.store.GameSection(r.Context(), prevFrom, from, loc)
-		if err != nil {
-			s.internalError(w, "game section before", err)
-			return
+		fromDay = dayOf(from, loc)
+		prevFrom = rangeBefore(from, to)
+		readFrom = dayOf(prevFrom, loc)
+	}
+	// One read for the range and the range before it.
+	counted, err := s.store.Counts(ctx, readFrom, toDay)
+	if err != nil {
+		s.internalError(w, "stats counters", err)
+		return
+	}
+	split := len(counted)
+	for i, d := range counted {
+		if d.Day >= fromDay {
+			split = i
+			break
 		}
+	}
+	section := store.Summarize(counted[split:], fromDay, toDay)
+	latest, err := s.store.LatestError(ctx, from, to)
+	if err != nil {
+		s.internalError(w, "latest error", err)
+		return
+	}
+	page := statsPage{Range: label, Days: days, LatestError: latest, Stale: s.store.CountersStale()}
+	if !from.IsZero() {
+		prev := store.Summarize(counted[:split], readFrom, fromDay)
 		page.Before = "vs " + rangeLabel(prevFrom, from)
 		page.Games = pctChange(section.Games, prev.Games)
 		page.GotGoing = pctChange(section.GotGoing, prev.GotGoing)
@@ -277,11 +292,11 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		page.PracticeTotal += d.Practice
 		page.DayKindMax = max(page.DayKindMax, d.Quick+d.Friend+d.Practice)
 	}
-	for _, c := range section.Lengths {
-		page.LengthMax = max(page.LengthMax, c.N)
+	for _, c := range section.WinnerLeft {
+		page.LeftKnown += c.N
 	}
-	for _, c := range section.Quick.Waits {
-		page.WaitMax = max(page.WaitMax, c.N)
+	for _, c := range section.Friend.Join {
+		page.JoinKnown += c.N
 	}
 	turns := 0
 	for _, n := range section.Road.OpenHist {
@@ -307,8 +322,15 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// practiceGames is how many practice games a section's days started.
-func practiceGames(g store.GameSection) int {
+// statsTimeout bounds the page's reads, so it can never hold the one
+// connection long enough to keep a game's save waiting.
+const statsTimeout = 2 * time.Second
+
+// dayOf is t's day in loc, as the counters store it.
+func dayOf(t time.Time, loc *time.Location) string { return t.In(loc).Format("2006-01-02") }
+
+// practiceGames is how many practice games a summary's days started.
+func practiceGames(g store.Summary) int {
 	n := 0
 	for _, d := range g.Days {
 		n += d.Practice

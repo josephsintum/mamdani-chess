@@ -34,8 +34,6 @@ type Server struct {
 	// StatsPassword guards GET /stats (Basic Auth, any user name). Empty
 	// means the page is off: the path serves the app shell like any other.
 	StatsPassword string
-	// StatsZone groups the stats page's days; nil means UTC.
-	StatsZone *time.Location
 }
 
 // New returns a Server for the games in hub that serves the frontend from

@@ -48,7 +48,7 @@ func TestRestoreAfterARestart(t *testing.T) {
 	}
 	defer st.Close()
 	h2 := game.NewHub(odd{}, st)
-	if err := restore(ctx, st, h2, time.Now()); err != nil {
+	if err := start(ctx, st, h2, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	g, ok := h2.Get(playing.Code())
@@ -65,7 +65,7 @@ func TestRestoreAfterARestart(t *testing.T) {
 	// A day later, the waiting game expires. It ended just now, so it is
 	// still restored, to show that it's over.
 	h3 := game.NewHub(odd{}, st)
-	if err := restore(ctx, st, h3, time.Now().Add(game.DefaultIdle+time.Minute)); err != nil {
+	if err := start(ctx, st, h3, time.Now().Add(game.DefaultIdle+time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	g3, ok := h3.Get(waiting.Code())
@@ -74,6 +74,49 @@ func TestRestoreAfterARestart(t *testing.T) {
 	}
 	if v, _ := g3.View("carol"); v.Result == nil || v.Result.Reason != game.Expired {
 		t.Fatalf("result %+v, want expired", v.Result)
+	}
+}
+
+// The stats work finishes before any game is restored (each restored
+// game's grace starts then), and a first start fills the counters from the
+// games already saved.
+func TestStartReadiesStatsBeforeRestoring(t *testing.T) {
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "games.db")
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	h := game.NewHub(odd{}, st)
+	playing, _ := h.Create("alice", false)
+	sub, _ := playing.Join("bob")
+	defer playing.Leave(sub)
+	// A new database has no counters version yet, as on the first start
+	// with counters: the start rebuilds.
+	var buf bytes.Buffer
+	defer slog.SetDefault(slog.Default())
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	if err := start(ctx, st, game.NewHub(odd{}, st), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	rebuilt, restored := strings.Index(out, "stats rebuilt"), strings.Index(out, "games restored")
+	if rebuilt < 0 || restored < 0 || rebuilt > restored {
+		t.Fatalf("want the rebuild logged before the restore:\n%s", out)
+	}
+	days, err := st.Counts(ctx, "", "9999-12-31")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := map[string]int{}
+	for _, d := range days {
+		for k, n := range d.N {
+			sum[k] += n
+		}
+	}
+	if sum["games.friend"] != 1 || sum["friend.joined"] != 1 || sum["event.restart"] != 1 {
+		t.Fatalf("counters after the first start: %v", sum)
 	}
 }
 

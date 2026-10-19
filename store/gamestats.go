@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -30,18 +32,60 @@ type Search struct {
 	Others             int
 }
 
-// AddGameStats writes a game's stats on their own (the backfill). A game
-// that has a row keeps it.
+// AddGameStats writes a game's stats on their own (the backfill) and
+// moves its counters from "ended, road unknown" to what the stats say. A
+// game that has a row keeps it and counts nothing.
 func (s *Store) AddGameStats(ctx context.Context, code string, st GameStats) error {
-	return addGameStats(ctx, s.db, code, st)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	added, err := addGameStats(ctx, tx, code, st)
+	if err != nil || !added {
+		return err
+	}
+	var created int64
+	var result, winner sql.NullString
+	var playtest bool
+	f := gameFacts{}
+	err = tx.QueryRowContext(ctx, `SELECT created_at, kind, rematch_of IS NOT NULL, black IS NOT NULL, result, winner, playtest FROM games WHERE code = ?`, code).
+		Scan(&created, &f.Kind, &f.Rematch, &f.HasBlack, &result, &winner, &playtest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return tx.Commit() // a stats row for no game: nothing to count
+	}
+	if err != nil {
+		return err
+	}
+	if !playtest && result.Valid && result.String != "retired" {
+		f.Created, f.Result, f.Winner = time.UnixMilli(created), result.String, winner.String
+		if f.WinnerMS, f.HasClock, err = lastClock(ctx, tx, code, f.Winner); err != nil {
+			return err
+		}
+		before := counts{}
+		countEnded(before, s.zone, f)
+		f.Stats = &st
+		after := counts{}
+		countEnded(after, s.zone, f)
+		if err := addCounts(ctx, tx, after.minus(before)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
-func addGameStats(ctx context.Context, db execer, code string, st GameStats) error {
-	_, err := db.ExecContext(ctx,
+// addGameStats writes a stats row unless the game has one, and reports
+// whether it wrote.
+func addGameStats(ctx context.Context, db execer, code string, st GameStats) (bool, error) {
+	res, err := db.ExecContext(ctx,
 		`INSERT OR IGNORE INTO game_stats (game, moves, opened, reset, closed_rounds, closed_cap, repaired, fell, saving_rolls, saved, white_lost, black_lost, mate_by_roll, open_hist)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		code, st.Moves, st.Opened, st.Reset, st.ClosedRounds, st.ClosedCap, st.Repaired, st.Fell, st.SavingRolls, st.Saved, st.WhiteLost, st.BlackLost, st.MateByRoll, formatHist(st.OpenHist))
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // GamesWithoutStats returns every game under the current rules that got
@@ -89,18 +133,38 @@ func (s *Store) HasGameStats(ctx context.Context, code string) (bool, error) {
 	return has, err
 }
 
-// AddSearch logs one quick-match search.
+// AddSearch logs one quick-match search and counts it.
 func (s *Store) AddSearch(ctx context.Context, sr Search) error {
-	_, err := s.db.ExecContext(ctx,
+	c := counts{}
+	countSearch(c, s.zone, sr)
+	return s.insertCounted(ctx, c,
 		`INSERT INTO searches (started_at, ended_at, matched, others) VALUES (?, ?, ?, ?)`,
 		sr.StartedAt.UnixMilli(), sr.EndedAt.UnixMilli(), sr.Matched, sr.Others)
-	return err
 }
 
-// AddEvent counts one event of kind ("practice", "reconnect", "restart").
+// AddEvent logs one event of kind ("practice", "reconnect", "restart") and
+// counts it.
 func (s *Store) AddEvent(ctx context.Context, kind string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO events (at, kind) VALUES (?, ?)`, at.UnixMilli(), kind)
-	return err
+	c := counts{}
+	countEvent(c, s.zone, kind, at)
+	return s.insertCounted(ctx, c, `INSERT INTO events (at, kind) VALUES (?, ?)`, at.UnixMilli(), kind)
+}
+
+// insertCounted runs one raw insert and adds its counts, in one
+// transaction (one commit, as the insert alone was).
+func (s *Store) insertCounted(ctx context.Context, c counts, query string, args ...any) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return err
+	}
+	if err := addCounts(ctx, tx, c); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // formatHist writes [6]int as "9,14,19,22,18,18"; parseHist reads it back.
@@ -126,35 +190,4 @@ func parseHist(s string) ([6]int, error) {
 		h[i] = n
 	}
 	return h, nil
-}
-
-// Searches returns the searches that started in [from, to), oldest first.
-func (s *Store) Searches(ctx context.Context, from, to time.Time) ([]Search, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT started_at, ended_at, matched, others FROM searches
-		 WHERE started_at >= ? AND started_at < ? ORDER BY started_at, rowid`,
-		from.UnixMilli(), to.UnixMilli())
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Search
-	for rows.Next() {
-		var sr Search
-		var started, ended int64
-		if err := rows.Scan(&started, &ended, &sr.Matched, &sr.Others); err != nil {
-			return nil, err
-		}
-		sr.StartedAt, sr.EndedAt = time.UnixMilli(started), time.UnixMilli(ended)
-		out = append(out, sr)
-	}
-	return out, rows.Err()
-}
-
-// CountEvents counts the events of kind that happened in [from, to).
-func (s *Store) CountEvents(ctx context.Context, kind string, from, to time.Time) (int, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE kind = ? AND at >= ? AND at < ?`,
-		kind, from.UnixMilli(), to.UnixMilli()).Scan(&n)
-	return n, err
 }

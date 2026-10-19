@@ -5,34 +5,60 @@ import (
 	"time"
 )
 
-func TestBrowserErrorsCountAndPrune(t *testing.T) {
+func TestBrowserErrorsCountedAndLatest(t *testing.T) {
 	ctx := t.Context()
 	s, _ := openTemp(t)
 	must(t, s.AddBrowserError(ctx, BrowserError{At: t0, Path: "/game", Message: "TypeError: x"}))
 	must(t, s.AddBrowserError(ctx, BrowserError{At: t0.Add(2 * time.Hour), Path: "/", Message: "TypeError: y"}))
-	// Searches and events go by the same cutoff.
-	must(t, s.AddSearch(ctx, Search{StartedAt: t0, EndedAt: t0.Add(2 * time.Hour)}))
-	must(t, s.AddSearch(ctx, Search{StartedAt: t0.Add(2 * time.Hour), EndedAt: t0.Add(3 * time.Hour)}))
-	must(t, s.AddEvent(ctx, "restart", t0))
-	must(t, s.AddEvent(ctx, "restart", t0.Add(2*time.Hour)))
-
-	st, err := s.BrowserErrors(ctx, t0, t0.Add(3*time.Hour))
+	if got := counters(t, s); got[dayOf(t0, time.UTC)+" errors"] != 2 {
+		t.Fatalf("counters %v, want 2 errors", got)
+	}
+	latest, err := s.LatestError(ctx, t0, t0.Add(3*time.Hour))
 	must(t, err)
-	if st.N != 2 || st.Latest != "TypeError: y" {
-		t.Fatalf("errors = %+v, want 2 and the later message", st)
+	if latest != "TypeError: y" {
+		t.Fatalf("latest %q", latest)
 	}
-	if st, err = s.BrowserErrors(ctx, t0.Add(3*time.Hour), t0.Add(4*time.Hour)); err != nil || st != (ErrorStats{}) {
-		t.Fatalf("a quiet range = %+v, %v", st, err)
+	if latest, err = s.LatestError(ctx, t0.Add(3*time.Hour), t0.Add(4*time.Hour)); err != nil || latest != "" {
+		t.Fatalf("a quiet range: %q, %v", latest, err)
 	}
+}
 
-	removed, err := s.PruneStats(ctx, t0.Add(time.Hour))
-	must(t, err)
-	if removed != 3 { // the first error, the first search and the first event
-		t.Fatalf("pruned %d rows, want 3", removed)
+// Past errorRowsPerDay a day the messages stop being stored, and the
+// errors are still counted. A rebuild keeps them: their messages were
+// never stored, so the rows can't recount them.
+func TestRebuildKeepsErrorsPastTheCap(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTemp(t)
+	for i := range errorRowsPerDay + 5 {
+		must(t, s.AddBrowserError(ctx, BrowserError{At: t0.Add(time.Duration(i) * time.Second), Path: "/", Message: "x"}))
 	}
-	var errs, searches, events int
-	must(t, s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM browser_errors), (SELECT COUNT(*) FROM searches), (SELECT COUNT(*) FROM events)`).Scan(&errs, &searches, &events))
-	if errs != 1 || searches != 1 || events != 1 {
-		t.Fatalf("%d errors, %d searches and %d events left, want 1 each", errs, searches, events)
+	var rows int
+	must(t, s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM browser_errors`).Scan(&rows))
+	if got := counters(t, s)[dayOf(t0, time.UTC)+" errors"]; rows != errorRowsPerDay || got != errorRowsPerDay+5 {
+		t.Fatalf("%d rows and %d counted, want %d and %d", rows, got, errorRowsPerDay, errorRowsPerDay+5)
+	}
+	if _, err := s.rebuild(ctx, t0); err != nil {
+		t.Fatal(err)
+	}
+	if got := counters(t, s)[dayOf(t0, time.UTC)+" errors"]; got != errorRowsPerDay+5 {
+		t.Fatalf("after a rebuild %d errors, want %d", got, errorRowsPerDay+5)
+	}
+}
+
+// Pruning cuts at a midnight in the store's zone, 400 days back.
+func TestPruneErrorsAtMidnight(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTempIn(t, newYork)
+	now := time.Date(2026, 10, 19, 15, 0, 0, 0, newYork)
+	cutoff := time.Date(2025, 9, 14, 0, 0, 0, 0, newYork) // 400 days before Oct 19, 2026
+	must(t, s.AddBrowserError(ctx, BrowserError{At: cutoff.Add(-time.Minute), Message: "old"}))
+	must(t, s.AddBrowserError(ctx, BrowserError{At: cutoff, Message: "kept"}))
+	n, err := s.PruneErrors(ctx, now)
+	must(t, err)
+	if n != 1 {
+		t.Fatalf("pruned %d, want 1", n)
+	}
+	if latest, _ := s.LatestError(ctx, time.Time{}, now); latest != "kept" {
+		t.Fatalf("left %q", latest)
 	}
 }

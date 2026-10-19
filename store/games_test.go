@@ -69,6 +69,13 @@ func TestEndGameFailsForAnUnknownGame(t *testing.T) {
 	}
 }
 
+func TestSeatBlackFailsForAnUnknownGame(t *testing.T) {
+	s, _ := openTemp(t)
+	if err := s.SeatBlack(t.Context(), "NOPE00", "bob", "", t0); err == nil {
+		t.Fatal("seating Black in a game that was never saved should fail")
+	}
+}
+
 func TestAddTurnRejectsADuplicatePly(t *testing.T) {
 	ctx := t.Context()
 	s, _ := openTemp(t)
@@ -128,7 +135,7 @@ func TestExpireWaiting(t *testing.T) {
 	}
 }
 
-func must(t *testing.T, err error) {
+func must(t testing.TB, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
@@ -211,5 +218,26 @@ func TestMigration6RetiresRules2Games(t *testing.T) {
 	must(t, err)
 	if len(got) != 1 || got[0].Code != "NEW002" {
 		t.Fatalf("loaded %+v, want only NEW002", got)
+	}
+}
+
+// A database that ran PR #25's migration 8 (game stats, no counters) gains
+// stats_days and stats_state from a later migration, so counted writes
+// work once it upgrades.
+func TestCountersMigrateAfterGameStats(t *testing.T) {
+	ctx := t.Context()
+	s := openAt(t, 8, `DROP TABLE IF EXISTS stats_days`, `DROP TABLE IF EXISTS stats_state`)
+	if _, err := s.EnsureCounters(ctx, t0); err != nil {
+		t.Fatalf("EnsureCounters: %v", err)
+	}
+	if err := s.CreateGame(ctx, Game{Code: "NEW003", White: "a", CreatedAt: t0}); err != nil {
+		t.Fatalf("CreateGame: %v", err)
+	}
+	// Only the rebuild reads searches and events, start to end: their
+	// time indexes go.
+	var n int
+	must(t, s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE name IN ('searches_started_at', 'events_at')`).Scan(&n))
+	if n != 0 {
+		t.Errorf("%d unused indexes left", n)
 	}
 }

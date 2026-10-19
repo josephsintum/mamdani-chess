@@ -36,6 +36,19 @@ func TestStatsRange(t *testing.T) {
 	}
 }
 
+// The page says when its counters are from an older version.
+func TestStatsSaysWhenCountersAreStale(t *testing.T) {
+	for _, stale := range []bool{false, true} {
+		var b strings.Builder
+		if err := statsTemplate.Execute(&b, statsPage{Stale: stale}); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(b.String(), "a rebuild failed, see the logs"); got != stale {
+			t.Errorf("stale %v: the line shows %v", stale, got)
+		}
+	}
+}
+
 func TestStatsNeedsPassword(t *testing.T) {
 	s, ts := newTestServer(t)
 	get := func(user, pass string) (int, http.Header, string) {
@@ -194,7 +207,7 @@ func TestStatsShowsTheGames(t *testing.T) {
 		`<h2>Games</h2>`, `<h2>Quick match</h2>`, `<h2>The road</h2>`,
 		"Checkmate", "Resignation", "Quick match 3", "Friend link 1", // games per day legend with totals
 		"How full the road gets", "Did the road decide it?", "Lost less to the road, and won",
-		"found an opponent", "0:19", "Streams reopened", "Server restarts",
+		"found an opponent", "Gave up within 30 s", "Under 1 min left", "Joined within 5 min", "Streams reopened", "Server restarts",
 		"from the 2 games with a stats row", "Rematches of friend games", "pieces, the Mamdani included",
 		"Mon 10 am–12 pm: 0 games", "Mon 10 pm–12 am: 0 games", "latest: TypeError: &lt;x&gt;",
 	} {
