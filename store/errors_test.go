@@ -24,8 +24,9 @@ func TestBrowserErrorsCountedAndLatest(t *testing.T) {
 }
 
 // Past errorRowsPerDay a day the messages stop being stored, and the
-// errors are still counted.
-func TestBrowserErrorsCappedPerDay(t *testing.T) {
+// errors are still counted. A rebuild keeps them: their messages were
+// never stored, so the rows can't recount them.
+func TestRebuildKeepsErrorsPastTheCap(t *testing.T) {
 	ctx := t.Context()
 	s, _ := openTemp(t)
 	for i := range errorRowsPerDay + 5 {
@@ -35,16 +36,6 @@ func TestBrowserErrorsCappedPerDay(t *testing.T) {
 	must(t, s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM browser_errors`).Scan(&rows))
 	if got := counters(t, s)[dayOf(t0, time.UTC)+" errors"]; rows != errorRowsPerDay || got != errorRowsPerDay+5 {
 		t.Fatalf("%d rows and %d counted, want %d and %d", rows, got, errorRowsPerDay, errorRowsPerDay+5)
-	}
-}
-
-// A rebuild keeps the errors counted past the cap: their messages were
-// never stored, so the rows can't recount them.
-func TestRebuildKeepsErrorsPastTheCap(t *testing.T) {
-	ctx := t.Context()
-	s, _ := openTemp(t)
-	for i := range errorRowsPerDay + 5 {
-		must(t, s.AddBrowserError(ctx, BrowserError{At: t0.Add(time.Duration(i) * time.Second), Path: "/", Message: "x"}))
 	}
 	if _, err := s.rebuild(ctx, t0); err != nil {
 		t.Fatal(err)

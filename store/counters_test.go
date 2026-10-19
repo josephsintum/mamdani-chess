@@ -95,34 +95,15 @@ func TestCountedGameWrites(t *testing.T) {
 	must(t, s.EndGame(ctx, "REMAT1", Result{EndedAt: t0.Add(time.Hour), Reason: "aborted"}, nil, nil))
 	must(t, s.EndGame(ctx, "PLAYT1", Result{EndedAt: t0.Add(time.Hour), Reason: "aborted"}, nil, nil))
 	want["end.aborted"]++
-	if got := counters(t, s); !reflect.DeepEqual(got, keysOn(day, want)) {
-		t.Fatalf("after ending:\n got %v\nwant %v", got, keysOn(day, want))
-	}
-}
-
-// A game counts on the day it was created, in the store's zone, however
-// late it ends.
-func TestGameCountsOnItsCreationDay(t *testing.T) {
-	ctx := t.Context()
-	s, _ := openTempIn(t, newYork)
-	created := time.Date(2026, 10, 3, 23, 30, 0, 0, newYork) // 03:30 UTC on Oct 4
-	must(t, s.CreateGame(ctx, Game{Code: "LATE01", White: "w", Black: "b", Kind: "quick", CreatedAt: created}))
-	must(t, s.EndGame(ctx, "LATE01", Result{EndedAt: created.Add(90 * time.Minute), Reason: "aborted"}, nil, nil))
-	want := map[string]int{"2026-10-03 games.quick": 1, "2026-10-03 end.aborted": 1}
-	if got := counters(t, s); !reflect.DeepEqual(got, want) {
-		t.Fatalf("counters %v, want %v", got, want)
-	}
-}
-
-func TestExpireWaitingCounts(t *testing.T) {
-	ctx := t.Context()
-	s, _ := openTemp(t)
+	// A link nobody opened expires; a playtest's expires uncounted.
 	must(t, s.CreateGame(ctx, Game{Code: "WAIT01", White: "w", CreatedAt: t0}))
 	must(t, s.CreateGame(ctx, Game{Code: "WAIT02", White: "w", CreatedAt: t0, Playtest: true}))
-	n, err := s.ExpireWaiting(ctx, t0.Add(time.Hour), t0.Add(25*time.Hour))
-	must(t, err)
-	if got := counters(t, s)[dayOf(t0, time.UTC)+" end.expired"]; n != 2 || got != 1 {
-		t.Fatalf("expired %d, counted %d; want 2 and 1 (the playtest isn't counted)", n, got)
+	must1(s.ExpireWaiting(ctx, t0.Add(time.Hour), t0.Add(25*time.Hour)))
+	want["games.friend"]++
+	want["friend.links"]++
+	want["end.expired"]++
+	if got := counters(t, s); !reflect.DeepEqual(got, keysOn(day, want)) {
+		t.Fatalf("after ending:\n got %v\nwant %v", got, keysOn(day, want))
 	}
 }
 
@@ -163,17 +144,20 @@ func TestEnsureCountersRebuildsOnlyWhenNeeded(t *testing.T) {
 	ctx := t.Context()
 	s, path := openTempIn(t, newYork)
 	now := time.Date(2026, 10, 19, 12, 0, 0, 0, newYork)
+	// A game counts on the day it was created, in the store's zone, however
+	// late it ends: 23:30 in New York is 03:30 UTC on Oct 4.
 	created := time.Date(2026, 10, 3, 23, 30, 0, 0, newYork)
 	must(t, s.CreateGame(ctx, Game{Code: "GAME01", White: "w", Black: "b", Kind: "quick", CreatedAt: created}))
+	must(t, s.EndGame(ctx, "GAME01", Result{EndedAt: created.Add(90 * time.Minute), Reason: "aborted"}, nil, nil))
 	// An errors count from before the cutoff day has no rows left to recount, so it stays.
 	must1(s.db.ExecContext(ctx, `INSERT INTO stats_days (day, key, n) VALUES ('2024-01-01', 'errors', 7), ('2024-01-01', 'games.quick', 3)`))
 
 	rep, err := s.EnsureCounters(ctx, now) // a new database: stats_state is empty
 	must(t, err)
-	if rep.Rows != 2 || s.CountersStale() { // the game, and the kept 2024 errors count
+	if rep.Rows != 3 || s.CountersStale() { // the game's two, and the kept 2024 errors count
 		t.Fatalf("first start: %+v, stale %v", rep, s.CountersStale())
 	}
-	want := map[string]int{"2026-10-03 games.quick": 1, "2024-01-01 errors": 7}
+	want := map[string]int{"2026-10-03 games.quick": 1, "2026-10-03 end.aborted": 1, "2024-01-01 errors": 7}
 	if got := counters(t, s); !reflect.DeepEqual(got, want) {
 		t.Fatalf("after the first rebuild %v, want %v", got, want)
 	}
@@ -186,7 +170,7 @@ func TestEnsureCountersRebuildsOnlyWhenNeeded(t *testing.T) {
 	s, err = OpenIn(path, time.UTC)
 	must(t, err)
 	defer s.Close()
-	if rep, err = s.EnsureCounters(ctx, now); err != nil || rep.Rows != 2 {
+	if rep, err = s.EnsureCounters(ctx, now); err != nil || rep.Rows != 3 {
 		t.Fatalf("zone change: %+v, %v", rep, err)
 	}
 	if got := counters(t, s); got["2026-10-04 games.quick"] != 1 {

@@ -51,7 +51,8 @@ func savedWithoutStats(t *testing.T, st *store.Store, now time.Time) {
 }
 
 // The counters are rebuilt before the backfill, so the backfill's counts
-// add to rebuilt counters instead of being thrown away by the rebuild.
+// add to rebuilt counters instead of being thrown away by the rebuild. (A
+// second backfill finds nothing: store's TestGamesWithoutStatsAndBackfillRow.)
 func TestPrepareStatsRebuildsBeforeBackfilling(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -65,25 +66,7 @@ func TestPrepareStatsRebuildsBeforeBackfilling(t *testing.T) {
 	prepareStats(t.Context(), st, time.Now())
 	out := buf.String()
 	rebuilt, backfilled := strings.Index(out, "stats rebuilt"), strings.Index(out, "game stats backfilled")
-	if rebuilt < 0 || backfilled < 0 || rebuilt > backfilled {
-		t.Fatalf("want the rebuild logged before the backfill:\n%s", out)
-	}
-}
-
-func TestBackfillSkipsGamesWithStats(t *testing.T) {
-	ctx := context.Background()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	savedWithoutStats(t, st, time.Now())
-	done, failed, err := backfillStats(ctx, st)
-	if err != nil || done != 1 || failed != 0 {
-		t.Fatalf("first run: %d %d %v", done, failed, err)
-	}
-	done, failed, err = backfillStats(ctx, st)
-	if err != nil || done != 0 || failed != 0 {
-		t.Fatalf("second run: %d %d %v", done, failed, err)
+	if rebuilt < 0 || backfilled < 0 || rebuilt > backfilled || !strings.Contains(out, "games=1 failed=0") {
+		t.Fatalf("want the rebuild logged before the backfill of one game:\n%s", out)
 	}
 }
