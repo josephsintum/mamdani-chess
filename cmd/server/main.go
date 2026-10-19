@@ -88,9 +88,9 @@ func run() error {
 	return nil
 }
 
-// start readies the store before anything can play: it prunes old browser
-// errors, ends games nobody joined within a day, brings the stats up to
-// date, and only then rebuilds every unfinished game, and every game that
+// start readies the store before anything can play: it ends games nobody
+// joined within a day, brings the stats up to date (prepareStats), and
+// only then rebuilds every unfinished game, and every game that
 // ended within the last day, so open tabs carry on after a restart or a
 // deploy. Restoring last means no restored game's clock runs while the
 // stats work holds the one database connection.

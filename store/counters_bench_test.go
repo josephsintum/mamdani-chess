@@ -73,20 +73,38 @@ func BenchmarkRebuild(b *testing.B) {
 	}
 }
 
-// BenchmarkTotalsAgree is the check every start makes when the counters
-// are current, over 100,000 games.
-func BenchmarkTotalsAgree(b *testing.B) {
+// BenchmarkStartChecks is what every start does when the counters are
+// current: prune the raw rows and check the totals. Over 100,000 games and
+// 400 days of 1,000 searches and 1,000 events a day, the oldest day's past
+// the cutoff.
+func BenchmarkStartChecks(b *testing.B) {
 	s, err := Open(filepath.Join(b.TempDir(), "bench.db"))
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer s.Close()
+	ctx := b.Context()
 	seedGames(b, s, 100_000, 400)
-	if _, err := s.rebuild(b.Context(), t0); err != nil {
+	start := t0.AddDate(0, 0, -401).UnixMilli()
+	step := int64(401*24*time.Hour/time.Millisecond) / 401_000
+	for _, q := range []string{
+		`WITH RECURSIVE i(x) AS (SELECT 0 UNION ALL SELECT x + 1 FROM i WHERE x < 401000 - 1)
+		 INSERT INTO searches (started_at, ended_at, matched, others) SELECT ? + x * ?, ? + x * ? + 20000, x % 2, x % 3 FROM i`,
+		`WITH RECURSIVE i(x) AS (SELECT 0 UNION ALL SELECT x + 1 FROM i WHERE x < 401000 - 1)
+		 INSERT INTO events (at, kind) SELECT ? + x * ?, 'reconnect' FROM i`,
+	} {
+		if _, err := s.db.ExecContext(ctx, q, start, step, start, step); err != nil {
+			b.Fatal(err)
+		}
+	}
+	if _, err := s.rebuild(ctx, t0); err != nil {
 		b.Fatal(err)
 	}
 	for b.Loop() {
-		if agree, err := s.totalsAgree(b.Context(), t0); err != nil || !agree {
+		if _, err := s.Prune(ctx, t0); err != nil {
+			b.Fatal(err)
+		}
+		if agree, err := s.totalsAgree(ctx, t0); err != nil || !agree {
 			b.Fatalf("agree %v, %v", agree, err)
 		}
 	}

@@ -17,7 +17,8 @@ type BrowserError struct {
 // errorRowsPerDay caps the raw error rows kept a day, so a flood of
 // reports (there are no per-IP limits yet) can't fill the database. Past
 // it, an error folds into the newest row: that row takes its message and
-// time and stands for one more error.
+// time and stands for one more error. A rebuild in another STATS_TZ puts a
+// folded row's errors all on its newest one's day; the totals hold.
 const errorRowsPerDay = 200
 
 // eventRowsPerDay caps the raw event rows kept a day for each kind, the
@@ -36,22 +37,24 @@ func (s *Store) AddBrowserError(ctx context.Context, e BrowserError) error {
 }
 
 // insertFolded adds a row with args and its counts, in one transaction.
-// Once the day's key has counted limit, fold runs instead with the same
-// args, folding the report into the newest row.
+// With a fold query, once the day's key has counted limit, fold runs
+// instead with the same args, folding the report into the newest row.
 func (s *Store) insertFolded(ctx context.Context, c counts, day, key string, limit int, insert, fold string, args ...any) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	var today int
-	err = tx.QueryRowContext(ctx, `SELECT n FROM stats_days WHERE day = ? AND key = ?`, day, key).Scan(&today)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
 	query := insert
-	if today >= limit {
-		query = fold
+	if fold != "" {
+		var today int
+		err = tx.QueryRowContext(ctx, `SELECT n FROM stats_days WHERE day = ? AND key = ?`, day, key).Scan(&today)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if today >= limit {
+			query = fold
+		}
 	}
 	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 		return err

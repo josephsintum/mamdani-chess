@@ -8,7 +8,10 @@ import (
 
 // countersVersion is what the stats_days keys mean. Bump it whenever a
 // key's meaning changes (a new bucket edge, a new rule for what counts):
-// the next start rebuilds every counter from the raw rows.
+// the next start rebuilds every counter from the raw rows. Searches,
+// events and errors are pruned after 400 days, so their counters for older
+// days are kept as they were: a new search bucket edge can't re-bucket
+// them, and their old keys drop out of the histograms.
 const countersVersion = 2 // 2: lengths come from the turns, for every game that got going
 
 // counts is what one write adds to the daily counters: an amount per day
@@ -126,7 +129,9 @@ func countEnded(c counts, loc *time.Location, f gameFacts) {
 	if got {
 		c.add(day, "got_going", 1)
 		c.add(day, "heat."+strconv.Itoa(f.Created.In(loc).Hour()/2), 1)
-		c.add(day, "len."+lengthBucket(f.Moves), 1)
+		if f.Moves > 0 { // a game resigned before its first move has no length
+			c.add(day, "len."+lengthBucket(f.Moves), 1)
+		}
 		if f.Result == "timeout" {
 			c.add(day, "clock.decided", 1)
 		}

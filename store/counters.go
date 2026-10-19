@@ -129,8 +129,9 @@ type RebuildReport struct {
 // another version or zone, or never (a new database, or the first start
 // with counters), or when their totals disagree with the rows (rows a
 // build without counters wrote, after a rollback). It returns nil and a
-// zero report when nothing was needed. On an error the old counters stay and CountersStale reports it.
-// Run it before anything else uses the store: it holds the one connection.
+// zero report when nothing was needed; a check that fails rebuilds. On an
+// error the old counters stay and CountersStale reports it. Run it before
+// anything else uses the store: it holds the one connection.
 func (s *Store) EnsureCounters(ctx context.Context, now time.Time) (RebuildReport, error) {
 	var version int
 	var zone string
@@ -140,12 +141,7 @@ func (s *Store) EnsureCounters(ctx context.Context, now time.Time) (RebuildRepor
 		return RebuildReport{}, err
 	}
 	if err == nil && version == countersVersion && zone == s.zone.String() {
-		agree, err := s.totalsAgree(ctx, now)
-		if err != nil {
-			s.stale.Store(true)
-			return RebuildReport{}, err
-		}
-		if agree {
+		if agree, err := s.totalsAgree(ctx, now); err == nil && agree {
 			s.stale.Store(false)
 			return RebuildReport{}, nil
 		}
@@ -274,8 +270,8 @@ func winnerClock(winner string, whiteMS, blackMS sql.NullInt64) (int64, bool) {
 	return 0, false
 }
 
-// totalsAgree checks the counters against the rows, one total per table:
-// games made, games ended, and from the cutoff day searches, events and
+// totalsAgree checks the counters against the rows: games made, friend
+// links joined, games ended, and from the cutoff day searches, events and
 // browser errors.
 func (s *Store) totalsAgree(ctx context.Context, now time.Time) (bool, error) {
 	cut := s.cutoff(now)
@@ -283,6 +279,8 @@ func (s *Store) totalsAgree(ctx context.Context, now time.Time) (bool, error) {
 	err := s.db.QueryRowContext(ctx, `SELECT
 		(SELECT COUNT(*) FROM games WHERE playtest = 0 AND COALESCE(result, '') != 'retired')
 		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key IN ('games.quick', 'games.friend'))
+		AND (SELECT COUNT(*) FROM games WHERE playtest = 0 AND COALESCE(result, '') != 'retired' AND kind = 'friend' AND rematch_of IS NULL AND black IS NOT NULL)
+		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key = 'friend.joined')
 		AND (SELECT COUNT(*) FROM games WHERE playtest = 0 AND result IS NOT NULL AND result != 'retired')
 		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key LIKE 'end.%')
 		AND (SELECT COUNT(*) FROM searches WHERE started_at >= ?1)

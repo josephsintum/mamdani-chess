@@ -89,8 +89,8 @@ func TestCountedGameWrites(t *testing.T) {
 	}
 	// A flag fall against a side that can't mate is a draw: no clock.decided, no winner's clock.
 	must(t, s.EndGame(ctx, "QUICK1", Result{EndedAt: t0.Add(time.Hour), Reason: "timeout_vs_insufficient"}, nil, &GameStats{Moves: 90, Fell: 2}))
-	// Its length comes from the turns, and it saved none.
-	for k, n := range map[string]int{"end.draw": 1, "got_going": 1, heat: 1, "len.1-10": 1, "road.games": 1, "road.fell": 2} {
+	// Its length comes from the turns, and it saved none: no length.
+	for k, n := range map[string]int{"end.draw": 1, "got_going": 1, heat: 1, "road.games": 1, "road.fell": 2} {
 		want[k] += n
 	}
 	must(t, s.EndGame(ctx, "REMAT1", Result{EndedAt: t0.Add(time.Hour), Reason: "aborted"}, nil, nil))
@@ -124,7 +124,7 @@ func TestLengthComesFromTheTurns(t *testing.T) {
 }
 
 // The backfill moves a game from "ended, road unknown" to what its stats
-// say (its length was counted from its turns when it ended), and a second
+// say (its length comes from its turns, and it saved none), and a second
 // backfill of the same game counts nothing.
 func TestAddGameStatsMovesTheCounters(t *testing.T) {
 	ctx := t.Context()
@@ -135,7 +135,7 @@ func TestAddGameStatsMovesTheCounters(t *testing.T) {
 	st := GameStats{Moves: 31, Opened: 4, Fell: 1, BlackLost: 1, MateByRoll: true}
 	must(t, s.AddGameStats(ctx, "OLD001", st))
 	must(t, s.AddGameStats(ctx, "OLD001", st))
-	want := keysOn(day, map[string]int{"games.quick": 1, "end.roll": 1, "got_going": 1, "heat." + strconv.Itoa(t0.UTC().Hour()/2): 1, "len.1-10": 1,
+	want := keysOn(day, map[string]int{"games.quick": 1, "end.roll": 1, "got_going": 1, "heat." + strconv.Itoa(t0.UTC().Hour()/2): 1,
 		"road.games": 1, "road.opened": 4, "road.fell": 1, "road.mate_by_roll": 1, "decided.less": 1})
 	if got := counters(t, s); !reflect.DeepEqual(got, want) {
 		t.Fatalf("\n got %v\nwant %v", got, want)
@@ -240,6 +240,68 @@ func TestEnsureCountersRebuildsWhenTheTotalsDisagree(t *testing.T) {
 	}
 	if rep, err := s.EnsureCounters(ctx, t0); err != nil || rep != (RebuildReport{}) {
 		t.Fatalf("totals agree, yet: %+v, %v", rep, err)
+	}
+}
+
+// A join an older build saved without counting is noticed too: games made
+// and ended still agree, the joins don't.
+func TestEnsureCountersNoticesAnUncountedJoin(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTemp(t)
+	must(t, s.CreateGame(ctx, Game{Code: "LINK01", White: "w", CreatedAt: t0}))
+	must1(s.EnsureCounters(ctx, t0))
+	must1(s.db.ExecContext(ctx, `UPDATE games SET black = 'b' WHERE code = 'LINK01'`))
+	rep, err := s.EnsureCounters(ctx, t0)
+	must(t, err)
+	if got := counters(t, s)[DayOf(t0, time.UTC)+" friend.joined"]; rep.Rows == 0 || got != 1 {
+		t.Fatalf("report %+v, friend.joined %d; want a rebuild counting the join", rep, got)
+	}
+}
+
+// The counters a rebuild keeps for pruned days are exactly the ones
+// searches, events and errors feed (rawKeys): none of a game's, which are
+// recounted from the games, and every one those rows count.
+func TestRawKeysMatchTheirCountingFunctions(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTemp(t)
+	raw, games := counts{}, counts{}
+	for _, sr := range []Search{{StartedAt: t0, EndedAt: t0.Add(time.Second), Matched: true}, {StartedAt: t0, EndedAt: t0.Add(time.Hour), Others: 1}} {
+		countSearch(raw, time.UTC, sr)
+	}
+	for _, kind := range []string{"practice", "reconnect", "restart"} {
+		countEvent(raw, time.UTC, kind, t0, 1)
+	}
+	countError(raw, time.UTC, t0, 1)
+	st := &GameStats{Moves: 30, Opened: 1, Reset: 1, ClosedRounds: 1, ClosedCap: 1, Repaired: 1, Fell: 1, SavingRolls: 1, Saved: 1, MateByRoll: true, OpenHist: [6]int{1, 1, 1, 1, 1, 1}}
+	for _, f := range []gameFacts{
+		{Created: t0, Kind: "friend", HasBlack: true, Joined: t0.Add(time.Minute), Result: "timeout", Winner: "white", Moves: 30, HasClock: true, WinnerMS: 1, Stats: st},
+		{Created: t0, Kind: "quick", Result: "checkmate", Winner: "black", Moves: 3, Stats: st},
+		{Created: t0, Kind: "friend", Rematch: true, Result: "aborted"},
+	} {
+		countCreated(games, time.UTC, f)
+		countJoined(games, time.UTC, f)
+		countEnded(games, time.UTC, f)
+	}
+	must(t, addCounts(ctx, s.db, raw))
+	must(t, addCounts(ctx, s.db, games))
+	rows, err := s.db.QueryContext(ctx, `SELECT key FROM stats_days WHERE `+rawKeys)
+	must(t, err)
+	defer rows.Close()
+	matched := map[string]bool{}
+	for rows.Next() {
+		var key string
+		must(t, rows.Scan(&key))
+		matched[key] = true
+	}
+	for k := range raw {
+		if !matched[k.key] {
+			t.Errorf("rawKeys misses %q", k.key)
+		}
+	}
+	for k := range games {
+		if matched[k.key] {
+			t.Errorf("rawKeys matches the game key %q", k.key)
+		}
 	}
 }
 
