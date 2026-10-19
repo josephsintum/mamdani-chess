@@ -1,7 +1,7 @@
 # Stats counters: daily counts written with the data
 
 **Date:** 2026-10-19
-**Status:** Agreed in brainstorming; reviewed for server cost (findings folded in); awaiting spec review.
+**Status:** Built on branch `stats-counters` ([plan](../plans/2026-10-19-stats-counters.md)), stacked on PR #25.
 **Builds on:** [the stats spec](2026-10-08-stats-design.md) (what the page shows and why). This replaces that spec's 24-hour cache (plan 3), which is no longer needed.
 
 ## Why
@@ -61,7 +61,7 @@ The `store` package is the only writer, so counting lives there, in each method'
 
 - **One statement per write.** The counting function returns the write's keys and amounts; zero amounts are dropped (many `road.*` values are 0, so a game end writes about 12 rows, not 25); the rest go in one multi-row upsert: `INSERT INTO stats_days (day, key, n) VALUES (?, ?, ?), (?, ?, ?), … ON CONFLICT (day, key) DO UPDATE SET n = n + excluded.n`.
 - **The store reads what it counts from the row it updates, not from the caller.** `EndGame` updates `WHERE code = ? AND ended_at IS NULL RETURNING created_at, kind, rematch_of, joined_at, playtest`; the winner's clock is the last turn's, by one primary-key seek (`SELECT white_ms, black_ms FROM turns WHERE game = ? ORDER BY ply DESC LIMIT 1`, after the final turn is written). Moves come from the `GameStats` the game passes in. Turns are never counted or scanned. `SeatBlack` updates `WHERE code = ? AND black IS NULL RETURNING created_at, kind, rematch_of, playtest`. `ExpireWaiting` updates with `RETURNING created_at, playtest` and groups the days in Go (SQLite can't apply an IANA zone). `CreateGame` has the row it inserts. `AddGameStats` (the backfill) reads the game's `created_at`, `kind`, `rematch_of`, `result`, `winner` and `playtest` by primary key.
-- **Only what changed counts, and a no-op is not an error.** A guarded update that changes no row (a repeated `EndGame` or `SeatBlack`) counts nothing and returns nil. Today `execOne` returns an error when no row changed, which would retire the game; these two calls stop using it. `AddGameStats` counts only when its `INSERT OR IGNORE` inserted.
+- **Only what changed counts, and a no-op is not an error.** A guarded update that changes no row (a repeated `EndGame` or `SeatBlack`) counts nothing and returns nil; one for a game that was never saved still returns an error, as before (a primary-key check that runs only when no row changed). Today `execOne` returns an error when no row changed, which would retire the game; these two calls stop using it, and `execOne` goes. `AddGameStats` counts only when its `INSERT OR IGNORE` inserted, and moves the game's counters from "ended, road unknown" to what the stats say.
 - **Counting can't fail on its own.** The counting functions are pure: no I/O, no error returns, every input mapped to a key (an unknown result goes to `end.other`, which the page doesn't show). The only way a counted write can fail is the SQL failing, which would fail the write anyway. So counting adds no new way for a game's save to fail (a failed save retires the game).
 - **Searches, events and errors add no commit.** `AddSearch`, `AddEvent` and `AddBrowserError` are already one transaction each; they become a two-statement transaction (the raw insert and one upsert). With WAL and `synchronous(NORMAL)` a commit doesn't fsync.
 - **Error spam stays cheap.** Until milestone 07's per-IP limits, `AddBrowserError` reads today's `errors` counter (a primary-key lookup) and stops storing the raw message after 200 a day, while still counting.
@@ -98,8 +98,8 @@ Whether the counters are current is known in memory from startup (below), so the
 What changes on the page:
 
 - **Game length:** the moves histogram; "Decided on the clock" stays; the median line goes. A new small histogram, **Winner's clock left**, with the line "under 1 min left: N%" (`lt30s` + `30s-1m` over all `left.*`).
-- **Friend links:** joined, finished and rematches as now; the median time to join becomes a histogram with "joined within 5 min: N%" (`lt1m` + `1-5m` over `friend.joined`).
-- **Quick match:** the wait histogram as now; "gave up after" becomes a histogram with "gave up within 30 s: N%" (`lt10s` + `10-30s` over `search.gaveup`); found an opponent and searched when nobody else was, as now. The median wait line goes.
+- **Friend links:** joined, finished and rematches as now; the median time to join becomes its own card, **Time to join**, a histogram with "joined within 5 min: N%" (`lt1m` + `1-5m` over the joins with a known time).
+- **Quick match:** three cards: the wait histogram, **Gave up after** (a histogram, with "gave up within 30 s: N%": `lt10s` + `10-30s` over `search.gaveup`), and found an opponent with "searched when nobody else was". The median wait line goes.
 - **When people play:** the same grid, from `heat.*` per day.
 
 ## Startup

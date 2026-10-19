@@ -1,7 +1,7 @@
 # Stats: first-party game metrics
 
 **Date:** 2026-10-08 (revised 2026-10-19: game stats only)
-**Status:** Agreed. Plan 1 built (PR #22); plan 2 built ([2026-10-09-stats-2-games.md](../plans/2026-10-09-stats-2-games.md)). Plan 1's visit tracking was removed before it shipped (2026-10-19, below).
+**Status:** Agreed. Plan 1 built (PR #22); plan 2 built ([2026-10-09-stats-2-games.md](../plans/2026-10-09-stats-2-games.md)). Plan 1's visit tracking was removed before it shipped (2026-10-19, below). The page reads daily counters ([counters spec](2026-10-19-stats-counters-design.md)).
 **Design:** the canvas https://claude.ai/artifact/Rzwy4PSQuJoKNZ629PYogL (Full site tab). It still shows the Visitors section and the funnel, which the page no longer has.
 
 ## Why
