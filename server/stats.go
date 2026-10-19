@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"mamdani-chess/store"
@@ -145,6 +146,7 @@ func share(n, of int) int {
 // statsPage is what the template reads.
 type statsPage struct {
 	Range, Days string
+	Zone        string // the zone the days and hours are in, e.g. "Pacific time (PDT)"
 	Ranges      []statsRangeOption
 	LatestError string
 	// Stale says the counters are from an older version: a rebuild failed.
@@ -272,7 +274,7 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "latest error", err)
 		return
 	}
-	page := statsPage{Range: label, Days: days, LatestError: latest, Stale: s.store.CountersStale()}
+	page := statsPage{Range: label, Days: days, Zone: zoneLabel(loc, time.Now()), LatestError: latest, Stale: s.store.CountersStale()}
 	if !from.IsZero() {
 		prev := store.Summarize(counted[:split], readFrom, fromDay)
 		page.Before = "vs " + rangeLabel(prevFrom, from)
@@ -325,6 +327,26 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 // statsTimeout bounds the page's reads, so it can never hold the one
 // connection long enough to keep a game's save waiting.
 const statsTimeout = 2 * time.Second
+
+// usZones name the US zones by region, as people say them.
+var usZones = map[string]string{
+	"America/Los_Angeles": "Pacific", "America/Denver": "Mountain", "America/Phoenix": "Mountain",
+	"America/Chicago": "Central", "America/New_York": "Eastern",
+}
+
+// zoneLabel names loc for the page: "Pacific time (PDT)" for a US zone,
+// "London time (BST)" for another, with the abbreviation in use at now.
+func zoneLabel(loc *time.Location, now time.Time) string {
+	name, abbr := loc.String(), now.In(loc).Format("MST")
+	if name == "UTC" {
+		return name
+	}
+	if region, ok := usZones[name]; ok {
+		return region + " time (" + abbr + ")"
+	}
+	city := strings.ReplaceAll(name[strings.LastIndex(name, "/")+1:], "_", " ")
+	return city + " time (" + abbr + ")"
+}
 
 // practiceGames is how many practice games a summary's days started.
 func practiceGames(g store.Summary) int {

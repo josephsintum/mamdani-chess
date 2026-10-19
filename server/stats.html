@@ -49,7 +49,7 @@ section{display:flex;flex-direction:column;gap:16px}
 <main class="main"><div class="wrap">
 
 <div class="top">
-<div><h1>Stats</h1><p class="sub">{{.Range}}</p></div>
+<div><h1>Stats</h1><p class="sub">{{.Range}}{{with .Zone}} · {{.}}{{end}}</p></div>
 <div class="seg" role="group" aria-label="Range">{{range .Ranges}}<a href="?days={{.Days}}"{{if .On}} class="on"{{end}}>{{.Label}}</a>{{end}}</div>
 </div>
 {{if .Stale}}<p class="stale">These counts are from an older version: a rebuild failed, see the logs.</p>{{end}}
