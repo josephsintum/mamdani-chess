@@ -43,6 +43,12 @@ func dayOf(t time.Time, loc *time.Location) string {
 	return t.In(loc).Format("2006-01-02")
 }
 
+// between is how long from a to b as the saved rows tell it: both in whole
+// milliseconds, so a live count and a rebuild bucket it the same.
+func between(a, b time.Time) time.Duration {
+	return time.Duration(b.UnixMilli()-a.UnixMilli()) * time.Millisecond
+}
+
 // gameFacts is what counting needs to know about a game. The store reads
 // it from the row it writes (or, in a rebuild, from the saved game).
 type gameFacts struct {
@@ -88,7 +94,7 @@ func countJoined(c counts, loc *time.Location, f gameFacts) {
 	day := dayOf(f.Created, loc)
 	c.add(day, "friend.joined", 1)
 	if !f.Joined.IsZero() {
-		c.add(day, "join."+joinBucket(f.Joined.Sub(f.Created)), 1)
+		c.add(day, "join."+joinBucket(between(f.Created, f.Joined)), 1)
 	}
 }
 
@@ -176,7 +182,7 @@ func countSearch(c counts, loc *time.Location, sr Search) {
 	if sr.Others == 0 {
 		c.add(day, "search.alone", 1)
 	}
-	waited := waitBucket(sr.EndedAt.Sub(sr.StartedAt))
+	waited := waitBucket(between(sr.StartedAt, sr.EndedAt))
 	if sr.Matched {
 		c.add(day, "search.matched", 1)
 		c.add(day, "wait."+waited, 1)

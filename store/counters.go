@@ -183,7 +183,10 @@ func (s *Store) rebuild(ctx context.Context, now time.Time) (RebuildReport, erro
 }
 
 // recountGames streams every game with its stats row and its last turn's
-// clocks (two primary-key seeks), never its turns.
+// clocks (two primary-key seeks), never its turns. Playtests and retired
+// games count nowhere: only a migration retires a game, its game was saved
+// under rules since replaced, and a migration that retires games comes
+// with a new countersVersion.
 func (s *Store) recountGames(ctx context.Context, c counts) error {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT g.created_at, g.kind, g.rematch_of IS NOT NULL, g.black IS NOT NULL, g.joined_at, g.result, g.winner,
@@ -191,7 +194,7 @@ func (s *Store) recountGames(ctx context.Context, c counts) error {
 		       (SELECT black_ms FROM turns t WHERE t.game = g.code ORDER BY ply DESC LIMIT 1),
 		       s.moves, s.opened, s.reset, s.closed_rounds, s.closed_cap, s.repaired, s.fell, s.saving_rolls, s.saved, s.white_lost, s.black_lost, s.mate_by_roll, s.open_hist
 		FROM games g LEFT JOIN game_stats s ON s.game = g.code
-		WHERE g.playtest = 0`)
+		WHERE g.playtest = 0 AND COALESCE(g.result, '') != 'retired'`)
 	if err != nil {
 		return err
 	}
@@ -223,8 +226,7 @@ func (s *Store) recountGames(ctx context.Context, c counts) error {
 		}
 		countCreated(c, s.zone, f)
 		countJoined(c, s.zone, f)
-		// Retired games were ended by a migration, which counts nothing.
-		if f.Result != "" && f.Result != "retired" {
+		if f.Result != "" {
 			countEnded(c, s.zone, f)
 		}
 	}

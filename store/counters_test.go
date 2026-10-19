@@ -266,9 +266,17 @@ func TestLiveCountingEqualsRebuild(t *testing.T) {
 	}
 	_, err := s.ExpireWaiting(ctx, start.AddDate(0, 0, 11), start.AddDate(0, 0, 12))
 	must(t, err)
-	// A migration retires an unfinished game without counting it.
-	must(t, s.CreateGame(ctx, Game{Code: "RETIRE", White: "w", Black: "b", Kind: "quick", CreatedAt: at()}))
-	must1(s.db.ExecContext(ctx, `UPDATE games SET ended_at = 1, result = 'retired' WHERE code = 'RETIRE'`))
+	// A game a migration retired was saved before the counters: it counts
+	// nowhere, neither made nor ended.
+	must1(s.db.ExecContext(ctx, `INSERT INTO games (code, white, black, kind, created_at, ended_at, result)
+		VALUES ('RETIRE', 'w', 'b', 'quick', ?, ?, 'retired')`, at().UnixMilli(), at().UnixMilli()))
+	// Times are saved in whole milliseconds, so a wait or a join a fraction
+	// of a millisecond short of a bucket's edge must land where the saved
+	// times put it.
+	edge := start.Add(800 * time.Microsecond)
+	must(t, s.AddSearch(ctx, Search{StartedAt: edge, EndedAt: edge.Add(10*time.Second - 500*time.Microsecond), Matched: true}))
+	must(t, s.CreateGame(ctx, Game{Code: "EDGE01", White: "w", CreatedAt: edge}))
+	must(t, s.SeatBlack(ctx, "EDGE01", "b", "", edge.Add(time.Minute-500*time.Microsecond)))
 	for range 100 {
 		begin := at()
 		must(t, s.AddSearch(ctx, Search{StartedAt: begin, EndedAt: begin.Add(time.Duration(rng.Int64N(int64(3 * time.Minute)))), Matched: rng.IntN(2) == 0, Others: rng.IntN(3)}))
