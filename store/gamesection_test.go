@@ -87,7 +87,7 @@ func TestGameSection(t *testing.T) {
 	// games: F00002 = 1.
 	check("friend", fmt.Sprint(g.Friend.Links, g.Friend.Joined, g.Friend.Finished, g.Friend.Rematches, " ", g.Friend.MedianJoin), "2 1 1 1 1:40")
 	check("quick", fmt.Sprint(g.Quick.Searches, g.Quick.Matched, g.Quick.GaveUp, g.Quick.Alone, " ", g.Quick.MedianWait, " ", g.Quick.MedianGaveUp), "4 3 1 3 0:19 1:05")
-	check("waits", g.Quick.Waits, []Count{{"under 10s", 0}, {"10–30s", 2}, {"30–60s", 0}, {"1–2 min", 0}, {"2 min+", 1}})
+	check("waits", g.Quick.Waits, []Count{{"0–10s", 0}, {"10–30s", 2}, {"30–60s", 0}, {"1–2 min", 0}, {"2 min+", 1}})
 	check("road", fmt.Sprint(g.Road.Games, g.Road.Opened, g.Road.Fell, g.Road.SavingRolls, g.Road.Saved, g.Road.Repaired, g.Road.Reset, g.Road.MateByRoll, g.Road.ClosedRounds, g.Road.ClosedCap, g.Road.NoFall), "4 16 6 1 1 1 1 1 4 1 1")
 	check("open hist", g.Road.OpenHist, [6]int{27, 35, 25, 10, 3, 2})
 	// Q00001: white lost 0 < black 2 → less; Q00002: white 1 > black 0, black won → less; F00001: white 2 > black 1, white won → more; F00002: 0 = 0 → same.

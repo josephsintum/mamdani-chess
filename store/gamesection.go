@@ -312,7 +312,7 @@ func (s *Store) GameSection(ctx context.Context, from, to time.Time, loc *time.L
 	out.Friend.MedianJoin = clockOrEmpty(median(joins), len(joins))
 
 	// Quick match.
-	out.Quick.Waits = []Count{{"under 10s", 0}, {"10–30s", 0}, {"30–60s", 0}, {"1–2 min", 0}, {"2 min+", 0}}
+	out.Quick.Waits = []Count{{"0–10s", 0}, {"10–30s", 0}, {"30–60s", 0}, {"1–2 min", 0}, {"2 min+", 0}}
 	var waits, gaveUp []int
 	for _, sr := range searches {
 		out.Quick.Searches++

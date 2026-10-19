@@ -38,7 +38,7 @@ The site is going to friends (milestone 07) and nothing shows who visits or whet
 
 ## The page (plan 1 builds the parts marked *)
 
-Sidebar: Overview, Games, Quick match, The road, Visitors, Health. Range: 7, 30, 90 days, all.
+One column, no sidebar (dropped 2026-10-10): Overview, Games, Quick match, The road, Visitors, Health. Range: 7, 30, 90 days, all.
 
 - **Overview\***: Visitors, Played a game (made a move), Games, Came back (visited on 2+ days), each against the range before; the funnel Visited → Opened a game → Made a move → Finished a game → Played again, with the drop at each step.
 - **Games**: games per day by kind, how games end, game length (median, decided on the clock, winner's clock left), when people play (weekday × 2-hour grid), friend links (joined, finished, time to join, rematches).
