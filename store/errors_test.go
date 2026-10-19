@@ -38,6 +38,22 @@ func TestBrowserErrorsCappedPerDay(t *testing.T) {
 	}
 }
 
+// A rebuild keeps the errors counted past the cap: their messages were
+// never stored, so the rows can't recount them.
+func TestRebuildKeepsErrorsPastTheCap(t *testing.T) {
+	ctx := t.Context()
+	s, _ := openTemp(t)
+	for i := range errorRowsPerDay + 5 {
+		must(t, s.AddBrowserError(ctx, BrowserError{At: t0.Add(time.Duration(i) * time.Second), Path: "/", Message: "x"}))
+	}
+	if _, err := s.rebuild(ctx, t0); err != nil {
+		t.Fatal(err)
+	}
+	if got := counters(t, s)[dayOf(t0, time.UTC)+" errors"]; got != errorRowsPerDay+5 {
+		t.Fatalf("after a rebuild %d errors, want %d", got, errorRowsPerDay+5)
+	}
+}
+
 // Pruning cuts at a midnight in the store's zone, 400 days back.
 func TestPruneErrorsAtMidnight(t *testing.T) {
 	ctx := t.Context()

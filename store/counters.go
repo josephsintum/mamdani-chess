@@ -138,7 +138,8 @@ func (s *Store) EnsureCounters(ctx context.Context, now time.Time) (RebuildRepor
 
 // rebuild recounts every raw row through the counting functions: each
 // table is read once, summed in memory, and written in one transaction.
-// Errors' counts before the cutoff day are kept, since their rows are gone.
+// A day's errors keep the larger of their counter and their rows: errors
+// past the daily cap, or pruned, have no rows left to recount.
 func (s *Store) rebuild(ctx context.Context, now time.Time) (RebuildReport, error) {
 	c := counts{}
 	if err := s.recountGames(ctx, c); err != nil {
@@ -150,16 +151,18 @@ func (s *Store) rebuild(ctx context.Context, now time.Time) (RebuildReport, erro
 	if err := s.recountEvents(ctx, c); err != nil {
 		return RebuildReport{}, fmt.Errorf("events: %w", err)
 	}
-	cutoff := s.errorCutoff(now)
-	if err := s.recountErrors(ctx, c, cutoff); err != nil {
+	if err := s.recountErrors(ctx, c, s.errorCutoff(now)); err != nil {
 		return RebuildReport{}, fmt.Errorf("errors: %w", err)
+	}
+	if err := s.keepErrorCounts(ctx, c); err != nil {
+		return RebuildReport{}, fmt.Errorf("errors kept: %w", err)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return RebuildReport{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM stats_days WHERE NOT (key = 'errors' AND day < ?)`, dayOf(cutoff, s.zone)); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM stats_days`); err != nil {
 		return RebuildReport{}, err
 	}
 	if err := addCounts(ctx, tx, c); err != nil {
@@ -274,8 +277,28 @@ func (s *Store) recountEvents(ctx context.Context, c counts) error {
 	return rows.Err()
 }
 
-// recountErrors counts the browser errors from the cutoff day on; the
-// counts before it are kept as they are.
+// keepErrorCounts raises each day's recounted errors to the counter it
+// had, which counted every error, stored or not.
+func (s *Store) keepErrorCounts(ctx context.Context, c counts) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT day, n FROM stats_days WHERE key = 'errors'`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var day string
+		var n int
+		if err := rows.Scan(&day, &n); err != nil {
+			return err
+		}
+		if k := (dayKey{day, "errors"}); n > c[k] {
+			c[k] = n
+		}
+	}
+	return rows.Err()
+}
+
+// recountErrors counts the browser errors from the cutoff day on.
 func (s *Store) recountErrors(ctx context.Context, c counts, cutoff time.Time) error {
 	rows, err := s.db.QueryContext(ctx, `SELECT at FROM browser_errors WHERE at >= ?`, cutoff.UnixMilli())
 	if err != nil {

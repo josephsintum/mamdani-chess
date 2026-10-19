@@ -170,7 +170,7 @@ func TestEnsureCountersRebuildsOnlyWhenNeeded(t *testing.T) {
 
 	rep, err := s.EnsureCounters(ctx, now) // a new database: stats_state is empty
 	must(t, err)
-	if rep.Rows != 1 || s.CountersStale() {
+	if rep.Rows != 2 || s.CountersStale() { // the game, and the kept 2024 errors count
 		t.Fatalf("first start: %+v, stale %v", rep, s.CountersStale())
 	}
 	want := map[string]int{"2026-10-03 games.quick": 1, "2024-01-01 errors": 7}
@@ -186,7 +186,7 @@ func TestEnsureCountersRebuildsOnlyWhenNeeded(t *testing.T) {
 	s, err = OpenIn(path, time.UTC)
 	must(t, err)
 	defer s.Close()
-	if rep, err = s.EnsureCounters(ctx, now); err != nil || rep.Rows != 1 {
+	if rep, err = s.EnsureCounters(ctx, now); err != nil || rep.Rows != 2 {
 		t.Fatalf("zone change: %+v, %v", rep, err)
 	}
 	if got := counters(t, s); got["2026-10-04 games.quick"] != 1 {

@@ -53,7 +53,7 @@ CREATE TABLE stats_state (
 - `day` is text in `YYYY-MM-DD`, so ranges compare as strings. A day's keys (about 83 at most) sit together on one or two leaf pages.
 - A new number is a new key, with no migration. A change to what an existing key means bumps the code's counters version, which rebuilds the table (below).
 - `searches` and `events` are no longer pruned (a few dozen bytes a row), so a rebuild can recount them.
-- `browser_errors` is still pruned, now at a midnight in `STATS_TZ`: rows before the start of the day 400 days ago go. A rebuild keeps the `errors` counters for days before that cutoff day and recounts the rest, so no day is ever half counted.
+- `browser_errors` is still pruned, now at a midnight in `STATS_TZ`: rows before the start of the day 400 days ago go. A rebuild gives each day the larger of its `errors` counter and its recounted rows: errors past the daily cap, and errors whose rows were pruned, have no rows to recount, so their counts are never lost (found in the final review, 2026-10-19).
 
 ## How a write counts
 
@@ -120,7 +120,7 @@ Today the backfill and the restart event run after `hub.Restore`, while restored
 ## Rebuild
 
 - The code holds a counters version constant. At step 5 the store compares it and the zone with `stats_state`. If either differs, or `stats_state` is empty (the first deploy), it rebuilds; otherwise it does nothing.
-- **A rebuild streams, sums in memory, then writes once per key.** One query streams every game with its `game_stats` row (a left join) and its last turn's clocks (a primary-key seek per game); then the searches, the events and the errors, each in one pass. Each row goes through the counting functions into a Go map from (day, key) to a count. Nothing loads a game's turns. Then, in one transaction: delete the counters (all except `errors` on days before the error cutoff day), insert the map's rows in multi-row batches, and write the version and zone. At 400 days that is about 33,000 rows.
+- **A rebuild streams, sums in memory, then writes once per key.** One query streams every game with its `game_stats` row (a left join) and its last turn's clocks (a primary-key seek per game); then the searches, the events and the errors, each in one pass. Each row goes through the counting functions into a Go map from (day, key) to a count. Nothing loads a game's turns. Then, in one transaction: delete the counters, insert the map's rows in multi-row batches, and write the version and zone. At 400 days that is about 33,000 rows.
 - **Budget:** a rebuild of 100,000 games must take under 3 seconds on Railway, well inside its 30-second health check, and the benchmark (below) checks it. It holds the database only during the final transaction, and nothing else is running yet.
 - A rebuild runs only on a deploy that changes the counters version or `STATS_TZ`, never while serving. It logs `stats rebuilt` at INFO with the days and rows written and the time taken.
 - If it fails, it's logged at ERROR, the transaction rolls back, the server starts with the counters it had, and the next start tries again. The store remembers that the counters are stale, and the page shows one line: "These counts are from an older version: a rebuild failed, see the logs."
