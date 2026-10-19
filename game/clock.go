@@ -94,6 +94,10 @@ const (
 // and isn't a draw either.
 func noWinner(r rules.Reason) bool { return r == Aborted || r == Expired || r == Retired }
 
+// isFinished reports a game that got going: it ended on the board or the
+// clock, not for want of a second player or a first move.
+func isFinished(r rules.Reason) bool { return !noWinner(r) }
+
 // winnerName is "white" or "black", or "" for a draw, a game nobody won,
 // or a game still on.
 func winnerName(r rules.Result) string {

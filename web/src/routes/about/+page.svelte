@@ -84,8 +84,10 @@
 					the home page, and every game between players is saved with its moves and rolls.
 				</li>
 				<li>
-					<strong>No ads, no analytics.</strong> Our logs record games and requests with a shortened guest ID, not your IP
-					address.
+					<strong>No ads, no analytics.</strong> We don't track visits. We count games (how they end, how long they last,
+					what the potholes did) so we can tune the rules, and nothing in those counts says who played. If a page hits an
+					error, it sends us the error message, without anything about you. Our logs record games and requests with a
+					shortened guest ID, not your IP address.
 				</li>
 				<li>
 					<strong>Two outside services.</strong> The fonts load from Google Fonts, and the home page embeds a reel from

@@ -12,12 +12,18 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // the distroless image has no zone files
 
 	"mamdani-chess/game"
 	"mamdani-chess/server"
 	"mamdani-chess/store"
 	"mamdani-chess/web"
 )
+
+// statsKeep is how long browser errors, quick-match searches and events
+// are kept: about thirteen months, so a year can be compared with the year
+// before.
+const statsKeep = 400 * 24 * time.Hour
 
 func main() {
 	if err := run(); err != nil {
@@ -42,9 +48,21 @@ func run() error {
 	if err := restore(context.Background(), st, hub, time.Now()); err != nil {
 		return err
 	}
+	startStats(context.Background(), st)
 	handler := server.New(st, hub, web.Assets())
 	// Railway sets this to the deployed commit; locally it's empty ("dev").
 	handler.Version = os.Getenv("RAILWAY_GIT_COMMIT_SHA")
+	// The stats page.
+	handler.StatsPassword = os.Getenv("STATS_PASSWORD")
+	zone := envOr("STATS_TZ", "America/New_York")
+	if handler.StatsZone, err = time.LoadLocation(zone); err != nil {
+		return fmt.Errorf("STATS_TZ %q: %w", zone, err)
+	}
+	if n, err := st.PruneStats(context.Background(), time.Now().Add(-statsKeep)); err != nil {
+		return fmt.Errorf("prune stats: %w", err)
+	} else if n > 0 {
+		slog.Info("old stats pruned", "rows", n)
+	}
 	srv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           handler,

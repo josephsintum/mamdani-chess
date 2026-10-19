@@ -61,7 +61,7 @@ func recvSeq(t *testing.T, sub *Sub, seq int) *View {
 // create starts a game with creator as White.
 func create(t *testing.T, h *Hub, creator string) *Game {
 	t.Helper()
-	g, err := h.Create(creator)
+	g, err := h.Create(creator, false)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}

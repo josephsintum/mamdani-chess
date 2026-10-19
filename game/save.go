@@ -11,9 +11,9 @@ import (
 // Store saves games as they happen. *store.Store implements it.
 type Store interface {
 	CreateGame(ctx context.Context, g store.Game) error
-	SeatBlack(ctx context.Context, code, guest, name string) error
+	SeatBlack(ctx context.Context, code, guest, name string, now time.Time) error
 	AddTurn(ctx context.Context, code string, t store.Turn) error
-	EndGame(ctx context.Context, code string, r store.Result, final *store.Turn) error
+	EndGame(ctx context.Context, code string, r store.Result, final *store.Turn, st *store.GameStats) error
 	// EnsureGuest returns a guest's name, giving them one from draw if
 	// they have none yet.
 	EnsureGuest(ctx context.Context, id string, draw func() string) (string, error)
@@ -22,10 +22,12 @@ type Store interface {
 // nopStore saves nothing: a hub without a store keeps games in memory only.
 type nopStore struct{}
 
-func (nopStore) CreateGame(context.Context, store.Game) error                     { return nil }
-func (nopStore) SeatBlack(context.Context, string, string, string) error          { return nil }
-func (nopStore) AddTurn(context.Context, string, store.Turn) error                { return nil }
-func (nopStore) EndGame(context.Context, string, store.Result, *store.Turn) error { return nil }
+func (nopStore) CreateGame(context.Context, store.Game) error                       { return nil }
+func (nopStore) SeatBlack(context.Context, string, string, string, time.Time) error { return nil }
+func (nopStore) AddTurn(context.Context, string, store.Turn) error                  { return nil }
+func (nopStore) EndGame(context.Context, string, store.Result, *store.Turn, *store.GameStats) error {
+	return nil
+}
 
 // EnsureGuest gives no names: games in memory only are nameless.
 func (nopStore) EnsureGuest(context.Context, string, func() string) (string, error) {

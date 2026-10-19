@@ -12,7 +12,8 @@ import (
 )
 
 // CreateFunc starts a game between two guests and returns its code.
-type CreateFunc func(white, black string) (string, error)
+// playtest marks a game a playtest joined (the stats leave it out).
+type CreateFunc func(white, black string, playtest bool) (string, error)
 
 // Queue pairs guests in the order they arrived.
 type Queue struct {
@@ -27,10 +28,12 @@ type Queue struct {
 	looking atomic.Int64
 }
 
-// entry is one guest's place in line and their open tickets.
+// entry is one guest's place in line and their open tickets. playtest is
+// set when any of their tickets came from a playtest.
 type entry struct {
-	guest   string
-	tickets map[*Ticket]struct{}
+	guest    string
+	playtest bool
+	tickets  map[*Ticket]struct{}
 }
 
 // Ticket is one open stream in the queue. C receives the game's code once
@@ -67,8 +70,9 @@ func (q *Queue) LookingFor(guest string) int {
 }
 
 // Join puts guest in line, or adds a ticket to their place if another tab
-// already holds one, then pairs whoever can be paired.
-func (q *Queue) Join(guest string) *Ticket {
+// already holds one, then pairs whoever can be paired. playtest says the
+// ticket comes from a playtest.
+func (q *Queue) Join(guest string, playtest bool) *Ticket {
 	c := make(chan string, 1)
 	t := &Ticket{C: c, c: c, q: q, guest: guest}
 	q.mu.Lock()
@@ -80,6 +84,7 @@ func (q *Queue) Join(guest string) *Ticket {
 		q.line = append(q.line, e)
 	}
 	e.tickets[t] = struct{}{}
+	e.playtest = e.playtest || playtest
 	q.pair()
 	return t
 }
@@ -111,7 +116,7 @@ func (q *Queue) pair() {
 		if !q.flip() {
 			white, black = b, a
 		}
-		code, err := q.create(white.guest, black.guest)
+		code, err := q.create(white.guest, black.guest, a.playtest || b.playtest)
 		if err != nil {
 			slog.Error("quick match: create game", "err", err)
 			return

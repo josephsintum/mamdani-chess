@@ -64,15 +64,15 @@ func (f *failing) err() error {
 	}
 	return nil
 }
-func (f *failing) CreateGame(context.Context, store.Game) error            { return f.err() }
-func (f *failing) SeatBlack(context.Context, string, string, string) error { return f.err() }
+func (f *failing) CreateGame(context.Context, store.Game) error                       { return f.err() }
+func (f *failing) SeatBlack(context.Context, string, string, string, time.Time) error { return f.err() }
 func (f *failing) EnsureGuest(context.Context, string, func() string) (string, error) {
 	return "", f.err()
 }
 func (f *failing) AddTurn(context.Context, string, store.Turn) error {
 	return f.err()
 }
-func (f *failing) EndGame(context.Context, string, store.Result, *store.Turn) error {
+func (f *failing) EndGame(context.Context, string, store.Result, *store.Turn, *store.GameStats) error {
 	return f.err()
 }
 
@@ -115,7 +115,7 @@ func TestCreateDoesNotBlockLookupsWhileSaving(t *testing.T) {
 	h := NewHub(odd{}, st)
 	created := make(chan *Game)
 	go func() {
-		g, _ := h.Create("alice")
+		g, _ := h.Create("alice", false)
 		created <- g
 	}()
 	<-st.entered // the write has started
@@ -170,7 +170,7 @@ func (f *failingCreate) CreateGame(context.Context, store.Game) error {
 func TestAFailedSaveFreesItsCode(t *testing.T) {
 	st := &failingCreate{fail: true}
 	h := withCodes(NewHub(odd{}, st), "RETRY1", "RETRY1")
-	if _, err := h.Create("alice"); !errors.Is(err, errDiskFull) {
+	if _, err := h.Create("alice", false); !errors.Is(err, errDiskFull) {
 		t.Fatalf("create: %v, want the store's error", err)
 	}
 	st.fail = false
@@ -267,7 +267,7 @@ type ended struct {
 	results []store.Result
 }
 
-func (e *ended) EndGame(_ context.Context, _ string, r store.Result, _ *store.Turn) error {
+func (e *ended) EndGame(_ context.Context, _ string, r store.Result, _ *store.Turn, _ *store.GameStats) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.results = append(e.results, r)
