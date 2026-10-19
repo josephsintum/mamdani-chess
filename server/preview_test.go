@@ -51,7 +51,7 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	if got := meta(home, "og:title"); got != "Mamdani Chess" {
 		t.Errorf("home og:title %q", got)
 	}
-	if !strings.Contains(home, "<title>Mamdani Chess</title>") || !strings.Contains(home, "app shell") {
+	if strings.Count(home, "<title>") != 1 || !strings.Contains(home, "<title>Mamdani Chess</title>") || !strings.Contains(home, "home page") {
 		t.Errorf("home page: %s", home)
 	}
 	if got := meta(home, "og:image"); got != ts.URL+"/og.png" {
@@ -118,8 +118,60 @@ func TestPreviewLinksUseTheProxysScheme(t *testing.T) {
 }
 
 func TestPreviewTagsAreEscaped(t *testing.T) {
-	tags := previewTags(preview{Title: `<b>"x"</b>`, Description: "a & b"}, "https://example.com", "/")
+	tags := previewTags(preview{Title: `<b>"x"</b>`, Description: "a & b"}, "https://example.com", "/", true)
 	if strings.Contains(tags, "<b>") || !strings.Contains(tags, "&lt;b&gt;&#34;x&#34;&lt;/b&gt;") || !strings.Contains(tags, "a &amp; b") {
 		t.Errorf("tags not escaped: %s", tags)
+	}
+}
+
+// Search engines list the prerendered pages at mamdanichess.com, whichever
+// host served them, and leave the rest out.
+func TestSearchEnginesListOnlyTheContentPages(t *testing.T) {
+	_, ts := newTestServer(t)
+	c := ts.Client()
+	home := page(t, c, ts.URL+"/")
+	if !strings.Contains(home, `<link rel="canonical" href="https://mamdanichess.com/" />`) || !strings.Contains(home, `"@type":"WebSite"`) {
+		t.Errorf("home page: %s", home)
+	}
+	rules := page(t, c, ts.URL+"/rules/")
+	if !strings.Contains(rules, `<link rel="canonical" href="https://mamdanichess.com/rules" />`) || strings.Count(rules, "<title>") != 1 {
+		t.Errorf("rules page: %s", rules)
+	}
+	if strings.Contains(rules, "noindex") || strings.Contains(rules, "ld+json") {
+		t.Errorf("rules page: %s", rules)
+	}
+	for _, path := range []string{"/play", "/practice", "/game/ZZZZZZ", "/nope"} {
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+path, nil)
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		html := string(b)
+		if meta(html, "robots") != "noindex" || strings.Contains(html, "canonical") || strings.Count(html, "<title>") != 1 {
+			t.Errorf("%s: %s", path, html)
+		}
+	}
+}
+
+func TestWWWRedirectsToTheSite(t *testing.T) {
+	_, ts := newTestServer(t)
+	c := ts.Client()
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	for path, want := range map[string]int{"/rules?x=1": http.StatusMovedPermanently, "/api/games": http.StatusOK, "/healthz": http.StatusOK} {
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+path, nil)
+		req.Host = "www.mamdanichess.com"
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("www%s: %d, want %d", path, resp.StatusCode, want)
+		}
+		if want == http.StatusMovedPermanently && resp.Header.Get("Location") != "https://mamdanichess.com/rules?x=1" {
+			t.Errorf("www%s: Location %q", path, resp.Header.Get("Location"))
+		}
 	}
 }

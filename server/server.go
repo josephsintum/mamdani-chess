@@ -32,7 +32,7 @@ type Server struct {
 	// deploy can be checked without touching game data. "" reads as "dev".
 	Version string
 	// StatsPassword guards GET /stats (Basic Auth, any user name). Empty
-	// means the page is off: the path serves the app shell like any other.
+	// means the page is off: the path is a 404, like any unknown path.
 	StatsPassword string
 }
 
