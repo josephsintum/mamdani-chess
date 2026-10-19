@@ -610,7 +610,9 @@ func TestAppAndPreviews(t *testing.T) {
 	if robots.status != 200 || !strings.Contains(robots.body, "Sitemap: https://mamdanichess.com/sitemap.xml") {
 		t.Errorf("/robots.txt: %d %q", robots.status, robots.body)
 	}
-	if sitemap.status != 200 || !strings.HasSuffix(sitemap.header.Get("Content-Type"), "/xml") || !strings.Contains(sitemap.body, "<loc>https://mamdanichess.com/rules</loc>") {
+	// The type comes from the OS's MIME table: text/xml on Linux,
+	// application/xml on macOS.
+	if sitemap.status != 200 || !strings.Contains(sitemap.header.Get("Content-Type"), "xml") || !strings.Contains(sitemap.body, "<loc>https://mamdanichess.com/rules</loc>") {
 		t.Errorf("/sitemap.xml: %d %v", sitemap.status, header(sitemap, "Content-Type"))
 	}
 	if status := c.do(http.MethodPost, "/", nil).status; status != 405 {
