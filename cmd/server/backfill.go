@@ -33,22 +33,23 @@ func backfillStats(ctx context.Context, st *store.Store) (done, failed int, err 
 	return done, failed, nil
 }
 
-// prepareStats backfills game stats, rebuilds the counters when their
-// version or zone changed, and counts this start, in that order, before
-// any game is restored. A failure is logged at ERROR and startup carries
-// on: the stats must never keep the game down.
+// prepareStats rebuilds the counters when their version or zone changed,
+// backfills game stats (each backfilled game adds to the rebuilt
+// counters), and counts this start, in that order, before any game is
+// restored. A failure is logged at ERROR and startup carries on: the stats
+// must never keep the game down.
 func prepareStats(ctx context.Context, st *store.Store, now time.Time) {
+	if rep, err := st.EnsureCounters(ctx, now); err != nil {
+		slog.Error("stats counters not rebuilt", "err", err)
+	} else if rep.Rows > 0 || rep.Took > 0 {
+		slog.Info("stats rebuilt", "days", rep.Days, "rows", rep.Rows, "duration", rep.Took)
+	}
 	begin := time.Now()
 	done, failed, err := backfillStats(ctx, st)
 	if err != nil {
 		slog.Error("game stats backfill stopped", "games", done, "failed", failed, "err", err)
 	} else if done > 0 || failed > 0 {
 		slog.Info("game stats backfilled", "games", done, "failed", failed, "duration", time.Since(begin))
-	}
-	if rep, err := st.EnsureCounters(ctx, now); err != nil {
-		slog.Error("stats counters not rebuilt", "err", err)
-	} else if rep.Rows > 0 || rep.Took > 0 {
-		slog.Info("stats rebuilt", "days", rep.Days, "rows", rep.Rows, "duration", rep.Took)
 	}
 	if err := st.AddEvent(ctx, "restart", now); err != nil {
 		slog.Error("restart not counted", "err", err)

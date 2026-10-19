@@ -31,15 +31,11 @@ func TestPrepareStatsNeverStopsTheServer(t *testing.T) {
 	}
 }
 
-func TestBackfillSkipsGamesWithStats(t *testing.T) {
-	ctx := context.Background()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	now := time.Now()
-	// A finished game saved without stats, as games were before this plan.
+// savedWithoutStats saves a finished game without stats, as games were
+// before stats were kept.
+func savedWithoutStats(t *testing.T, st *store.Store, now time.Time) {
+	t.Helper()
+	ctx := t.Context()
 	if err := st.CreateGame(ctx, store.Game{Code: "G00001", White: "w", WhiteName: "w", Black: "b", BlackName: "b", CreatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +48,36 @@ func TestBackfillSkipsGamesWithStats(t *testing.T) {
 	if err := st.EndGame(ctx, "G00001", store.Result{EndedAt: now.Add(time.Minute), Reason: "resignation", Winner: "white"}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// The counters are rebuilt before the backfill, so the backfill's counts
+// add to rebuilt counters instead of being thrown away by the rebuild.
+func TestPrepareStatsRebuildsBeforeBackfilling(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	savedWithoutStats(t, st, time.Now())
+	var buf bytes.Buffer
+	defer slog.SetDefault(slog.Default())
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	prepareStats(t.Context(), st, time.Now())
+	out := buf.String()
+	rebuilt, backfilled := strings.Index(out, "stats rebuilt"), strings.Index(out, "game stats backfilled")
+	if rebuilt < 0 || backfilled < 0 || rebuilt > backfilled {
+		t.Fatalf("want the rebuild logged before the backfill:\n%s", out)
+	}
+}
+
+func TestBackfillSkipsGamesWithStats(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	savedWithoutStats(t, st, time.Now())
 	done, failed, err := backfillStats(ctx, st)
 	if err != nil || done != 1 || failed != 0 {
 		t.Fatalf("first run: %d %d %v", done, failed, err)
