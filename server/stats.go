@@ -145,14 +145,11 @@ func share(n, of int) int {
 type statsPage struct {
 	Range, Days string
 	Ranges      []statsRangeOption
-	Visits      store.VisitStats
-	Funnel      store.Funnel
-	Steps       []funnelStep
-	DayMax      int // the busiest day's visitors, for the column heights
+	Errors      store.ErrorStats
 	// Each KPI against the range of the same length before; empty for
 	// all time. Before names that range.
-	Before                            string
-	Visitors, Played, Games, CameBack change
+	Before                           string
+	Games, GotGoing, Practice, Found change
 
 	Section                                 store.GameSection
 	QuickTotal, FriendTotal, PracticeTotal  int
@@ -229,14 +226,6 @@ type statsRangeOption struct {
 	On          bool
 }
 
-type funnelStep struct {
-	Label, Note string
-	N           int
-	Pct         int // of visited
-	Drop        int // percent lost since the step before; 0 on the first
-	Shade       int // 1 (darkest) to 5
-}
-
 func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	if s.StatsPassword == "" {
 		s.static(w, r)
@@ -253,46 +242,33 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	}
 	days := r.URL.Query().Get("days")
 	from, to, label := statsRange(days, time.Now(), loc)
-	visits, err := s.store.VisitStats(r.Context(), from, to, loc)
-	if err != nil {
-		s.internalError(w, "visit stats", err)
-		return
-	}
-	funnel, err := s.store.FunnelStats(r.Context(), from, to)
-	if err != nil {
-		s.internalError(w, "funnel stats", err)
-		return
-	}
-	page := statsPage{Range: label, Days: days, Visits: visits, Funnel: funnel, Steps: funnelSteps(funnel)}
-	if !from.IsZero() {
-		prevFrom := rangeBefore(from, to)
-		prevVisits, err := s.store.VisitStats(r.Context(), prevFrom, from, loc)
-		if err != nil {
-			s.internalError(w, "visit stats before", err)
-			return
-		}
-		prevFunnel, err := s.store.FunnelStats(r.Context(), prevFrom, from)
-		if err != nil {
-			s.internalError(w, "funnel stats before", err)
-			return
-		}
-		page.Before = "vs " + rangeLabel(prevFrom, from)
-		page.Visitors = pctChange(visits.Visitors, prevVisits.Visitors)
-		page.Played = pctChange(funnel.Moved, prevFunnel.Moved)
-		page.Games = pctChange(funnel.Games, prevFunnel.Games)
-		page.CameBack = ptsChange(visits.Returning, visits.Visitors, prevVisits.Returning, prevVisits.Visitors)
-	}
-	for _, o := range []statsRangeOption{{"7", "7 days", false}, {"30", "30 days", false}, {"90", "90 days", false}, {"all", "All", false}} {
-		o.On = o.Days == days || (days != "7" && days != "90" && days != "all" && o.Days == "30")
-		page.Ranges = append(page.Ranges, o)
-	}
-	for _, d := range visits.Days {
-		page.DayMax = max(page.DayMax, d.New+d.Returning)
-	}
 	section, err := s.store.GameSection(r.Context(), from, to, loc)
 	if err != nil {
 		s.internalError(w, "game section", err)
 		return
+	}
+	errs, err := s.store.BrowserErrors(r.Context(), from, to)
+	if err != nil {
+		s.internalError(w, "browser errors", err)
+		return
+	}
+	page := statsPage{Range: label, Days: days, Errors: errs}
+	if !from.IsZero() {
+		prevFrom := rangeBefore(from, to)
+		prev, err := s.store.GameSection(r.Context(), prevFrom, from, loc)
+		if err != nil {
+			s.internalError(w, "game section before", err)
+			return
+		}
+		page.Before = "vs " + rangeLabel(prevFrom, from)
+		page.Games = pctChange(section.Games, prev.Games)
+		page.GotGoing = pctChange(section.GotGoing, prev.GotGoing)
+		page.Practice = pctChange(practiceGames(section), practiceGames(prev))
+		page.Found = ptsChange(section.Quick.Matched, section.Quick.Searches, prev.Quick.Matched, prev.Quick.Searches)
+	}
+	for _, o := range []statsRangeOption{{"7", "7 days", false}, {"30", "30 days", false}, {"90", "90 days", false}, {"all", "All", false}} {
+		o.On = o.Days == days || (days != "7" && days != "90" && days != "all" && o.Days == "30")
+		page.Ranges = append(page.Ranges, o)
 	}
 	page.Section = section
 	for _, d := range section.Days {
@@ -331,28 +307,11 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// funnelSteps lays out the funnel's rows: each step's share of the
-// visitors and the share lost since the step before (never below 0: Black
-// can finish a game by resigning without moving).
-func funnelSteps(funnel store.Funnel) []funnelStep {
-	var steps []funnelStep
-	prev := 0
-	for i, st := range []struct {
-		label, note string
-		n           int
-	}{
-		{"Visited", "", funnel.Visited},
-		{"Opened a game", "quick match, a friend link, practice or watching", funnel.Opened},
-		{"Made a move", "", funnel.Moved},
-		{"Finished a game", "", funnel.Finished},
-		{"Played again", "finished a second game, any day in the range", funnel.Again},
-	} {
-		step := funnelStep{Label: st.label, Note: st.note, N: st.n, Pct: share(st.n, funnel.Visited), Shade: i + 1}
-		if i > 0 && prev > 0 {
-			step.Drop = max(0, int(100*float64(prev-st.n)/float64(prev)+0.5))
-		}
-		prev = st.n
-		steps = append(steps, step)
+// practiceGames is how many practice games a section's days started.
+func practiceGames(g store.GameSection) int {
+	n := 0
+	for _, d := range g.Days {
+		n += d.Practice
 	}
-	return steps
+	return n
 }

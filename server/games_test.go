@@ -156,12 +156,8 @@ func TestPlaytestGamesAreNotCounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	funnel, err := s.store.FunnelStats(t.Context(), time.Time{}, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if section.Games != 0 || section.Road.Games != 0 || funnel.Games != 0 {
-		t.Fatalf("the stats count a playtest: section %d games (%d on the road), funnel %d", section.Games, section.Road.Games, funnel.Games)
+	if section.Games != 0 || section.Road.Games != 0 {
+		t.Fatalf("the stats count a playtest: %d games (%d on the road)", section.Games, section.Road.Games)
 	}
 }
 

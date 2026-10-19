@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <title>Stats · Mamdani Chess</title>
 <style>
-:root{--bg:#f4f4f5;--card:#fff;--muted:#fafafa;--line:#e4e4e7;--text:#09090b;--text-2:#3f3f46;--text-3:#71717a;--a:#27272a;--a4:#ededf0;--c1:#033d8b;--c2:#0969da;--c3:#54aeff;--s0:#eff1f3;--s1:#b6e3ff;--s2:#54aeff;--s3:#0969da;--s4:#0a3069;--o1:#0a3069;--o2:#0550ae;--o3:#0969da;--o4:#218bff;--o5:#54aeff;--r:6px}
+:root{--bg:#f4f4f5;--card:#fff;--muted:#fafafa;--line:#e4e4e7;--text:#09090b;--text-2:#3f3f46;--text-3:#71717a;--a:#27272a;--a4:#ededf0;--c1:#033d8b;--c2:#0969da;--c3:#54aeff;--s0:#eff1f3;--s1:#b6e3ff;--s2:#54aeff;--s3:#0969da;--s4:#0a3069;--r:6px}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text-2);font:14px/1.45 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 .main{padding:32px 40px 64px}.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
@@ -55,18 +55,10 @@ section{display:flex;flex-direction:column;gap:16px}
 <section id="overview">
 <h2>Overview</h2>
 <div class="grid g4">
-<div class="card kpi"><div class="in"><div class="k-top"><span>Visitors</span>{{template "chip" dict "C" .Visitors "Before" .Before}}</div><span class="num">{{.Visits.Visitors}}</span></div><div class="foot">{{.Visits.Views}} page views</div></div>
-<div class="card kpi"><div class="in"><div class="k-top"><span>Played a game</span>{{template "chip" dict "C" .Played "Before" .Before}}</div><span class="num">{{.Funnel.Moved}}</span></div><div class="foot">{{share .Funnel.Moved .Funnel.Visited}}% of visitors made a move</div></div>
-<div class="card kpi"><div class="in"><div class="k-top"><span>Games</span>{{template "chip" dict "C" .Games "Before" .Before}}</div><span class="num">{{.Funnel.Games}}</span></div><div class="foot">created in the range</div></div>
-<div class="card kpi"><div class="in"><div class="k-top"><span>Came back</span>{{template "chip" dict "C" .CameBack "Before" .Before}}</div><span class="num">{{share .Visits.Returning .Visits.Visitors}}%</span></div><div class="foot">{{.Visits.Returning}} visited on 2 or more days</div></div>
-</div>
-<div class="card">
-<div><h3>From visit to game</h3><p class="sub">Of the {{.Funnel.Visited}} visitors, how many got each step further. On the right, the share lost since the step before.</p></div>
-<div class="rows">{{range .Steps}}
-<div class="row"><div class="row-top"><span>{{.Label}}</span><span class="val">{{.N}} <small>{{.Pct}}%</small></span></div>
-<div class="track thick"><i style="width:{{.Pct}}%;background:var(--o{{.Shade}})"></i></div>
-{{if or .Note .Drop}}<div class="row-top"><span class="note">{{.Note}}</span>{{if .Drop}}<span class="note">−{{.Drop}}%</span>{{end}}</div>{{end}}</div>{{end}}
-</div>
+<div class="card kpi"><div class="in"><div class="k-top"><span>Games</span>{{template "chip" dict "C" .Games "Before" .Before}}</div><span class="num">{{.Section.Games}}</span></div><div class="foot">{{.QuickTotal}} quick match · {{.FriendTotal}} friend link</div></div>
+<div class="card kpi"><div class="in"><div class="k-top"><span>Got going</span>{{template "chip" dict "C" .GotGoing "Before" .Before}}</div><span class="num">{{.Section.GotGoing}}</span></div><div class="foot">{{share .Section.GotGoing .Section.Games}}% of games ended with a result</div></div>
+<div class="card kpi"><div class="in"><div class="k-top"><span>Practice games</span>{{template "chip" dict "C" .Practice "Before" .Before}}</div><span class="num">{{.PracticeTotal}}</span></div><div class="foot">one player on both sides</div></div>
+<div class="card kpi"><div class="in"><div class="k-top"><span>Found an opponent</span>{{template "chip" dict "C" .Found "Before" .Before}}</div><span class="num">{{share .Section.Quick.Matched .Section.Quick.Searches}}%</span></div><div class="foot">{{.Section.Quick.Matched}} of {{.Section.Quick.Searches}} quick-match searches</div></div>
 </div>
 </section>
 
@@ -133,34 +125,16 @@ section{display:flex;flex-direction:column;gap:16px}
 </div>
 </section>
 
-<section id="visitors">
-<div><h2>Visitors</h2><p class="sub">A person counts once a day, however many pages they open</p></div>
-<div class="card">
-<div class="row-top chead"><div><h3>Visitors per day</h3><p class="sub">New and returning</p></div><div class="legend"><span><i class="dot" style="background:var(--c1)"></i>New</span><span><i class="dot" style="background:var(--c3)"></i>Returning</span></div></div>
-<div class="bars" style="--n:{{len .Visits.Days}}">{{$max := .DayMax}}{{range .Visits.Days}}<div class="col" title="{{.Day}}: {{.New}} new, {{.Returning}} returning">{{if .Returning}}<i style="height:{{pct .Returning $max}}%;background:var(--c3)"></i>{{end}}{{if .New}}<i style="height:{{pct .New $max}}%;background:var(--c1)"></i>{{end}}</div>{{end}}</div>
-<div class="axis">{{with .Visits.Days}}<span>{{(index . 0).Day}}</span><span>{{(index . (len . | sub1)).Day}}</span>{{end}}</div>
-</div>
-<div class="grid g3">
-{{template "list" dict "Title" "Countries" "Sub" "From a local IP lookup; IPs aren't kept" "Rows" .Visits.Countries "Top" (top .Visits.Countries) "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Cities" "Sub" "Rough on mobile data" "Rows" .Visits.Cities "Top" (top .Visits.Cities) "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Arrived via" "Sub" "The first page of each visit" "Rows" .Visits.Sources "Top" (top .Visits.Sources) "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Devices" "Sub" "Under 640 px on the short side is a phone" "Rows" .Visits.Devices "Top" (top .Visits.Devices) "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Systems" "Sub" "From the browser's user agent" "Rows" .Visits.Systems "Top" (top .Visits.Systems) "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Browsers" "Sub" "In-app browsers are where shared links open" "Rows" .Visits.Browsers "Top" (top .Visits.Browsers) "Of" .Visits.Visitors}}
-{{template "list" dict "Title" "Pages" "Sub" "Page views; game codes are never stored" "Rows" .Visits.Pages "Top" (top .Visits.Pages) "Of" .Visits.Views}}
-</div>
-</section>
-
 <section id="health">
 <h2>Health</h2>
 <div class="grid g3">
-<div class="tile"><span>Browser errors</span><span class="num">{{.Visits.Errors}}</span><span class="note">{{if .Visits.LatestError}}latest: {{.Visits.LatestError}}{{else}}none in this range{{end}}</span></div>
+<div class="tile"><span>Browser errors</span><span class="num">{{.Errors.N}}</span><span class="note">{{if .Errors.Latest}}latest: {{.Errors.Latest}}{{else}}none in this range{{end}}</span></div>
 <div class="tile"><span>Streams reopened</span><span class="num">{{.Section.Reconnects}}</span><span class="note">the page reopened a game stream after an error; the browser's own retries aren't counted</span></div>
 <div class="tile"><span>Server restarts</span><span class="num">{{.Section.Restarts}}</span><span class="note">each one pauses the games in progress</span></div>
 </div>
 </section>
 
-<p class="foot-note">Counted by this server and kept in its own database. No IP addresses are stored; cities come from a local lookup file. Headless browsers and playtests aren't counted.</p>
+<p class="foot-note">Counted by this server from the games themselves and kept in its own database. Nothing here says who played. Headless browsers and playtests aren't counted.</p>
 </div></main>
 </body>
 </html>

@@ -63,28 +63,12 @@ var migrations = []string{
 	// rules 2 games end as 'retired', like migration 5.
 	`UPDATE games SET ended_at = CAST(strftime('%s','now') AS INTEGER) * 1000, result = 'retired'
 	  WHERE ended_at IS NULL AND rules = 2;`,
-	// 7: visits and browser errors (stats plan 1). visitor is the first 12
-	// hex characters of the guest ID; path is a route, never a game code;
-	// referrer is a host. Both tables are pruned after 400 days.
-	`CREATE TABLE visits (
-		at       INTEGER NOT NULL,
-		visitor  TEXT NOT NULL,
-		path     TEXT NOT NULL,
-		referrer TEXT NOT NULL DEFAULT '',
-		country  TEXT NOT NULL DEFAULT '',
-		city     TEXT NOT NULL DEFAULT '',
-		device   TEXT NOT NULL DEFAULT '',
-		os       TEXT NOT NULL DEFAULT '',
-		browser  TEXT NOT NULL DEFAULT ''
-	 );
-	 CREATE INDEX visits_at ON visits(at);
-	 CREATE INDEX visits_visitor ON visits(visitor, at);
-	 CREATE TABLE browser_errors (
+	// 7: browser errors (stats). Uncaught errors pages report: no visitor,
+	// path is a route, never a game code. Pruned after 400 days.
+	`CREATE TABLE browser_errors (
 		at      INTEGER NOT NULL,
-		visitor TEXT NOT NULL,
 		path    TEXT NOT NULL,
-		message TEXT NOT NULL,
-		browser TEXT NOT NULL DEFAULT ''
+		message TEXT NOT NULL
 	 );
 	 CREATE INDEX browser_errors_at ON browser_errors(at);`,
 	// 8: game stats (stats plan 2). kind is friend or quick (a rematch keeps
@@ -93,7 +77,7 @@ var migrations = []string{
 	// leave it out; a rematch keeps the mark). game_stats is one row per
 	// game that got going, written with its result; open_hist counts the
 	// turns that ended with 0..5 holes open. searches logs quick-match
-	// searches (guest is the 12-hex visitor key). events counts practice
+	// searches (nothing about who searched). events counts practice
 	// games, reopened game streams and restarts.
 	`ALTER TABLE games ADD COLUMN kind TEXT NOT NULL DEFAULT 'friend';
 	 ALTER TABLE games ADD COLUMN joined_at INTEGER;
@@ -118,7 +102,6 @@ var migrations = []string{
 	 CREATE TABLE searches (
 		started_at INTEGER NOT NULL,
 		ended_at   INTEGER NOT NULL,
-		guest      TEXT NOT NULL,
 		matched    INTEGER NOT NULL,
 		others     INTEGER NOT NULL
 	 );

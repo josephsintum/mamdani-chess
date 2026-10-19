@@ -21,12 +21,11 @@ type GameStats struct {
 	OpenHist                                                [6]int
 }
 
-// Search is one quick-match search: who looked (the 12-hex visitor key),
-// for how long, whether it found an opponent, and how many others were
-// looking when it started.
+// Search is one quick-match search: how long it lasted, whether it found
+// an opponent, and how many others were looking when it started. Nothing
+// says who searched.
 type Search struct {
 	StartedAt, EndedAt time.Time
-	Guest              string
 	Matched            bool
 	Others             int
 }
@@ -93,8 +92,8 @@ func (s *Store) HasGameStats(ctx context.Context, code string) (bool, error) {
 // AddSearch logs one quick-match search.
 func (s *Store) AddSearch(ctx context.Context, sr Search) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO searches (started_at, ended_at, guest, matched, others) VALUES (?, ?, ?, ?, ?)`,
-		sr.StartedAt.UnixMilli(), sr.EndedAt.UnixMilli(), sr.Guest, sr.Matched, sr.Others)
+		`INSERT INTO searches (started_at, ended_at, matched, others) VALUES (?, ?, ?, ?)`,
+		sr.StartedAt.UnixMilli(), sr.EndedAt.UnixMilli(), sr.Matched, sr.Others)
 	return err
 }
 
@@ -132,7 +131,7 @@ func parseHist(s string) ([6]int, error) {
 // Searches returns the searches that started in [from, to), oldest first.
 func (s *Store) Searches(ctx context.Context, from, to time.Time) ([]Search, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT started_at, ended_at, guest, matched, others FROM searches
+		`SELECT started_at, ended_at, matched, others FROM searches
 		 WHERE started_at >= ? AND started_at < ? ORDER BY started_at, rowid`,
 		from.UnixMilli(), to.UnixMilli())
 	if err != nil {
@@ -143,7 +142,7 @@ func (s *Store) Searches(ctx context.Context, from, to time.Time) ([]Search, err
 	for rows.Next() {
 		var sr Search
 		var started, ended int64
-		if err := rows.Scan(&started, &ended, &sr.Guest, &sr.Matched, &sr.Others); err != nil {
+		if err := rows.Scan(&started, &ended, &sr.Matched, &sr.Others); err != nil {
 			return nil, err
 		}
 		sr.StartedAt, sr.EndedAt = time.UnixMilli(started), time.UnixMilli(ended)

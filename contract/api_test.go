@@ -88,7 +88,7 @@ func TestGuestCookie(t *testing.T) {
 		t.Errorf("a guest with a cookie got another: %q", again.header.Values("Set-Cookie"))
 	}
 	// The app shell sets it too, so a fresh browser's first API requests
-	// (the visit beacon and a game's stream, which race) share one guest.
+	// (the name lookup and a game's stream, which race) share one guest.
 	for _, path := range []string{"/", "/game/ABCDEF"} {
 		if set := c.do(http.MethodGet, path, nil).header.Get("Set-Cookie"); !fresh.MatchString(set) {
 			t.Errorf("GET %s: Set-Cookie = %q", path, set)
@@ -651,12 +651,12 @@ func TestFirstMoveAbort(t *testing.T) {
 	expectJSON(t, []any{v.Status, v.get("result")}, `["over",{"draw":false,"reason":"aborted"}]`)
 }
 
-// A page view or an error report is a 204 with no body. The 204s are sent
-// as the playtest (X-Playtest), so a run against production (BASE_URL)
-// stores nothing there.
-func TestVisit(t *testing.T) {
+// An error report is a 204 with no body. It is sent as the playtest
+// (X-Playtest), so a run against production (BASE_URL) stores nothing
+// there. Page views aren't counted: /api/visit doesn't exist.
+func TestErrorReport(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
-	res := c.do(http.MethodPost, "/api/visit", http.Header{"Content-Type": {"application/json"}})
+	res := c.do(http.MethodPost, "/api/error", http.Header{"Content-Type": {"application/json"}})
 	// c.do sends no body: a bad body is a 400 in the API's usual shape.
 	expectJSON(t, []any{res.status, res.body}, `[400,"{\"error\":\"bad request body\"}\n"]`)
 	p := c.players(1)[0]
@@ -664,14 +664,11 @@ func TestVisit(t *testing.T) {
 		t.Helper()
 		return readReply(t, p.send(c.ctx, http.MethodPost, path, http.Header{"Content-Type": {"application/json"}, "X-Playtest": {"1"}}, body))
 	}
-	if r := asPlaytest("/api/visit", `{"path":"/game/ABCDEF","w":390,"h":844,"touch":true,"referrer":""}`); r.status != 204 || r.body != "" {
-		t.Errorf("POST /api/visit: %d %q", r.status, r.body)
-	}
 	if r := asPlaytest("/api/error", `{"path":"/","message":"TypeError: x"}`); r.status != 204 || r.body != "" {
 		t.Errorf("POST /api/error: %d %q", r.status, r.body)
 	}
-	if status := c.do(http.MethodGet, "/api/visit", nil).status; status != 404 {
-		t.Errorf("GET /api/visit: %d, want 404", status)
+	if r := asPlaytest("/api/visit", `{"path":"/"}`); r.status != 404 {
+		t.Errorf("POST /api/visit: %d, want 404", r.status)
 	}
 }
 

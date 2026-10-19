@@ -12,10 +12,10 @@ import (
 
 // logSearch writes one quick-match search. A failure is logged, never
 // shown: the search itself has already happened.
-func (s *Server) logSearch(guest string, started time.Time, matched bool, others int) {
+func (s *Server) logSearch(started time.Time, matched bool, others int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := s.store.AddSearch(ctx, store.Search{StartedAt: started, EndedAt: time.Now(), Guest: visitorOf(guest), Matched: matched, Others: others}); err != nil {
+	if err := s.store.AddSearch(ctx, store.Search{StartedAt: started, EndedAt: time.Now(), Matched: matched, Others: others}); err != nil {
 		s.log.Error("log search", "err", err)
 	}
 }
@@ -66,7 +66,7 @@ func (s *Server) matchStream(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		t.Leave()
 		if !playtest {
-			s.logSearch(guest, started, matched, others)
+			s.logSearch(started, matched, others)
 		}
 	}()
 	queued, _ := json.Marshal(map[string]int{"looking": s.match.Looking()})

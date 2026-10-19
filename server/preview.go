@@ -28,7 +28,7 @@ var homePreview = preview{
 
 // index serves the app shell with the preview tags for r's page. It sets
 // the guest cookie on a fresh browser, so the page's first requests (the
-// visit beacon and a game's stream, which race) carry the same one instead
+// name lookup and a game's stream, which race) carry the same one instead
 // of each minting its own.
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	cookieValue(w, r)

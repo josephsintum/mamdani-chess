@@ -60,7 +60,7 @@ func TestSearchLogged(t *testing.T) {
 			matched++
 		}
 		others += r.Others
-		if len(r.Guest) != 12 || r.EndedAt.Before(r.StartedAt) {
+		if r.EndedAt.Before(r.StartedAt) {
 			t.Errorf("bad row %+v", r)
 		}
 	}

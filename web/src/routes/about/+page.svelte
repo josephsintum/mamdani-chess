@@ -84,12 +84,10 @@
 					the home page, and every game between players is saved with its moves and rolls.
 				</li>
 				<li>
-					<strong>No ads, no tracking companies.</strong> We count visits ourselves, on this server: which page, the site
-					that sent you (its name only, never the page), your rough city, and your device and browser, so we know how
-					many people play and whether the game works. If a page hits an error, it reports the error message so we can
-					fix it. Your IP address is used once to find the city and isn't kept, game links are counted without their
-					code, and nothing goes to anyone else. City lookups use a local copy of
-					<a href="https://db-ip.com" target="_blank" rel="noopener">IP geolocation by DB-IP</a>.
+					<strong>No ads, no analytics.</strong> We don't track visits. We count games (how they end, how long they last,
+					what the potholes did) so we can tune the rules, and nothing in those counts says who played. If a page hits an
+					error, it sends us the error message, without anything about you. Our logs record games and requests with a
+					shortened guest ID, not your IP address.
 				</li>
 				<li>
 					<strong>Two outside services.</strong> The fonts load from Google Fonts, and the home page embeds a reel from

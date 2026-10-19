@@ -41,7 +41,7 @@ func TestOnlyTheCookiesHashIsStored(t *testing.T) {
 }
 
 // The app shell sets the guest cookie, so a fresh browser's first requests
-// (the visit beacon and a game's stream, which race) all carry the same one.
+// (the name lookup and a game's stream, which race) all carry the same one.
 // A browser that has the cookie keeps it.
 func TestTheAppShellSetsTheGuestCookie(t *testing.T) {
 	_, ts := newTestServer(t)
@@ -69,12 +69,16 @@ func TestTheAppShellSetsTheGuestCookie(t *testing.T) {
 			t.Errorf("GET %s with the cookie set another: %q", path, again)
 		}
 		// The API sees the guest the shell made.
-		if status, _ := alice.post("/api/visit", `{"path":"`+path+`"}`); status != http.StatusNoContent {
-			t.Errorf("POST /api/visit: %d", status)
+		if resp, err = alice.c.Get(ts.URL + "/api/me"); err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET /api/me: %d", resp.StatusCode)
 		}
 		u, _ := url.Parse(ts.URL)
 		if got := alice.c.Jar.Cookies(u); len(got) != 1 || got[0].Value != set[0].Value {
-			t.Errorf("after the beacon the browser holds %v, want the shell's %s", got, set[0].Value)
+			t.Errorf("after /api/me the browser holds %v, want the shell's %s", got, set[0].Value)
 		}
 	}
 }

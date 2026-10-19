@@ -69,20 +69,11 @@ func TestStatsNeedsPassword(t *testing.T) {
 	}
 }
 
-func TestStatsShowsTheNumbers(t *testing.T) {
+// The page shows the browser errors, escaped, and nothing about visitors.
+func TestStatsShowsErrorsAndNoVisitors(t *testing.T) {
 	s, ts := newTestServer(t)
 	s.StatsPassword = "hunter2"
-	ctx := t.Context()
-	now := time.Now()
-	for _, v := range []store.Visit{
-		{At: now.Add(-time.Hour), Visitor: "ann000000000", Path: "/", Country: "Canada", City: "Toronto", Device: "phone", OS: "iOS", Browser: "Safari"},
-		{At: now.Add(-time.Minute), Visitor: "ann000000000", Path: "/game", Device: "phone", OS: "iOS", Browser: "Safari"},
-	} {
-		if err := s.store.AddVisit(ctx, v); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := s.store.AddBrowserError(ctx, store.BrowserError{At: now, Visitor: "ann000000000", Path: "/game", Message: "TypeError: <x>", Browser: "Safari"}); err != nil {
+	if err := s.store.AddBrowserError(t.Context(), store.BrowserError{At: time.Now(), Path: "/game", Message: "TypeError: <x>"}); err != nil {
 		t.Fatal(err)
 	}
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/stats", nil)
@@ -94,13 +85,13 @@ func TestStatsShowsTheNumbers(t *testing.T) {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	body := string(b)
-	for _, want := range []string{"Toronto", "Canada", "phone", "Safari", "TypeError: &lt;x&gt;", `class="num">1<`, "Direct or a chat app"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the page lacks %q", want)
-		}
+	if !strings.Contains(body, "latest: TypeError: &lt;x&gt;") || strings.Contains(body, "<x>") {
+		t.Error("the error message is missing or not escaped")
 	}
-	if strings.Contains(body, "<x>") {
-		t.Error("an error message was not escaped")
+	for _, never := range []string{"Visitors", "Countries", "Cities", "Devices", "Browsers", "From visit to game"} {
+		if strings.Contains(body, never) {
+			t.Errorf("the page shows %q", never)
+		}
 	}
 }
 
@@ -129,42 +120,31 @@ func TestChanges(t *testing.T) {
 	}
 }
 
-// A later step can pass the one before (Black resigns without moving: two
-// finished, one moved); the drop is then 0, never negative.
-func TestFunnelStepsDropNeverNegative(t *testing.T) {
-	steps := funnelSteps(store.Funnel{Visited: 4, Opened: 3, Moved: 1, Finished: 2, Again: 0})
-	var drops []int
-	for _, s := range steps {
-		drops = append(drops, s.Drop)
-	}
-	if want := []int{0, 25, 67, 0, 100}; !reflect.DeepEqual(drops, want) {
-		t.Errorf("drops %v, want %v", drops, want)
-	}
-}
-
 // Each KPI shows its change against the range of the same length before:
-// this week has 5 visitors (one on two days) and 1 game, last week 4
-// visitors and 2 games.
+// this week has 1 game, 2 practice games and 1 of 2 searches matched; the
+// week before 2 games, 1 practice game and none of 1 search matched.
 func TestStatsComparesWithTheRangeBefore(t *testing.T) {
 	s, ts := newTestServer(t)
 	s.StatsPassword = "hunter2"
 	ctx := t.Context()
 	now := time.Now()
-	add := func(at time.Time, who string) {
-		t.Helper()
-		if err := s.store.AddVisit(ctx, store.Visit{At: at, Visitor: who, Path: "/"}); err != nil {
+	lastWeek := now.AddDate(0, 0, -9)
+	for i, at := range []time.Time{lastWeek, now.AddDate(0, 0, -10), now.Add(-time.Minute)} {
+		if err := s.store.CreateGame(ctx, store.Game{Code: fmt.Sprintf("G0000%d", i), White: "w", WhiteName: "w", CreatedAt: at}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, who := range []string{"p1", "p2", "p3", "p4"} {
-		add(now.AddDate(0, 0, -9), who+"0000000000")
+	for _, at := range []time.Time{lastWeek, now.Add(-time.Hour), now.Add(-time.Minute)} {
+		if err := s.store.AddEvent(ctx, "practice", at); err != nil {
+			t.Fatal(err)
+		}
 	}
-	for _, who := range []string{"c1", "c2", "c3", "c4", "c5"} {
-		add(now.Add(-time.Minute), who+"0000000000")
-	}
-	add(now.AddDate(0, 0, -2), "c10000000000")
-	for i, at := range []time.Time{now.AddDate(0, 0, -9), now.AddDate(0, 0, -10), now.Add(-time.Minute)} {
-		if err := s.store.CreateGame(ctx, store.Game{Code: fmt.Sprintf("G0000%d", i), White: "w", WhiteName: "w", CreatedAt: at}); err != nil {
+	for _, sr := range []store.Search{
+		{StartedAt: lastWeek, EndedAt: lastWeek.Add(time.Minute)},
+		{StartedAt: now.Add(-time.Hour), EndedAt: now.Add(-time.Hour).Add(time.Minute)},
+		{StartedAt: now.Add(-time.Minute), EndedAt: now.Add(-time.Minute).Add(10 * time.Second), Matched: true},
+	} {
+		if err := s.store.AddSearch(ctx, sr); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -185,8 +165,8 @@ func TestStatsComparesWithTheRangeBefore(t *testing.T) {
 	for _, m := range chips.FindAllStringSubmatch(get("7"), -1) {
 		got = append(got, m[1]+" "+html.UnescapeString(m[2])) // the template writes + as &#43;
 	}
-	// Visitors 5 vs 4, Played a game 0 vs 0, Games 1 vs 2, Came back 20% vs 0%.
-	if want := []string{"up +25%", "flat 0%", "down −50%", "up +20 pts"}; !reflect.DeepEqual(got, want) {
+	// Games 1 vs 2, got going 0 vs 0, practice 2 vs 1, found an opponent 50% vs 0%.
+	if want := []string{"down −50%", "flat 0%", "up +100%", "up +50 pts"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("chips %q, want %q", got, want)
 	}
 	if body := get("all"); strings.Contains(body, `class="chip`) {
@@ -219,7 +199,7 @@ func TestStatsShowsTheGames(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.store.AddSearch(ctx, store.Search{StartedAt: now.Add(-time.Hour), EndedAt: now.Add(-time.Hour).Add(19 * time.Second), Guest: "ann000000000", Matched: true}); err != nil {
+	if err := s.store.AddSearch(ctx, store.Search{StartedAt: now.Add(-time.Hour), EndedAt: now.Add(-time.Hour).Add(19 * time.Second), Matched: true}); err != nil {
 		t.Fatal(err)
 	}
 	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/stats?days=7", nil)
