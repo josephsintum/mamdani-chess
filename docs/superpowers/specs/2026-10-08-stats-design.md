@@ -17,15 +17,9 @@ The site is going to friends (milestone 07). We want to know whether the game wo
 - **Playtests aren't counted.** Headless Chrome (`HeadlessChrome` in the user agent) and requests with `X-Playtest: 1` (the playtest script sends it on every request) are left out: their games are marked `playtest` and skipped, their searches, events and errors aren't written. Runs against production are left out too.
 - **Private page** at `/stats`, HTTP Basic Auth with the password from `STATS_PASSWORD` (any user name). Without that variable the path serves the app shell as any unknown path does. Server-rendered with `html/template`, no JavaScript, Graphite style with one blue family for the charts (the canvas).
 - **Days are grouped in `STATS_TZ`** (default `America/New_York`).
-- **Kept for 400 days**, pruned at startup: errors, searches and events. Games are kept as they always were.
+- **Browser errors are kept for 400 days**, pruned at startup. Games, searches and events are kept (the counters' rebuild recounts them).
 - **The About page** says there are no ads and no analytics: games are counted, nothing in those counts says who played, and an error report carries nothing about the person.
-- **The page is computed on demand and kept for 24 hours** (decided 2026-10-09, not built yet: plan 3). A page load runs a handful of queries over its range, a few milliseconds today but every game in the range is read into memory, so the cost grows with the game count and the store has one connection that moves wait on. So:
-  - Each range (`7`, `30`, `90`, `all`) is computed when first asked for and the rendered result kept in memory for 24 hours; the header says "as of 14:02". A restart starts with an empty cache; nothing is stored.
-  - A **Refresh** button recomputes that range now. It posts to `/stats/refresh?days=…`, stays behind the password even if the page itself is ever made public, and is limited to once a minute per range, so it can't be used to load the server.
-  - While a recompute runs, the stale page is served; two people refreshing at once don't both wait.
-  - The queries run under a 2-second timeout, so a pathological range can never hold the connection long enough to retire a game (`storeTimeout` is 5 s).
-  - A second, read-only connection pool (WAL already allows readers beside the one writer) is not needed yet; it waits until a stats load measurably passes about 50 ms, or something new reads the database per request. Every move is a write, and shares the one writer either way.
-  - An hourly scheduler with stored snapshots was considered and set aside: more moving parts (eight computations a run, day boundaries, staleness after a deploy) for no gain until someone wants history past the 400-day pruning, when snapshots can be added on top.
+- **Daily counters written with the data** (decided 2026-10-19; replaces the 24-hour cache planned on 2026-10-09): every counted write also adds to a daily counter in the same transaction, and a page load only sums counters. See [the counters spec](2026-10-19-stats-counters-design.md).
 
 ## What is recorded
 
@@ -44,8 +38,8 @@ The site is going to friends (milestone 07). We want to know whether the game wo
 One column, no sidebar (dropped 2026-10-10). Range: 7, 30, 90 days, all.
 
 - **Overview**: Games (quick match and friend link), Got going (ended with a result), Practice games, Found an opponent (share of quick-match searches); each against the range before.
-- **Games**: games per day by kind, how games end, game length (median, decided on the clock, winner's clock left), when people play (weekday × 2-hour grid), friend links (joined, finished, time to join, rematches).
-- **Quick match**: wait histogram, found an opponent, median wait, gave up after, searched when nobody else was.
+- **Games**: games per day by kind, how games end, game length (histogram, decided on the clock, winner's clock left), when people play (weekday × 2-hour grid), friend links (joined, finished, time to join, rematches). Medians become histograms with a threshold line ([counters spec](2026-10-19-stats-counters-design.md)).
+- **Quick match**: wait histogram, found an opponent, gave up after (histogram), searched when nobody else was.
 - **The road**: potholes a game, falls a game, saving rolls saved, ended by a roll; how full the road gets (open holes after each turn; closed by rounds / cap / repair; reset by a roll); did the road decide it (winner lost less / more / the same to potholes).
 - **Health**: browser errors, streams reopened, server restarts.
 
