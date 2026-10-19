@@ -18,9 +18,10 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if strings.EqualFold(r.Host, "www."+siteHost) {
-		// One address for search engines and bookmarks. The API stays on
-		// www, so a tab opened there keeps working until it reloads.
+	if aliases[strings.ToLower(r.Host)] {
+		// One address for search engines, bookmarks and the guest cookie
+		// (which belongs to one host). The API stays on the alias, so a tab
+		// opened there keeps working until it reloads.
 		http.Redirect(w, r, "https://"+siteHost+r.URL.RequestURI(), http.StatusMovedPermanently)
 		return
 	}

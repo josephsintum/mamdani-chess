@@ -155,23 +155,25 @@ func TestSearchEnginesListOnlyTheContentPages(t *testing.T) {
 	}
 }
 
-func TestWWWRedirectsToTheSite(t *testing.T) {
+func TestAliasesRedirectToTheSite(t *testing.T) {
 	_, ts := newTestServer(t)
 	c := ts.Client()
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	for path, want := range map[string]int{"/rules?x=1": http.StatusMovedPermanently, "/api/games": http.StatusOK, "/healthz": http.StatusOK} {
-		req, _ := http.NewRequest(http.MethodGet, ts.URL+path, nil)
-		req.Host = "www.mamdanichess.com"
-		resp, err := c.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != want {
-			t.Errorf("www%s: %d, want %d", path, resp.StatusCode, want)
-		}
-		if want == http.StatusMovedPermanently && resp.Header.Get("Location") != "https://mamdanichess.com/rules?x=1" {
-			t.Errorf("www%s: Location %q", path, resp.Header.Get("Location"))
+	for _, host := range []string{"www.mamdanichess.com", "WWW.mamdanichess.com", "mamdani-chess.up.railway.app"} {
+		for path, want := range map[string]int{"/game/K7F3QZ?x=1": http.StatusMovedPermanently, "/api/games": http.StatusOK, "/healthz": http.StatusOK} {
+			req, _ := http.NewRequest(http.MethodGet, ts.URL+path, nil)
+			req.Host = host
+			resp, err := c.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != want {
+				t.Errorf("%s%s: %d, want %d", host, path, resp.StatusCode, want)
+			}
+			if want == http.StatusMovedPermanently && resp.Header.Get("Location") != "https://mamdanichess.com/game/K7F3QZ?x=1" {
+				t.Errorf("%s%s: Location %q", host, path, resp.Header.Get("Location"))
+			}
 		}
 	}
 }

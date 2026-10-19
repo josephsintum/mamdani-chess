@@ -29,8 +29,12 @@ var homePreview = preview{
 }
 
 // siteHost is the site's one address. Search engines list its pages there,
-// whichever host served them, and www redirects to it.
+// whichever host served them, and its aliases redirect to it.
 const siteHost = "mamdanichess.com"
+
+// aliases are the other hosts the Railway service answers on. Railway has
+// no redirect setting, so the server redirects their pages.
+var aliases = map[string]bool{"www." + siteHost: true, "mamdani-chess.up.railway.app": true}
 
 // shell is the SPA's fallback page, for every route that isn't prerendered.
 const shell = "200.html"
