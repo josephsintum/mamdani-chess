@@ -69,6 +69,13 @@ func TestEndGameFailsForAnUnknownGame(t *testing.T) {
 	}
 }
 
+func TestSeatBlackFailsForAnUnknownGame(t *testing.T) {
+	s, _ := openTemp(t)
+	if err := s.SeatBlack(t.Context(), "NOPE00", "bob", "", t0); err == nil {
+		t.Fatal("seating Black in a game that was never saved should fail")
+	}
+}
+
 func TestAddTurnRejectsADuplicatePly(t *testing.T) {
 	ctx := t.Context()
 	s, _ := openTemp(t)
@@ -128,7 +135,7 @@ func TestExpireWaiting(t *testing.T) {
 	}
 }
 
-func must(t *testing.T, err error) {
+func must(t testing.TB, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
