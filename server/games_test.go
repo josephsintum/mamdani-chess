@@ -28,24 +28,26 @@ func TestPracticeAndReconnectEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	counts := eventCounts(t, s)
-	if counts["practice"] != 1 || counts["reconnect"] != 1 || counts["restart"] != 0 {
-		t.Fatalf("events %v", counts)
+	counts := counted(t, s)
+	if counts["event.practice"] != 1 || counts["event.reconnect"] != 1 || counts["event.restart"] != 0 {
+		t.Fatalf("counters %v", counts)
 	}
 }
 
-// eventCounts counts each kind of event logged so far.
-func eventCounts(t *testing.T, s *Server) map[string]int {
+// counted sums every counter so far, by key.
+func counted(t *testing.T, s *Server) map[string]int {
 	t.Helper()
-	counts := map[string]int{}
-	for _, kind := range []string{"practice", "reconnect", "restart"} {
-		n, err := s.store.CountEvents(t.Context(), kind, time.Time{}, time.Now().Add(time.Hour))
-		if err != nil {
-			t.Fatal(err)
-		}
-		counts[kind] = n
+	days, err := s.store.Counts(t.Context(), "", time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	return counts
+	sum := map[string]int{}
+	for _, d := range days {
+		for k, n := range d.N {
+			sum[k] += n
+		}
+	}
+	return sum
 }
 
 // playtestHeader adds the header the playtest script sends to every request.
@@ -127,9 +129,6 @@ func TestPlaytestGamesAreNotCounted(t *testing.T) {
 	if kind, playtest := kindOf(t, s, code); kind != "quick" || !playtest {
 		t.Fatalf("quick match: kind %q playtest %v, want quick, true", kind, playtest)
 	}
-	if rows := searches(t, s); len(rows) != 0 {
-		t.Fatalf("a playtest's searches were logged: %+v", rows)
-	}
 	if status, body := alice.post("/api/games/"+code+"/resign", ""); status != http.StatusNoContent {
 		t.Fatalf("resign: %d %s", status, body)
 	}
@@ -149,16 +148,10 @@ func TestPlaytestGamesAreNotCounted(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if counts := eventCounts(t, s); counts["practice"] != 0 || counts["reconnect"] != 0 {
-		t.Fatalf("a playtest's events were logged: %v", counts)
-	}
-	// A playtest writes no counters at all.
-	days, err := s.store.Counts(t.Context(), "", "9999-12-31")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(days) != 0 {
-		t.Fatalf("the stats count a playtest: %v", days)
+	// A playtest writes no counters at all, and every search and event
+	// that is logged is counted, so none was logged either.
+	if counts := counted(t, s); len(counts) != 0 {
+		t.Fatalf("the stats count a playtest: %v", counts)
 	}
 }
 

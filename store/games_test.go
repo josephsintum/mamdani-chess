@@ -233,4 +233,11 @@ func TestCountersMigrateAfterGameStats(t *testing.T) {
 	if err := s.CreateGame(ctx, Game{Code: "NEW003", White: "a", CreatedAt: t0}); err != nil {
 		t.Fatalf("CreateGame: %v", err)
 	}
+	// Only the rebuild reads searches and events, start to end: their
+	// time indexes go.
+	var n int
+	must(t, s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE name IN ('searches_started_at', 'events_at')`).Scan(&n))
+	if n != 0 {
+		t.Errorf("%d unused indexes left", n)
+	}
 }

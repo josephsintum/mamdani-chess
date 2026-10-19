@@ -113,8 +113,12 @@ var migrations = []string{
 	 CREATE INDEX events_at ON events(at);`,
 	// 9: the daily counters the stats page reads (day in STATS_TZ, a key,
 	// an amount); stats_state says which counters version and zone wrote
-	// them. Empty here: the first start rebuilds them.
-	`CREATE TABLE stats_days (
+	// them. Empty here: the first start rebuilds them. The page no longer
+	// reads searches or events by time (only the rebuild reads them, start
+	// to end), so their time indexes go.
+	`DROP INDEX searches_started_at;
+	 DROP INDEX events_at;
+	 CREATE TABLE stats_days (
 		day TEXT NOT NULL,
 		key TEXT NOT NULL,
 		n   INTEGER NOT NULL,
