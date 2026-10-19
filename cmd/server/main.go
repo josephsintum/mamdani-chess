@@ -55,7 +55,6 @@ func run() error {
 	// The stats page (specs: docs/superpowers/specs/2026-10-08-stats-design.md
 	// and 2026-10-19-stats-counters-design.md).
 	handler.StatsPassword = os.Getenv("STATS_PASSWORD")
-	handler.StatsZone = zone
 	srv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           handler,

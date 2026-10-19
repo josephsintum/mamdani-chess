@@ -58,22 +58,3 @@ func (s *Store) LatestError(ctx context.Context, from, to time.Time) (string, er
 	}
 	return msg, err
 }
-
-// ErrorStats is what the Health section shows of the browser errors in a
-// range: how many, and the latest message.
-type ErrorStats struct {
-	N      int
-	Latest string
-}
-
-// BrowserErrors counts the errors with from <= at < to.
-func (s *Store) BrowserErrors(ctx context.Context, from, to time.Time) (ErrorStats, error) {
-	var st ErrorStats
-	var latest sql.NullString
-	a, b := from.UnixMilli(), to.UnixMilli()
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*), (SELECT message FROM browser_errors WHERE at >= ? AND at < ? ORDER BY at DESC LIMIT 1) FROM browser_errors WHERE at >= ? AND at < ?`,
-		a, b, a, b).Scan(&st.N, &latest)
-	st.Latest = latest.String
-	return st, err
-}

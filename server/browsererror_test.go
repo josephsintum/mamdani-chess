@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"mamdani-chess/store"
 )
 
 func TestPageOf(t *testing.T) {
@@ -59,15 +61,21 @@ func TestIsRobot(t *testing.T) {
 	}
 }
 
-// errorsSoFar returns the stored browser errors through the same path the
-// page uses.
+// errorsSoFar returns the counted browser errors and the latest stored
+// message, through the same reads the page uses.
 func errorsSoFar(t *testing.T, s *Server) (int, string) {
 	t.Helper()
-	st, err := s.store.BrowserErrors(t.Context(), time.Time{}, time.Now().Add(time.Hour))
+	ctx := t.Context()
+	end := time.Now().Add(48 * time.Hour)
+	days, err := s.store.Counts(ctx, "", end.UTC().Format("2006-01-02"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return st.N, st.Latest
+	latest, err := s.store.LatestError(ctx, time.Time{}, end)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store.Summarize(days, "", end.UTC().Format("2006-01-02")).Errors, latest
 }
 
 func TestErrorBodies(t *testing.T) {

@@ -152,12 +152,13 @@ func TestPlaytestGamesAreNotCounted(t *testing.T) {
 	if counts := eventCounts(t, s); counts["practice"] != 0 || counts["reconnect"] != 0 {
 		t.Fatalf("a playtest's events were logged: %v", counts)
 	}
-	section, err := s.store.GameSection(t.Context(), time.Time{}, time.Now().Add(time.Hour), time.UTC)
+	// A playtest writes no counters at all.
+	days, err := s.store.Counts(t.Context(), "", "9999-12-31")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if section.Games != 0 || section.Road.Games != 0 {
-		t.Fatalf("the stats count a playtest: %d games (%d on the road)", section.Games, section.Road.Games)
+	if len(days) != 0 {
+		t.Fatalf("the stats count a playtest: %v", days)
 	}
 }
 
@@ -214,10 +215,11 @@ func TestGameEndSavesStatsAndKind(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			section, err := st.GameSection(t.Context(), time.Time{}, time.Now().Add(time.Hour), time.UTC)
+			days, err := st.Counts(t.Context(), "", "9999-12-31")
 			if err != nil {
 				t.Fatal(err)
 			}
+			section := store.Summarize(days, "", "9999-12-31")
 			if has || len(section.Ends) != 1 || section.Ends[0] != (store.Count{Label: "Aborted", N: 1}) {
 				t.Fatalf("stats row %v, ends %v; want none and one aborted", has, section.Ends)
 			}
