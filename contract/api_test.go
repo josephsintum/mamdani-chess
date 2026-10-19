@@ -134,7 +134,19 @@ func TestPractice(t *testing.T) {
 	}
 	code := decode[struct{ Code string }](t, r.body).Code
 	move := "/api/games/" + code + "/move"
-	for i, m := range []string{`{"from":"e2","to":"e4","seq":0}`, `{"from":"e7","to":"e5","seq":1}`} {
+	// The dice are real, so each side plays a move the server lists as
+	// legal (a fixed reply like e7-e5 is illegal when the roll opened a
+	// pothole on e5).
+	for i := range 2 {
+		_, view := p.get("/api/games/" + code)
+		v := decode[struct {
+			Seq   int
+			Legal []struct{ From, To string }
+		}](t, view)
+		if len(v.Legal) == 0 {
+			t.Fatalf("move %d: no legal move in %s", i, view)
+		}
+		m := fmt.Sprintf(`{"from":%q,"to":%q,"seq":%d}`, v.Legal[0].From, v.Legal[0].To, v.Seq)
 		if status, body := p.post(move, m); status != 204 {
 			t.Errorf("move %d: %d %q", i, status, body)
 		}
