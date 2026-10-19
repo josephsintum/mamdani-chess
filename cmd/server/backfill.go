@@ -33,20 +33,24 @@ func backfillStats(ctx context.Context, st *store.Store) (done, failed int, err 
 	return done, failed, nil
 }
 
-// startStats counts this start on the stats page's Health section and
-// backfills game stats. A failure is logged at ERROR and startup carries
+// prepareStats backfills game stats, rebuilds the counters when their
+// version or zone changed, and counts this start, in that order, before
+// any game is restored. A failure is logged at ERROR and startup carries
 // on: the stats must never keep the game down.
-func startStats(ctx context.Context, st *store.Store) {
-	if err := st.AddEvent(ctx, "restart", time.Now()); err != nil {
-		slog.Error("restart not counted", "err", err)
-	}
-	start := time.Now()
+func prepareStats(ctx context.Context, st *store.Store, now time.Time) {
+	begin := time.Now()
 	done, failed, err := backfillStats(ctx, st)
 	if err != nil {
 		slog.Error("game stats backfill stopped", "games", done, "failed", failed, "err", err)
-		return
+	} else if done > 0 || failed > 0 {
+		slog.Info("game stats backfilled", "games", done, "failed", failed, "duration", time.Since(begin))
 	}
-	if done > 0 || failed > 0 {
-		slog.Info("game stats backfilled", "games", done, "failed", failed, "duration", time.Since(start))
+	if rep, err := st.EnsureCounters(ctx, now); err != nil {
+		slog.Error("stats counters not rebuilt", "err", err)
+	} else if rep.Rows > 0 || rep.Took > 0 {
+		slog.Info("stats rebuilt", "days", rep.Days, "rows", rep.Rows, "duration", rep.Took)
+	}
+	if err := st.AddEvent(ctx, "restart", now); err != nil {
+		slog.Error("restart not counted", "err", err)
 	}
 }

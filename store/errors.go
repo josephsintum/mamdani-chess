@@ -77,25 +77,3 @@ func (s *Store) BrowserErrors(ctx context.Context, from, to time.Time) (ErrorSta
 	st.Latest = latest.String
 	return st, err
 }
-
-// PruneStats deletes browser errors, quick-match searches and events from
-// before the cutoff and returns how many rows went.
-func (s *Store) PruneStats(ctx context.Context, before time.Time) (int64, error) {
-	var total int64
-	for _, q := range []string{
-		`DELETE FROM browser_errors WHERE at < ?`,
-		`DELETE FROM searches WHERE started_at < ?`,
-		`DELETE FROM events WHERE at < ?`,
-	} {
-		res, err := s.db.ExecContext(ctx, q, before.UnixMilli())
-		if err != nil {
-			return total, err
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return total, err
-		}
-		total += n
-	}
-	return total, nil
-}
