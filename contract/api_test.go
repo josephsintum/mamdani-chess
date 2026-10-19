@@ -563,16 +563,24 @@ func TestNames(t *testing.T) {
 // The app, static files and link previews.
 func TestAppAndPreviews(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
-	home := c.do(http.MethodGet, "/", http.Header{"Accept-Encoding": {"br, gzip"}})
+	home := c.do(http.MethodGet, "/", nil) // Go's client asks for gzip and unzips it
 	html := home.body
-	expectJSON(t, []any{home.status, header(home, "Content-Type"), header(home, "Cache-Control"), header(home, "Content-Encoding")},
-		`[200,"text/html; charset=utf-8","private, no-cache",null]`)
+	expectJSON(t, []any{home.status, header(home, "Content-Type"), header(home, "Cache-Control")},
+		`[200,"text/html; charset=utf-8","private, no-cache"]`)
+	// A page carries per-request tags, so it's gzipped as it's sent (never
+	// brotli, which the build's precompressed copies use).
+	for accept, want := range map[string]any{"br, gzip": "gzip", "identity": nil} {
+		res := c.do(http.MethodGet, "/", http.Header{"Accept-Encoding": {accept}})
+		if got := header(res, "Content-Encoding"); got != want {
+			t.Errorf("GET / with Accept-Encoding %q: Content-Encoding %v, want %v", accept, got, want)
+		}
+	}
 	for _, want := range []string{
 		"<title>Mamdani Chess</title>",
 		"<meta name=\"description\" content=\"Chess where potholes open under your pieces.",
 		`<meta property="og:image" content="` + base + `/og.png" />`,
-		`<link rel="canonical" href="https://mamdanichess.com/" />`,
-		"Every move rolls the dice.", // prerendered, for search engines
+		`<link rel="canonical" href="https://mamdanichess.com/"/>`, // from the page's <svelte:head>
+		"Every move rolls the dice.",                               // prerendered, for search engines
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the home page lacks %q", want)

@@ -46,6 +46,7 @@ func newTestServerWith(t *testing.T, dice rules.Dice) (*Server, *httptest.Server
 		"rules.html":            {Data: []byte("<!doctype html><html><head><meta charset=\"utf-8\"><title>Rules · Mamdani Chess</title></head><body>rules page</body></html>")},
 		"_app/immutable/app.js": {Data: []byte("console.log(1)")},
 		"favicon.svg":           {Data: []byte("<svg/>")},
+		"google1234.html":       {Data: []byte("google-site-verification: verification")},
 		"favicon.svg.br":        {Data: []byte("brotli bytes")},
 		"favicon.svg.gz":        {Data: svgGzip},
 	}
@@ -294,7 +295,8 @@ func TestStaticAndFallback(t *testing.T) {
 	}{
 		{"/", "home page", "private, no-cache", 200},
 		{"/rules", "rules page", "private, no-cache", 200},
-		{"/rules/", "rules page", "private, no-cache", 200},
+		{"/index", "app shell", "private, no-cache", 404},
+		{"/google1234.html", "verification", "no-cache", 200},
 		{"/game/K7F3QZ", "app shell", "private, no-cache", 200},
 		{"/play", "app shell", "private, no-cache", 200},
 		{"/nope", "app shell", "private, no-cache", 404},

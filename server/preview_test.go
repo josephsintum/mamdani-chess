@@ -1,6 +1,7 @@
 package server
 
 import (
+	"compress/gzip"
 	"io"
 	"net/http"
 	"strings"
@@ -124,34 +125,75 @@ func TestPreviewTagsAreEscaped(t *testing.T) {
 	}
 }
 
-// Search engines list the prerendered pages at mamdanichess.com, whichever
-// host served them, and leave the rest out.
+// Search engines list the prerendered pages (their canonical link is in
+// the page itself) and leave the rest out.
 func TestSearchEnginesListOnlyTheContentPages(t *testing.T) {
 	_, ts := newTestServer(t)
 	c := ts.Client()
 	home := page(t, c, ts.URL+"/")
-	if !strings.Contains(home, `<link rel="canonical" href="https://mamdanichess.com/" />`) || !strings.Contains(home, `"@type":"WebSite"`) {
+	if !strings.Contains(home, `"@type":"WebSite"`) || strings.Contains(home, "noindex") {
 		t.Errorf("home page: %s", home)
 	}
-	rules := page(t, c, ts.URL+"/rules/")
-	if !strings.Contains(rules, `<link rel="canonical" href="https://mamdanichess.com/rules" />`) || strings.Count(rules, "<title>") != 1 {
+	rules := page(t, c, ts.URL+"/rules")
+	if strings.Count(rules, "<title>") != 1 || strings.Contains(rules, "noindex") || strings.Contains(rules, "ld+json") {
 		t.Errorf("rules page: %s", rules)
 	}
-	if strings.Contains(rules, "noindex") || strings.Contains(rules, "ld+json") {
-		t.Errorf("rules page: %s", rules)
-	}
-	for _, path := range []string{"/play", "/practice", "/game/ZZZZZZ", "/nope"} {
-		req, _ := http.NewRequest(http.MethodGet, ts.URL+path, nil)
-		resp, err := c.Do(req)
+	for _, path := range []string{"/play", "/practice", "/game/ZZZZZZ", "/nope", "/index", "/RULES"} {
+		resp, err := c.Get(ts.URL + path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		b, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		html := string(b)
-		if meta(html, "robots") != "noindex" || strings.Contains(html, "canonical") || strings.Count(html, "<title>") != 1 {
+		if meta(html, "robots") != "noindex" || strings.Count(html, "<title>") != 1 {
 			t.Errorf("%s: %s", path, html)
 		}
+	}
+}
+
+// A prerendered page loads its files by relative paths, so a trailing
+// slash (or any unclean form of a route) redirects to the route.
+func TestRoutesRedirectToTheirCleanPath(t *testing.T) {
+	_, ts := newTestServer(t)
+	c := ts.Client()
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	for path, want := range map[string]string{
+		"/rules/":            "/rules",
+		"/game/K7F3QZ/?x=1":  "/game/K7F3QZ?x=1",
+		"/nope/":             "",
+		"/game/K7F3QZ/nope/": "",
+	} {
+		resp, err := c.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if got := resp.Header.Get("Location"); got != want || (want != "") != (resp.StatusCode == http.StatusMovedPermanently) {
+			t.Errorf("%s: %d to %q, want %q", path, resp.StatusCode, got, want)
+		}
+	}
+}
+
+// The tags differ per request, so a page is compressed as it's sent.
+func TestPagesAreGzipped(t *testing.T) {
+	_, ts := newTestServer(t)
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/rules", nil)
+	req.Header.Set("Accept-Encoding", "br, gzip") // set by hand, so the client doesn't unzip
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.Header.Get("Content-Encoding") != "gzip" || resp.Header.Get("Vary") != "Accept-Encoding" {
+		t.Fatalf("Content-Encoding %q, Vary %q", resp.Header.Get("Content-Encoding"), resp.Header.Get("Vary"))
+	}
+	zr, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := io.ReadAll(zr); !strings.Contains(string(b), "rules page") || !strings.Contains(string(b), "og:title") {
+		t.Errorf("unzipped: %s", b)
 	}
 }
 
@@ -160,7 +202,9 @@ func TestAliasesRedirectToTheSite(t *testing.T) {
 	c := ts.Client()
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	for _, host := range []string{"www.mamdanichess.com", "WWW.mamdanichess.com", "mamdani-chess.up.railway.app"} {
-		for path, want := range map[string]int{"/game/K7F3QZ?x=1": http.StatusMovedPermanently, "/api/games": http.StatusOK, "/healthz": http.StatusOK} {
+		// Only pages move: a tab opened on the alias still loads its files
+		// and the API there.
+		for path, want := range map[string]int{"/game/K7F3QZ?x=1": http.StatusMovedPermanently, "/_app/immutable/app.js": http.StatusOK, "/api/games": http.StatusOK, "/healthz": http.StatusOK} {
 			req, _ := http.NewRequest(http.MethodGet, ts.URL+path, nil)
 			req.Host = host
 			resp, err := c.Do(req)

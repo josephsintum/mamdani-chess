@@ -18,16 +18,9 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if aliases[strings.ToLower(r.Host)] {
-		// One address for search engines, bookmarks and the guest cookie
-		// (which belongs to one host). The API stays on the alias, so a tab
-		// opened there keeps working until it reloads.
-		http.Redirect(w, r, "https://"+siteHost+r.URL.RequestURI(), http.StatusMovedPermanently)
-		return
-	}
 	name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 	info, err := fs.Stat(s.assets, name)
-	if name == "" || err != nil || info.IsDir() || strings.HasSuffix(name, ".html") {
+	if name == "" || err != nil || info.IsDir() || isPageFile(name) {
 		if strings.HasPrefix(name, "_app/") {
 			// A missing build asset (an old chunk after a deploy, say) is a
 			// real 404: the app shell in its place can't run as a script.

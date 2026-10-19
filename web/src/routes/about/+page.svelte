@@ -7,6 +7,8 @@
 
 <svelte:head>
 	<title>About · Mamdani Chess</title>
+	<!-- Here, not from the server, so it goes when the app navigates on. -->
+	<link rel="canonical" href="https://mamdanichess.com/about" />
 </svelte:head>
 
 <Header />
