@@ -12,8 +12,8 @@ import (
 	"mamdani-chess/store"
 )
 
-// With the database gone, the backfill, the counters and the restart count
-// each log at ERROR and startup goes on.
+// With the database gone, the prune, the counters, the backfill and the
+// restart count each log at ERROR and startup goes on.
 func TestPrepareStatsNeverStopsTheServer(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -25,8 +25,8 @@ func TestPrepareStatsNeverStopsTheServer(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
 	prepareStats(context.Background(), st, time.Now())
 	out := buf.String()
-	if strings.Count(out, "level=ERROR") != 3 || !strings.Contains(out, "restart not counted") || !strings.Contains(out, "game stats backfill stopped") ||
-		!strings.Contains(out, "stats counters not rebuilt") {
+	if strings.Count(out, "level=ERROR") != 4 || !strings.Contains(out, "old stats rows not pruned") || !strings.Contains(out, "restart not counted") ||
+		!strings.Contains(out, "game stats backfill stopped") || !strings.Contains(out, "stats counters not rebuilt") {
 		t.Fatalf("logged %q", out)
 	}
 }

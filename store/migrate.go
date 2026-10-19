@@ -129,6 +129,11 @@ var migrations = []string{
 		version INTEGER NOT NULL,
 		zone    TEXT NOT NULL
 	 );`,
+	// 10: past a day's cap, a browser error or an event folds into the
+	// newest row (of its kind) instead of adding one: n is how many reports
+	// that row stands for, so a rebuild recounts every one.
+	`ALTER TABLE browser_errors ADD COLUMN n INTEGER NOT NULL DEFAULT 1;
+	 ALTER TABLE events ADD COLUMN n INTEGER NOT NULL DEFAULT 1;`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

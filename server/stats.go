@@ -245,13 +245,13 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	loc := s.store.Zone()
 	days := r.URL.Query().Get("days")
 	from, to, label := statsRange(days, time.Now(), loc)
-	fromDay, toDay := "", dayOf(to, loc)
+	fromDay, toDay := "", store.DayOf(to, loc)
 	readFrom := ""
 	var prevFrom time.Time
 	if !from.IsZero() {
-		fromDay = dayOf(from, loc)
+		fromDay = store.DayOf(from, loc)
 		prevFrom = rangeBefore(from, to)
-		readFrom = dayOf(prevFrom, loc)
+		readFrom = store.DayOf(prevFrom, loc)
 	}
 	// One read for the range and the range before it.
 	counted, err := s.store.Counts(ctx, readFrom, toDay)
@@ -325,9 +325,6 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 // statsTimeout bounds the page's reads, so it can never hold the one
 // connection long enough to keep a game's save waiting.
 const statsTimeout = 2 * time.Second
-
-// dayOf is t's day in loc, as the counters store it.
-func dayOf(t time.Time, loc *time.Location) string { return t.In(loc).Format("2006-01-02") }
 
 // practiceGames is how many practice games a summary's days started.
 func practiceGames(g store.Summary) int {

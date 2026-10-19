@@ -96,11 +96,6 @@ func run() error {
 // stats work holds the one database connection.
 func start(ctx context.Context, st *store.Store, hub *game.Hub, now time.Time) error {
 	begin := time.Now()
-	if n, err := st.PruneErrors(ctx, now); err != nil {
-		return fmt.Errorf("prune browser errors: %w", err)
-	} else if n > 0 {
-		slog.Info("old browser errors pruned", "rows", n)
-	}
 	expired, err := st.ExpireWaiting(ctx, now.Add(-game.DefaultIdle), now)
 	if err != nil {
 		return fmt.Errorf("expire waiting games: %w", err)

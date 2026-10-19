@@ -59,7 +59,7 @@ func (s *Store) AddGameStats(ctx context.Context, code string, st GameStats) err
 	}
 	if !playtest && result.Valid && result.String != "retired" {
 		f.Created, f.Result, f.Winner = time.UnixMilli(created), result.String, winner.String
-		if f.WinnerMS, f.HasClock, err = lastClock(ctx, tx, code, f.Winner); err != nil {
+		if err := lastTurn(ctx, tx, code, &f); err != nil {
 			return err
 		}
 		before := counts{}
@@ -146,8 +146,11 @@ func (s *Store) AddSearch(ctx context.Context, sr Search) error {
 // counts it.
 func (s *Store) AddEvent(ctx context.Context, kind string, at time.Time) error {
 	c := counts{}
-	countEvent(c, s.zone, kind, at)
-	return s.insertCounted(ctx, c, `INSERT INTO events (at, kind) VALUES (?, ?)`, at.UnixMilli(), kind)
+	countEvent(c, s.zone, kind, at, 1)
+	return s.insertFolded(ctx, c, DayOf(at, s.zone), "event."+kind, eventRowsPerDay,
+		`INSERT INTO events (at, kind) VALUES (?, ?)`,
+		`UPDATE events SET at = ?, n = n + 1 WHERE rowid = (SELECT rowid FROM events WHERE kind = ?2 ORDER BY rowid DESC LIMIT 1)`,
+		at.UnixMilli(), kind)
 }
 
 // insertCounted runs one raw insert and adds its counts, in one

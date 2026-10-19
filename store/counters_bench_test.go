@@ -73,6 +73,25 @@ func BenchmarkRebuild(b *testing.B) {
 	}
 }
 
+// BenchmarkTotalsAgree is the check every start makes when the counters
+// are current, over 100,000 games.
+func BenchmarkTotalsAgree(b *testing.B) {
+	s, err := Open(filepath.Join(b.TempDir(), "bench.db"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer s.Close()
+	seedGames(b, s, 100_000, 400)
+	if _, err := s.rebuild(b.Context(), t0); err != nil {
+		b.Fatal(err)
+	}
+	for b.Loop() {
+		if agree, err := s.totalsAgree(b.Context(), t0); err != nil || !agree {
+			b.Fatalf("agree %v, %v", agree, err)
+		}
+	}
+}
+
 // BenchmarkCounts reads a 90-day page and its range before (180 days) out
 // of 400 days of counters, the way the page does. It doesn't depend on how
 // many games there were.
@@ -86,8 +105,8 @@ func BenchmarkCounts(b *testing.B) {
 	if _, err := s.rebuild(b.Context(), t0); err != nil {
 		b.Fatal(err)
 	}
-	to := dayOf(t0.AddDate(0, 0, 1), time.UTC)
-	from := dayOf(t0.AddDate(0, 0, -179), time.UTC)
+	to := DayOf(t0.AddDate(0, 0, 1), time.UTC)
+	from := DayOf(t0.AddDate(0, 0, -179), time.UTC)
 	for b.Loop() {
 		days, err := s.Counts(b.Context(), from, to)
 		if err != nil {

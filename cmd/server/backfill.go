@@ -33,12 +33,17 @@ func backfillStats(ctx context.Context, st *store.Store) (done, failed int, err 
 	return done, failed, nil
 }
 
-// prepareStats rebuilds the counters when their version or zone changed,
-// backfills game stats (each backfilled game adds to the rebuilt
+// prepareStats prunes old raw stats rows, rebuilds the counters when
+// needed, backfills game stats (each backfilled game adds to the rebuilt
 // counters), and counts this start, in that order, before any game is
 // restored. A failure is logged at ERROR and startup carries on: the stats
 // must never keep the game down.
 func prepareStats(ctx context.Context, st *store.Store, now time.Time) {
+	if n, err := st.Prune(ctx, now); err != nil {
+		slog.Error("old stats rows not pruned", "err", err)
+	} else if n > 0 {
+		slog.Info("old stats rows pruned", "rows", n)
+	}
 	if rep, err := st.EnsureCounters(ctx, now); err != nil {
 		slog.Error("stats counters not rebuilt", "err", err)
 	} else if rep.Rows > 0 || rep.Took > 0 {

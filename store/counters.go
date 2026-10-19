@@ -81,25 +81,42 @@ func (s *Store) CountersStale() bool { return s.stale.Load() }
 // Zone is the zone the counters cut days in.
 func (s *Store) Zone() *time.Location { return s.zone }
 
-// errorsKeep is how long browser errors' raw rows are kept: about thirteen
-// months. Their daily counts are kept for good.
-const errorsKeep = 400
+// rawKeep is how long the raw rows of browser errors, searches and events
+// are kept: about thirteen months. Their daily counts are kept for good.
+const rawKeep = 400
 
-// errorCutoff is the first day whose browser errors are all still kept:
-// a midnight in the store's zone, so no day is ever half pruned.
-func (s *Store) errorCutoff(now time.Time) time.Time {
-	y, m, d := now.In(s.zone).AddDate(0, 0, -errorsKeep).Date()
+// rawKeys are the counters those rows feed, as SQL on stats_days.key.
+const rawKeys = `(key = 'errors' OR key = 'search' OR key LIKE 'search.%' OR key LIKE 'wait.%' OR key LIKE 'gaveup.%' OR key LIKE 'event.%')`
+
+// cutoff is the first day whose raw rows are all still kept: a midnight
+// in the store's zone, so no day is ever half pruned.
+func (s *Store) cutoff(now time.Time) time.Time {
+	y, m, d := now.In(s.zone).AddDate(0, 0, -rawKeep).Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, s.zone)
 }
 
-// PruneErrors deletes the browser errors from before the cutoff day and
-// returns how many went.
-func (s *Store) PruneErrors(ctx context.Context, now time.Time) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM browser_errors WHERE at < ?`, s.errorCutoff(now).UnixMilli())
+// Prune deletes the browser errors, searches and events from before the
+// cutoff day and returns how many rows went.
+func (s *Store) Prune(ctx context.Context, now time.Time) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	defer tx.Rollback()
+	cut := s.cutoff(now).UnixMilli()
+	var total int64
+	for _, q := range []string{`DELETE FROM browser_errors WHERE at < ?`, `DELETE FROM searches WHERE started_at < ?`, `DELETE FROM events WHERE at < ?`} {
+		res, err := tx.ExecContext(ctx, q, cut)
+		if err != nil {
+			return 0, err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
+		total += n
+	}
+	return total, tx.Commit()
 }
 
 // RebuildReport is what a rebuild did, for the log.
@@ -110,8 +127,9 @@ type RebuildReport struct {
 
 // EnsureCounters rebuilds the counters when they were written under
 // another version or zone, or never (a new database, or the first start
-// with counters). It returns nil and a zero report when nothing was
-// needed. On an error the old counters stay and CountersStale reports it.
+// with counters), or when their totals disagree with the rows (rows a
+// build without counters wrote, after a rollback). It returns nil and a
+// zero report when nothing was needed. On an error the old counters stay and CountersStale reports it.
 // Run it before anything else uses the store: it holds the one connection.
 func (s *Store) EnsureCounters(ctx context.Context, now time.Time) (RebuildReport, error) {
 	var version int
@@ -122,8 +140,15 @@ func (s *Store) EnsureCounters(ctx context.Context, now time.Time) (RebuildRepor
 		return RebuildReport{}, err
 	}
 	if err == nil && version == countersVersion && zone == s.zone.String() {
-		s.stale.Store(false)
-		return RebuildReport{}, nil
+		agree, err := s.totalsAgree(ctx, now)
+		if err != nil {
+			s.stale.Store(true)
+			return RebuildReport{}, err
+		}
+		if agree {
+			s.stale.Store(false)
+			return RebuildReport{}, nil
+		}
 	}
 	start := time.Now()
 	rep, err := s.rebuild(ctx, now)
@@ -138,24 +163,25 @@ func (s *Store) EnsureCounters(ctx context.Context, now time.Time) (RebuildRepor
 
 // rebuild recounts every raw row through the counting functions: each
 // table is read once, summed in memory, and written in one transaction.
-// A day's errors keep the larger of their counter and their rows: errors
-// past the daily cap, or pruned, have no rows left to recount.
+// Errors, searches and events are recounted from the cutoff day; the days
+// before it keep their counters, since their rows were pruned.
 func (s *Store) rebuild(ctx context.Context, now time.Time) (RebuildReport, error) {
 	c := counts{}
+	cut := s.cutoff(now)
 	if err := s.recountGames(ctx, c); err != nil {
 		return RebuildReport{}, fmt.Errorf("games: %w", err)
 	}
-	if err := s.recountSearches(ctx, c); err != nil {
+	if err := s.recountSearches(ctx, c, cut); err != nil {
 		return RebuildReport{}, fmt.Errorf("searches: %w", err)
 	}
-	if err := s.recountEvents(ctx, c); err != nil {
+	if err := s.recountEvents(ctx, c, cut); err != nil {
 		return RebuildReport{}, fmt.Errorf("events: %w", err)
 	}
-	if err := s.recountErrors(ctx, c, s.errorCutoff(now)); err != nil {
+	if err := s.recountErrors(ctx, c, cut); err != nil {
 		return RebuildReport{}, fmt.Errorf("errors: %w", err)
 	}
-	if err := s.keepErrorCounts(ctx, c); err != nil {
-		return RebuildReport{}, fmt.Errorf("errors kept: %w", err)
+	if err := s.keepPrunedCounts(ctx, c, DayOf(cut, s.zone)); err != nil {
+		return RebuildReport{}, fmt.Errorf("pruned days: %w", err)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -182,18 +208,19 @@ func (s *Store) rebuild(ctx context.Context, now time.Time) (RebuildReport, erro
 	return RebuildReport{Days: len(days), Rows: len(c)}, nil
 }
 
-// recountGames streams every game with its stats row and its last turn's
-// clocks (two primary-key seeks), never its turns. Playtests and retired
+// recountGames streams every game with its stats row and its last turn
+// (a primary-key seek), never its other turns. Playtests and retired
 // games count nowhere: only a migration retires a game, its game was saved
 // under rules since replaced, and a migration that retires games comes
 // with a new countersVersion.
 func (s *Store) recountGames(ctx context.Context, c counts) error {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT g.created_at, g.kind, g.rematch_of IS NOT NULL, g.black IS NOT NULL, g.joined_at, g.result, g.winner,
-		       (SELECT white_ms FROM turns t WHERE t.game = g.code ORDER BY ply DESC LIMIT 1),
-		       (SELECT black_ms FROM turns t WHERE t.game = g.code ORDER BY ply DESC LIMIT 1),
+		       t.ply, t.white_ms, t.black_ms,
 		       s.moves, s.opened, s.reset, s.closed_rounds, s.closed_cap, s.repaired, s.fell, s.saving_rolls, s.saved, s.white_lost, s.black_lost, s.mate_by_roll, s.open_hist
-		FROM games g LEFT JOIN game_stats s ON s.game = g.code
+		FROM games g
+		LEFT JOIN turns t ON t.game = g.code AND t.ply = (SELECT MAX(ply) FROM turns WHERE game = g.code)
+		LEFT JOIN game_stats s ON s.game = g.code
 		WHERE g.playtest = 0 AND COALESCE(g.result, '') != 'retired'`)
 	if err != nil {
 		return err
@@ -202,17 +229,20 @@ func (s *Store) recountGames(ctx context.Context, c counts) error {
 	for rows.Next() {
 		var f gameFacts
 		var created int64
-		var joined, whiteMS, blackMS sql.NullInt64
+		var joined, ply, whiteMS, blackMS sql.NullInt64
 		var result, winner, hist sql.NullString
 		var st [11]sql.NullInt64
 		var mate sql.NullBool
-		if err := rows.Scan(&created, &f.Kind, &f.Rematch, &f.HasBlack, &joined, &result, &winner, &whiteMS, &blackMS,
+		if err := rows.Scan(&created, &f.Kind, &f.Rematch, &f.HasBlack, &joined, &result, &winner, &ply, &whiteMS, &blackMS,
 			&st[0], &st[1], &st[2], &st[3], &st[4], &st[5], &st[6], &st[7], &st[8], &st[9], &st[10], &mate, &hist); err != nil {
 			return err
 		}
 		f.Created, f.Result, f.Winner = time.UnixMilli(created), result.String, winner.String
 		if joined.Valid {
 			f.Joined = time.UnixMilli(joined.Int64)
+		}
+		if ply.Valid {
+			f.Moves = int(ply.Int64) + 1
 		}
 		f.WinnerMS, f.HasClock = winnerClock(f.Winner, whiteMS, blackMS)
 		if st[0].Valid {
@@ -244,8 +274,29 @@ func winnerClock(winner string, whiteMS, blackMS sql.NullInt64) (int64, bool) {
 	return 0, false
 }
 
-func (s *Store) recountSearches(ctx context.Context, c counts) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT started_at, ended_at, matched, others FROM searches`)
+// totalsAgree checks the counters against the rows, one total per table:
+// games made, games ended, and from the cutoff day searches, events and
+// browser errors.
+func (s *Store) totalsAgree(ctx context.Context, now time.Time) (bool, error) {
+	cut := s.cutoff(now)
+	var agree bool
+	err := s.db.QueryRowContext(ctx, `SELECT
+		(SELECT COUNT(*) FROM games WHERE playtest = 0 AND COALESCE(result, '') != 'retired')
+		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key IN ('games.quick', 'games.friend'))
+		AND (SELECT COUNT(*) FROM games WHERE playtest = 0 AND result IS NOT NULL AND result != 'retired')
+		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key LIKE 'end.%')
+		AND (SELECT COUNT(*) FROM searches WHERE started_at >= ?1)
+		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key = 'search' AND day >= ?2)
+		AND (SELECT COALESCE(SUM(n), 0) FROM events WHERE at >= ?1)
+		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key LIKE 'event.%' AND day >= ?2)
+		AND (SELECT COALESCE(SUM(n), 0) FROM browser_errors WHERE at >= ?1)
+		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key = 'errors' AND day >= ?2)`,
+		cut.UnixMilli(), DayOf(cut, s.zone)).Scan(&agree)
+	return agree, err
+}
+
+func (s *Store) recountSearches(ctx context.Context, c counts, cutoff time.Time) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT started_at, ended_at, matched, others FROM searches WHERE started_at >= ?`, cutoff.UnixMilli())
 	if err != nil {
 		return err
 	}
@@ -262,8 +313,8 @@ func (s *Store) recountSearches(ctx context.Context, c counts) error {
 	return rows.Err()
 }
 
-func (s *Store) recountEvents(ctx context.Context, c counts) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT at, kind FROM events`)
+func (s *Store) recountEvents(ctx context.Context, c counts, cutoff time.Time) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT at, kind, n FROM events WHERE at >= ?`, cutoff.UnixMilli())
 	if err != nil {
 		return err
 	}
@@ -271,48 +322,48 @@ func (s *Store) recountEvents(ctx context.Context, c counts) error {
 	for rows.Next() {
 		var at int64
 		var kind string
-		if err := rows.Scan(&at, &kind); err != nil {
+		var n int
+		if err := rows.Scan(&at, &kind, &n); err != nil {
 			return err
 		}
-		countEvent(c, s.zone, kind, time.UnixMilli(at))
+		countEvent(c, s.zone, kind, time.UnixMilli(at), n)
 	}
 	return rows.Err()
 }
 
-// keepErrorCounts raises each day's recounted errors to the counter it
-// had, which counted every error, stored or not.
-func (s *Store) keepErrorCounts(ctx context.Context, c counts) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT day, n FROM stats_days WHERE key = 'errors'`)
+// keepPrunedCounts keeps the counters that pruned rows fed, for the days
+// before the cutoff day.
+func (s *Store) keepPrunedCounts(ctx context.Context, c counts, cutoffDay string) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT day, key, n FROM stats_days WHERE day < ? AND `+rawKeys, cutoffDay)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var day string
+		var day, key string
 		var n int
-		if err := rows.Scan(&day, &n); err != nil {
+		if err := rows.Scan(&day, &key, &n); err != nil {
 			return err
 		}
-		if k := (dayKey{day, "errors"}); n > c[k] {
-			c[k] = n
-		}
+		c.add(day, key, n)
 	}
 	return rows.Err()
 }
 
 // recountErrors counts the browser errors from the cutoff day on.
 func (s *Store) recountErrors(ctx context.Context, c counts, cutoff time.Time) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT at FROM browser_errors WHERE at >= ?`, cutoff.UnixMilli())
+	rows, err := s.db.QueryContext(ctx, `SELECT at, n FROM browser_errors WHERE at >= ?`, cutoff.UnixMilli())
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var at int64
-		if err := rows.Scan(&at); err != nil {
+		var n int
+		if err := rows.Scan(&at, &n); err != nil {
 			return err
 		}
-		countError(c, s.zone, time.UnixMilli(at))
+		countError(c, s.zone, time.UnixMilli(at), n)
 	}
 	return rows.Err()
 }
