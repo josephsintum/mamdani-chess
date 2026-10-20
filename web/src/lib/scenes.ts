@@ -82,8 +82,9 @@ export const scenes = {
 		id: 'repairs',
 		start: () => position('4k3/1p4p1/8/8/8/8/1P4P1/4K3', { mamdani: 'c3', potholes: [hole('f6', 'black', 3)], turn: 'black' }),
 		steps: [
-			{ move: m('c3', 'e5'), hold: 2600 },
-			{ move: m('b2', 'b3'), roll: { pothole: 4, target: 'd4' }, hold: 2600 }
+			// Long enough for his line, which waits for the 👍 (THUMB_DONE_MS).
+			{ move: m('c3', 'e5'), hold: 3600 },
+			{ move: m('b2', 'b3'), roll: { pothole: 4, target: 'd4' }, hold: 3600 }
 		]
 	},
 	/** A piece the Mamdani has a clear line to gets a saving roll: odd saves it. */

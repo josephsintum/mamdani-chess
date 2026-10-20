@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { contextOf, endQuip, lineParts, pickLine, quipper, QUIPS, quipFor, spoken } from './catchphrases.ts';
 import type { Color, EventJSON, View } from './game.ts';
+import { THUMB_DONE_MS } from './board.ts';
+import { moveDuration } from './pieces.ts';
 import { boardOf, viewOf } from './test-boards.ts';
 
 const roll: EventJSON[] = [{ kind: 'moved', from: 'e2', to: 'e4' }, { kind: 'rolled_pothole', roll: 4 }, { kind: 'target', sq: 'a5' }];
@@ -48,9 +50,19 @@ describe('quipper', () => {
 		expect(first).toMatchObject({ sq: 'a5', emoji: '😢', key: '7:3', delay: 550 });
 		expect(say(fall(7), 5)).toEqual(first);
 	});
-	it('waits for a fall to finish, but not for a repair', () => {
-		const repair = viewOf({ seq: 3, last: [{ kind: 'moved', from: 'a5', to: 'b6' }, { kind: 'repaired', sq: 'c7' }] });
-		expect(quipper()(repair, 2)).toMatchObject({ delay: 0 });
+	it("says a repair on the Mamdani once his 👍 is done, after his glide when he moved", () => {
+		const board = boardOf({ e1: 'wK', e8: 'bK' });
+		// His move repairs c7 from b6: the bubble waits for the glide from a5, then the 👍.
+		const moved = viewOf({ seq: 3, board, mamdani: 'b6', last: [{ kind: 'moved', from: 'a5', to: 'b6', piece: 'M', color: 'white' }, { kind: 'repaired', sq: 'c7' }] });
+		expect(quipper()(moved, 2)).toMatchObject({ sq: 'b6', delay: moveDuration('a5', 'b6') + THUMB_DONE_MS });
+		// The dice land beside him: he hasn't moved, so only the 👍.
+		const rolled = viewOf({
+			seq: 4,
+			board,
+			mamdani: 'b6',
+			last: [{ kind: 'moved', from: 'e1', to: 'e2', piece: 'wK', color: 'white' }, { kind: 'rolled_pothole', roll: 2 }, { kind: 'target', sq: 'c7' }, { kind: 'repaired', sq: 'c7' }]
+		});
+		expect(quipper()(rolled, 4)).toMatchObject({ sq: 'b6', delay: THUMB_DONE_MS });
 	});
 	it('says nothing before the moment is revealed', () => {
 		expect(quipper()(fall(7), 3)).toBeNull();
@@ -200,7 +212,7 @@ describe('rare moments at the end', () => {
 });
 
 describe('rare moments during a turn', () => {
-	const at = (holes: number, board: string[] = []) => () => ({ board, holes });
+	const at = (holes: number, board: string[] = []) => () => ({ board, holes, mamdani: '' });
 	it('calls the fifth open pothole a season, but not the cap swapping one for another', () => {
 		const opened: EventJSON[] = [{ kind: 'moved', from: 'e2', to: 'e4' }, { kind: 'rolled_pothole', roll: 2 }, { kind: 'target', sq: 'c5' }, { kind: 'pothole_opened', sq: 'c5' }];
 		expect(quipFor(opened, 4, { after: at(5) })).toEqual({ kind: 'potholeSeason', sq: 'c5', index: 3 });
@@ -235,5 +247,6 @@ describe('contextOf', () => {
 		expect(ctx.repaired).toBe(4);
 		expect(ctx.after!(3).holes).toBe(1);
 		expect(ctx.after!(2).holes).toBe(0);
+		expect(ctx.after!(3).mamdani).toBe('a5');
 	});
 });

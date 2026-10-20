@@ -2,9 +2,11 @@
 // an emoji and a line (spec: board feel, section 8). The lines are the game
 // piece's playful voice, never presented as real quotes.
 
-import { kingSquare, matedByRoll, stageAt } from './board.ts';
+import { kingSquare, matedByRoll, stageAt, THUMB_DONE_MS } from './board.ts';
+import { withRoll } from './dice.ts';
 import { FALL_MS } from './feel.ts';
 import { opponent, type EventJSON, type View } from './game.ts';
+import { moveDuration } from './pieces.ts';
 
 export type EndKind =
 	| 'castleMate'
@@ -96,7 +98,7 @@ const AFTER_BURST_MS = 900;
  * the rare moments need them.
  */
 export interface TurnContext {
-	after?: (i: number) => { board: string[]; holes: number };
+	after?: (i: number) => { board: string[]; holes: number; mamdani: string };
 	repaired?: number;
 }
 
@@ -105,7 +107,7 @@ export function contextOf(view: View): TurnContext {
 	return {
 		after: (i) => {
 			const stage = stageAt(view, i + 1);
-			return { board: stage.board, holes: stage.potholes.length };
+			return { board: stage.board, holes: stage.potholes.length, mamdani: stage.mamdani };
 		},
 		repaired: view.stats.repaired
 	};
@@ -136,7 +138,8 @@ export function quipFor(events: EventJSON[], shown: number, ctx: TurnContext = {
 		if (e.kind === 'repaired') {
 			// This repair's place in the game: the game's total, less the ones after it this turn.
 			const nth = ctx.repaired === undefined ? 0 : ctx.repaired - events.slice(i + 1).filter((x) => x.kind === 'repaired').length;
-			return { kind: nth === 5 ? 'fifthRepair' : 'repaired', sq: e.sq, index: i };
+			// Said by the Mamdani, where he stands, not by the hole.
+			return { kind: nth === 5 ? 'fifthRepair' : 'repaired', sq: ctx.after?.(i).mamdani || e.sq, index: i };
 		}
 		// The fifth hole open at once; not the cap closing the oldest for a new one.
 		if (e.kind === 'pothole_opened' && ctx.after && events[i - 1]?.kind !== 'pothole_closed' && ctx.after(i).holes === 5)
@@ -226,12 +229,13 @@ export type Ending = { key: string; winner: boolean };
  * Returns `say`: the bubble for the first `shown` events of the view's turn,
  * or null; or, given `ending`, the bubble for the game's end (endQuip), or
  * null. After a fall it waits `delay` ms, the fall's length, so the piece
- * drops first; after a mate, until the burst's shards have flown.
+ * drops first; after a mate, until the burst's shards have flown; after a
+ * repair, until the Mamdani's 👍 is done, so the two don't cover each other.
  */
 export function quipper(random: () => number = Math.random) {
 	const said = new Map<string, string>();
 	let last: string | undefined;
-	const bubble = (q: { kind: QuipKind; sq: string; key: string; afterBurst?: true }, winner: boolean, at: Quip['at']): Quip => {
+	const bubble = (q: { kind: QuipKind; sq: string; key: string; afterBurst?: true; wait?: number }, winner: boolean, at: Quip['at']): Quip => {
 		let line = said.get(q.key);
 		if (!line) {
 			line = pickLine(q.kind, last, random, { winner });
@@ -239,7 +243,7 @@ export function quipper(random: () => number = Math.random) {
 			last = line;
 		}
 		const fell = q.kind === 'mamdaniFell' || q.kind === 'queenFell' || q.kind === 'wipedOut';
-		const delay = fell ? FALL_MS : q.afterBurst ? AFTER_BURST_MS : 0;
+		const delay = fell ? FALL_MS : q.afterBurst ? AFTER_BURST_MS : (q.wait ?? 0);
 		return { sq: q.sq, emoji: QUIPS[q.kind].emoji, line, key: q.key, delay, at };
 	};
 	return (view: View, shown: number, ending?: Ending): Quip | null => {
@@ -248,8 +252,20 @@ export function quipper(random: () => number = Math.random) {
 			return end && bubble({ ...end, key: ending.key }, ending.winner, 'end');
 		}
 		const found = quipFor(view.last, shown, contextOf(view));
-		return found && bubble({ ...found, key: `${view.seq}:${found.index}` }, true, found.index);
+		return found && bubble({ ...found, key: `${view.seq}:${found.index}`, wait: repairWait(view, found) }, true, found.index);
 	};
+}
+
+/**
+ * How long a repair's bubble, said over the Mamdani, waits: for his 👍 to
+ * rise and go, after his glide when his own move made the repair. None for
+ * other moments.
+ */
+function repairWait(view: View, found: { kind: QuipKind; index: number }): number {
+	if (found.kind !== 'repaired' && found.kind !== 'fifthRepair') return 0;
+	const moved = view.last.find((e) => e.kind === 'moved');
+	const glided = moved?.piece === 'M' && moved.from && moved.to && !withRoll(view.last, found.index);
+	return (glided ? moveDuration(moved.from!, moved.to!) : 0) + THUMB_DONE_MS;
 }
 
 /** What a quipper returns: a board's speech bubbles. */

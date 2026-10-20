@@ -9,6 +9,7 @@ import {
 	moveRows,
 	resultCardOf,
 	CELEBRATION_MS,
+	THUMB_DONE_MS,
 	checkSquare,
 	diceSteps,
 	diceSummary,
@@ -451,8 +452,7 @@ describe('pillFor', () => {
 
 describe('repair celebrations', () => {
 	it('last long enough for the 👍 after the Mamdani’s longest glide', () => {
-		// The 👍 starts 700 ms after the glide and runs 1.1 s (Board.svelte).
-		expect(CELEBRATION_MS).toBeGreaterThanOrEqual(moveDuration('a1', 'h8') + 700 + 1100);
+		expect(CELEBRATION_MS).toBeGreaterThanOrEqual(moveDuration('a1', 'h8') + THUMB_DONE_MS);
 	});
 });
 
@@ -619,7 +619,7 @@ describe('boardEffects', () => {
 		expect(live.pill?.key).toBe('7:5');
 		expect(live.scan?.sq).toBe('b4');
 		expect(live.repairs).toEqual([{ sq: 'c5', key: '7:6', hole: false, step: 6 }]);
-		expect(live.quip).toMatchObject({ sq: 'c5', key: '7:6', at: 6 });
+		expect(live.quip).toMatchObject({ sq: 'b5', key: '7:6', at: 6 }); // said by the Mamdani, beside the repair
 		for (const still of [fx(v, 7, { animated: false }), fx(v, 7, { quiet: true })]) {
 			// The saved piece stays marked; its hop plays by the roll's age (Board).
 			expect(still).toMatchObject({ pill: null, scan: null, repairs: [], quip: null, lastMove: { from: 'e2', to: 'e4' }, saved: { sq: 'b4', step: 5 } });
