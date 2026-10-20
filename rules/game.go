@@ -47,7 +47,7 @@ func NewGame() *Game { return NewGameFrom(StartPosition()) }
 // NewGameFrom starts from any position (tests, replays).
 func NewGameFrom(p Position) *Game {
 	g := &Game{Pos: p, seen: map[Key]int{p.Key(): 1}}
-	g.Result = g.status()
+	g.Result = g.status(1)
 	return g
 }
 
@@ -68,15 +68,18 @@ func (g *Game) Play(m Move, dice Dice) ([]Event, error) {
 		// position can come back: only count the ones from here on.
 		clear(g.seen)
 	}
-	g.seen[next.Key()]++
-	g.Result = g.status()
+	k := next.Key()
+	g.seen[k]++
+	g.Result = g.status(g.seen[k])
 	if g.Result.Over {
 		g.seen = nil // nothing left to repeat
 	}
 	return ev, nil
 }
 
-func (g *Game) status() Result {
+// status is the result for the position reached, which has now been seen
+// reps times.
+func (g *Game) status(reps int) Result {
 	p := &g.Pos
 	if !p.hasLegalMove() {
 		if p.threatened() {
@@ -87,7 +90,7 @@ func (g *Game) status() Result {
 	if p.Halfmove >= 100 {
 		return Result{Over: true, Draw: true, Reason: FiftyMoves}
 	}
-	if g.seen[p.Key()] >= 3 {
+	if reps >= 3 {
 		return Result{Over: true, Draw: true, Reason: Repetition}
 	}
 	if p.CannotMate(White) && p.CannotMate(Black) {
@@ -113,31 +116,32 @@ func (p *Position) CannotMate(c Color) bool {
 func Replay(start Position, turns []Turn) (*Game, error) {
 	g := NewGameFrom(start)
 	for i, t := range turns {
-		if err := g.replayTurn(t); err != nil {
+		if _, err := g.PlayRecorded(t.Move, t.Dice); err != nil {
 			return nil, fmt.Errorf("turn %d (%s): %w", i+1, t.Move, err)
 		}
 	}
 	return g, nil
 }
 
-func (g *Game) replayTurn(t Turn) (err error) {
-	script := &ScriptedDice{Rolls: t.Dice}
+// PlayRecorded plays m with dice, the rolls recorded when the turn was
+// first played. It fails if m is illegal or the turn doesn't use the rolls
+// exactly: it runs out of them, or leaves some over.
+func (g *Game) PlayRecorded(m Move, dice []int) (ev []Event, err error) {
+	script := &ScriptedDice{Rolls: dice}
 	defer func() {
 		if r := recover(); r != nil { // the script ran out
 			err = fmt.Errorf("%v", r)
 		}
 	}()
-	if _, err := g.Play(t.Move, script); err != nil {
-		return err
+	ev, err = g.Play(m, script)
+	if err == nil && script.Left() != 0 {
+		err = fmt.Errorf("%d unused dice", script.Left())
 	}
-	if script.Left() != 0 {
-		return fmt.Errorf("%d unused dice", script.Left())
-	}
-	return nil
+	return ev, err
 }
 
-// ScriptedDice returns preset rolls in order. It panics when it runs out:
-// in tests that means the script is too short.
+// ScriptedDice returns preset rolls in order and panics when they run out;
+// PlayRecorded turns that into an error.
 type ScriptedDice struct {
 	Rolls []int
 	next  int

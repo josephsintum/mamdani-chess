@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	blockedSquares,
+	boardEffects,
+	boardFromFen,
 	byKind,
 	figurine,
 	materialLead,
@@ -22,44 +24,35 @@ import {
 	tallyOf,
 	wonHere
 } from './board.ts';
+import { quipper } from './catchphrases.ts';
 import { moveDuration } from './pieces.ts';
-import { firstDiceStep } from './dice.ts';
 import type { EventJSON, View } from './game.ts';
+import { boardOf, viewOf } from './test-boards.ts';
 
 /** A view with the given pieces ({"e1": "wK"}), potholes and Mamdani square. */
-function makeView(pieces: Record<string, string>, extra: Partial<View> = {}): View {
-	const board = Array<string>(64).fill('');
-	for (const [sq, piece] of Object.entries(pieces)) board[squareIndex(sq)] = piece;
-	return {
-		code: 'TEST01',
-		status: 'playing',
-		you: 'white',
-		board,
-		mamdani: '',
-		potholes: [],
-		turn: 'white',
-		check: false,
-		legal: [],
-		last: [],
-		log: [],
-		lost: { white: [], black: [] },
-		taken: { white: [], black: [] },
-		stats: { savingRolls: 0, saved: 0, repaired: 0, mamdaniFell: false },
-		result: null,
-		seq: 1,
-		clock: { whiteMs: 600_000, blackMs: 600_000, now: 0 },
-		online: { white: true, black: true },
-		players: { white: '', black: '' },
-		rematch: {},
-		...extra
-	};
-}
+const makeView = (pieces: Record<string, string>, extra: Partial<View> = {}): View => viewOf({ board: boardOf(pieces), seq: 1, ...extra });
 
 describe('squareIndex', () => {
 	it('maps a1 to 0 and h8 to 63', () => {
 		expect(squareIndex('a1')).toBe(0);
 		expect(squareIndex('e4')).toBe(28);
 		expect(squareIndex('h8')).toBe(63);
+	});
+});
+
+describe('boardFromFen', () => {
+	it('puts a1 at index 0 and h8 at 63', () => {
+		const b = boardFromFen('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR');
+		expect(b[0]).toBe('wR');
+		expect(b[4]).toBe('wK');
+		expect(b[28]).toBe('wP'); // e4
+		expect(b[12]).toBe(''); // e2 is empty
+		expect(b[60]).toBe('bK');
+		expect(b[63]).toBe('bR');
+		expect(b.filter(Boolean)).toHaveLength(32);
+	});
+	it('reads what boardOf writes', () => {
+		expect(boardFromFen('4k3/8/8/8/8/8/8/R3K3')).toEqual(boardOf({ e8: 'bK', a1: 'wR', e1: 'wK' }));
 	});
 });
 
@@ -105,15 +98,6 @@ const fellOnG8: EventJSON[] = [
 	{ kind: 'fell', sq: 'g8', piece: 'bN' },
 	{ kind: 'pothole_opened', sq: 'g8', color: 'white' }
 ];
-
-describe('firstDiceStep', () => {
-	it('starts at the pothole roll', () => {
-		expect(firstDiceStep(fellOnG8)).toBe(1);
-	});
-	it('is the end when no dice were rolled', () => {
-		expect(firstDiceStep([{ kind: 'moved', from: 'e2', to: 'e4' }])).toBe(1);
-	});
-});
 
 describe('stageAt', () => {
 	// The final position: the knight is gone and g8 holds White's pothole.
@@ -249,6 +233,16 @@ describe('diceSteps', () => {
 		const odd = makeView({}, { last: [saved[0], { kind: 'rolled_pothole', roll: 7, color: 'black' }] });
 		expect(diceSteps(odd, 2)[0]).toMatchObject({ title: 'Odd. No pothole', tone: 'muted' });
 		expect(diceSteps(odd, 2)[0].dice.map((d) => [d.value, d.tone])).toEqual([[7, 'dull']]);
+	});
+
+	it('says what an exposes re-roll guards against without claiming a fall, since the cap can be the cause', () => {
+		const last: EventJSON[] = [
+			{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' },
+			{ kind: 'rolled_pothole', roll: 2, color: 'white' },
+			{ kind: 'target', sq: 'd4' },
+			{ kind: 'reroll', sq: 'd4', reason: 'exposes' }
+		];
+		expect(diceSteps(makeView({}, { last }), last.length).at(-1)?.detail).toBe('Would expose the roller’s king');
 	});
 });
 
@@ -457,18 +451,6 @@ describe('pillFor', () => {
 	});
 });
 
-describe('the exposes re-roll', () => {
-	it('says what it guards against without claiming a fall, since the cap can be the cause', () => {
-		const last: EventJSON[] = [
-			{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' },
-			{ kind: 'rolled_pothole', roll: 2, color: 'white' },
-			{ kind: 'target', sq: 'd4' },
-			{ kind: 'reroll', sq: 'd4', reason: 'exposes' }
-		];
-		expect(diceSteps(makeView({}, { last }), last.length).at(-1)?.detail).toBe('Would expose the roller’s king');
-	});
-});
-
 describe('repair celebrations', () => {
 	it('last long enough for the 👍 after the Mamdani’s longest glide', () => {
 		// The 👍 starts 700 ms after the glide and runs 1.1 s (Board.svelte).
@@ -583,9 +565,6 @@ describe('resultCardOf', () => {
 });
 
 describe('materialLead', () => {
-	it('is even with the same pieces', () => {
-		expect(materialLead(makeView({ e1: 'wK', e8: 'bK', d1: 'wQ', d8: 'bQ', a2: 'wP', a7: 'bP' }).board)).toEqual({ white: 0, black: 0 });
-	});
 	it('gives the side ahead the difference, counting P1 N3 B3 R5 Q9', () => {
 		const { board } = makeView({ e1: 'wK', e8: 'bK', a1: 'wR', b1: 'wN', c1: 'wB', d1: 'wQ', a8: 'bR', b8: 'bN', c8: 'bB', d8: 'bQ' });
 		expect(materialLead(board)).toEqual({ white: 0, black: 0 }); // 20 each
@@ -597,12 +576,7 @@ describe('materialLead', () => {
 		expect(materialLead(board)).toEqual({ white: 0, black: 2 });
 	});
 	it('counts a promoted queen', () => {
-		const board = Array<string>(64).fill('');
-		board[squareIndex('e1')] = 'wK';
-		board[squareIndex('e8')] = 'bK';
-		board[squareIndex('a8')] = 'wQ';
-		board[squareIndex('h7')] = 'bP';
-		expect(materialLead(board)).toEqual({ white: 8, black: 0 });
+		expect(materialLead(boardOf({ e1: 'wK', e8: 'bK', a8: 'wQ', h7: 'bP' }))).toEqual({ white: 8, black: 0 });
 	});
 });
 
@@ -635,5 +609,51 @@ describe('moveRows', () => {
 	});
 	it('starts a row with Black when the log does', () => {
 		expect(moveRows([ply('e5', 'black'), ply('Nf3', 'white')]).map((r) => [r.white?.san, r.black?.san])).toEqual([[undefined, 'e5'], ['Nf3', undefined]]);
+	});
+});
+
+describe('boardEffects', () => {
+	const savedTurn: EventJSON[] = [
+		{ kind: 'moved', from: 'e2', to: 'e4', piece: 'wP', color: 'white' },
+		{ kind: 'rolled_pothole', roll: 2, color: 'white' },
+		{ kind: 'target', sq: 'e1' },
+		{ kind: 'reroll', sq: 'e1', reason: 'king' },
+		{ kind: 'target', sq: 'b4' },
+		{ kind: 'saving_roll', sq: 'b4', piece: 'wN', roll: 5, saved: true, color: 'white' },
+		{ kind: 'repaired', sq: 'c5' }
+	];
+	const v = makeView({ e4: 'wP', e1: 'wK', b4: 'wN', e8: 'bK' }, { seq: 7, last: savedTurn, mamdani: 'b5' });
+	const fx = (view: View, shown: number, o: Partial<Parameters<typeof boardEffects>[2]> = {}) =>
+		boardEffects(view, shown, { animating: shown < view.last.length, animated: true, quiet: false, say: quipper(() => 0), ...o });
+
+	it('marks the move, and a saved piece once its roll shows', () => {
+		expect(fx(v, 1)).toMatchObject({ lastMove: { from: 'e2', to: 'e4' }, saved: '' });
+		expect(fx(v, 6).saved).toBe('b4');
+	});
+	it('plays the dice and the turn’s moments only on a turn that plays out', () => {
+		const live = fx(v, 7);
+		expect(live.pill?.key).toBe('7:5');
+		expect(live.scan?.sq).toBe('b4');
+		expect(live.repairs).toEqual([{ sq: 'c5', key: '7:6', hole: false }]);
+		expect(live.quip).toMatchObject({ sq: 'c5', key: '7:6' });
+		for (const still of [fx(v, 7, { animated: false }), fx(v, 7, { quiet: true })]) {
+			expect(still).toMatchObject({ pill: null, scan: null, repairs: [], quip: null, lastMove: { from: 'e2', to: 'e4' }, saved: 'b4' });
+		}
+	});
+	it('blinks the target while a re-roll is the latest step', () => {
+		expect(fx(v, 4).reroll).toBe(true);
+		expect(fx(v, 5).reroll).toBe(false);
+		expect(fx(v, 4, { animating: false }).reroll).toBe(false);
+	});
+	it('says the end line and bursts the mate once the dice stop', () => {
+		const mate = { ...v, status: 'over' as const, result: { winner: 'white' as const, draw: false, reason: 'checkmate' } };
+		const opts = { ending: { key: 'G:end', winner: true }, mate: 'G:mate' };
+		expect(fx(mate, 7, opts)).toMatchObject({ quip: { sq: 'e8', key: 'G:end' }, mated: { sq: 'e8', key: 'G:mate' } });
+		// Still rolling: the turn's own moment, no burst yet.
+		expect(fx(mate, 6, opts)).toMatchObject({ quip: { key: '7:3' }, mated: null }); // the king spared
+		expect(fx(mate, 7, { ...opts, quiet: true })).toMatchObject({ quip: null, mated: null });
+		// An ending with no line of its own falls back to the turn's moment.
+		const aborted = { ...mate, result: { draw: true, reason: 'aborted' } };
+		expect(fx(aborted, 7, opts)).toMatchObject({ quip: { key: '7:6' }, mated: null });
 	});
 });

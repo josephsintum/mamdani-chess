@@ -52,8 +52,7 @@
 	let legal = $derived(view.status === 'playing' ? freeMoves(view, anySide) : []);
 	let bottom = $derived<Color>(you === 'black' ? 'black' : 'white');
 	let top = $derived(opponent(bottom));
-	let topPill = $derived(pillFor(view, top, anim.animating));
-	let bottomPill = $derived(pillFor(view, bottom, anim.animating));
+	let lead = $derived(materialLead(stage.board));
 	// The Result card buttons end the game at once: each checkmate bursts once.
 	let endings = $state(0);
 	let needsTarget = $derived(rollKinds.find((r) => r.kind === rollKind)?.needsTarget ?? false);
@@ -131,6 +130,11 @@
 	}
 </script>
 
+{#snippet bar(c: Color)}
+	{@const pill = pillFor(view, c, anim.animating)}
+	<PlayerBar color={c} you={you === c} lost={stage.lost[c]} taken={view.taken[c]} lead={lead[c]} pill={pill.text} pillTone={pill.tone} />
+{/snippet}
+
 <svelte:head>
 	<title>Board sandbox · Mamdani Chess</title>
 </svelte:head>
@@ -153,7 +157,7 @@
 				{#each rollKinds as r (r.kind)}
 					<label class="choice"><input type="radio" name="roll" value={r.kind} bind:group={rollKind} /> {r.label}</label>
 				{/each}
-				<fieldset class="target" class:disabled={!needsTarget} disabled={!needsTarget}>
+				<fieldset class="target" disabled={!needsTarget}>
 					<legend>Target</legend>
 					<label class="choice"><input type="radio" name="target" value="random" bind:group={targetMode} /> Random</label>
 					<label class="field">
@@ -205,9 +209,9 @@
 		</div>
 
 		<div class="board-col">
-			<PlayerBar color={top} you={you === top} lost={stage.lost[top]} taken={view.taken[top]} lead={materialLead(stage.board)[top]} pill={topPill.text} pillTone={topPill.tone} />
+			{@render bar(top)}
 			<ScriptedBoard {anim} {legal} flipped={bottom === 'black'} interactive still={instant} id="sandbox" ending={endings} onmove={move} onrefuse={() => play('error')} />
-			<PlayerBar color={bottom} you={you === bottom} lost={stage.lost[bottom]} taken={view.taken[bottom]} lead={materialLead(stage.board)[bottom]} pill={bottomPill.text} pillTone={bottomPill.tone} />
+			{@render bar(bottom)}
 		</div>
 
 		<div class="side">
@@ -302,7 +306,7 @@
 	.field {
 		justify-content: space-between;
 	}
-	.target.disabled {
+	.target:disabled {
 		opacity: 0.5;
 	}
 	.target {

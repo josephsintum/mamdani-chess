@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Header from '#lib/Header.svelte';
+	import PageHead from '#lib/PageHead.svelte';
 	import Scene from '#lib/Scene.svelte';
 	import SiteFooter from '#lib/SiteFooter.svelte';
 	import { scenes, type Scene as SceneData } from '#lib/scenes.ts';
@@ -70,31 +71,27 @@
 	];
 </script>
 
-<svelte:head>
-	<title>How to play · Mamdani Chess</title>
-	<!-- Here, not from the server, so it goes when the app navigates on. -->
-	<link rel="canonical" href="https://mamdanichess.com/how-to-play" />
-</svelte:head>
+<PageHead title="How to play · Mamdani Chess" path="/how-to-play" />
 
 <Header />
 
-<main>
+<main class="content">
 	<header class="intro">
 		<p class="eyebrow">How to play</p>
-		<h1>Chess, but the road fights back</h1>
+		<h1 class="page-title">Chess, but the road fights back</h1>
 		<p class="lede">
 			Everything you know about chess still holds. Two things are new: potholes that open under your pieces, and the
 			Mamdani, a piece both players share. Each scene below plays on the real board.
 		</p>
-		<a class="more" href="/rules">Read the full rules →</a>
+		<a class="arrow-link" href="/rules">Read the full rules →</a>
 	</header>
 
 	<section class="chapter get" id="get-a-game" aria-labelledby="get-heading">
 		<div class="text">
 			<span class="num">01</span>
-			<h2 id="get-heading">Get a game</h2>
+			<h2 class="section-title" id="get-heading">Get a game</h2>
 			<p>No sign-up. Play the next person looking for a game, or send a friend a link: the first to open it plays Black.</p>
-			<a class="more" href="/play">Play online now →</a>
+			<a class="arrow-link" href="/play">Play online now →</a>
 		</div>
 		<div class="cards" aria-hidden="true">
 			<div class="card">
@@ -119,9 +116,9 @@
 		<section class="chapter" class:flip={i % 2 === 0} id={c.scene.id} aria-labelledby="{c.scene.id}-heading">
 			<div class="text">
 				<span class="num">{String(i + 2).padStart(2, '0')}</span>
-				<h2 id="{c.scene.id}-heading">{c.title}</h2>
+				<h2 class="section-title" id="{c.scene.id}-heading">{c.title}</h2>
 				<p>{c.text}</p>
-				<a class="more" href="/rules#{c.rules}">The rules →</a>
+				<a class="arrow-link" href="/rules#{c.rules}">The rules →</a>
 			</div>
 			<div class="stage">
 				<Scene scene={c.scene} label={c.label} />
@@ -131,8 +128,8 @@
 
 	<div class="cta">
 		<a class="action" href="/play">Play online</a>
-		<a class="more" href="/practice">Try it yourself →</a>
-		<a class="more" href="/rules">Read the full rules →</a>
+		<a class="arrow-link" href="/practice">Try it yourself →</a>
+		<a class="arrow-link" href="/rules">Read the full rules →</a>
 	</div>
 	<SiteFooter />
 </main>
@@ -141,9 +138,6 @@
 	main {
 		display: flex;
 		flex-direction: column;
-		max-width: 1120px;
-		margin: 0 auto;
-		padding: 56px 32px 0;
 	}
 	.intro {
 		display: flex;
@@ -161,30 +155,12 @@
 		text-transform: uppercase;
 	}
 	h1 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
 		font-size: clamp(48px, 8vw, 88px);
-		line-height: 0.92;
-		text-transform: uppercase;
 	}
 	.lede {
 		margin: 0;
 		font-size: 19px;
 		line-height: 1.55;
-	}
-	.more {
-		align-self: flex-start;
-		padding: 10px 0;
-		margin: -10px 0;
-		color: var(--accent);
-		font-weight: 600;
-		text-decoration: none;
-	}
-	.more:hover {
-		text-decoration: underline;
-		text-underline-offset: 3px;
 	}
 	.chapter {
 		display: grid;
@@ -213,13 +189,7 @@
 		font-weight: 600;
 	}
 	h2 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: 44px;
 		line-height: 1;
-		text-transform: uppercase;
 	}
 	p {
 		margin: 0;
@@ -399,9 +369,6 @@
 	}
 	/* Phones and narrow windows: the words, then the board. */
 	@media (max-width: 799px) {
-		main {
-			padding: 32px 16px 0;
-		}
 		.intro {
 			padding-bottom: 32px;
 		}

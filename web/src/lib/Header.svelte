@@ -1,3 +1,13 @@
+<script lang="ts" module>
+	/** The site's pages, in the header and the footer. */
+	export const siteLinks = [
+		{ href: '/how-to-play', label: 'How to play' },
+		{ href: '/rules', label: 'Rules' },
+		{ href: '/practice', label: 'Practice' },
+		{ href: '/about', label: 'About' }
+	];
+</script>
+
 <script lang="ts">
 	import { fly } from 'svelte/transition';
 	import { page } from '$app/state';
@@ -14,23 +24,17 @@
 	} from './lobby.ts';
 	import { reducedMotion } from './motion.ts';
 
-	// The site header on the home and quick-match pages: the logo, and the
-	// guest's name with a die that offers three new names to pick from (3
-	// changes in any 24 hours). A guest who hasn't played yet has no name,
-	// so no name shows. Until the page's /api/me answers, the name from this
-	// browser's last visit shows, so it doesn't pop in a moment later.
+	// The site header on every page but the game: the logo, the site's
+	// links, and the guest's name with a die that offers three new names to
+	// pick from (3 changes in any 24 hours). A guest who hasn't played yet
+	// has no name, so no name shows. Until the page's /api/me answers, the
+	// name from this browser's last visit shows, so it doesn't pop in a
+	// moment later.
 	let { me = $bindable(null) }: { me?: Me | null } = $props();
 	const remembered = rememberedName();
-	const links = [
-		{ href: '/how-to-play', label: 'How to play' },
-		{ href: '/rules', label: 'Rules' },
-		{ href: '/practice', label: 'Practice' },
-		{ href: '/about', label: 'About' }
-	];
 
 	let open = $state(false);
 	let offers = $state<string[] | null>(null);
-	let busy = $state(false);
 	let choosing = $state<string | null>(null); // the offer being saved
 	let error = $state('');
 	let loadFailed = $state(false); // offers didn't load: show a retry
@@ -40,6 +44,7 @@
 	let pill: HTMLDivElement | undefined = $state();
 	let die: HTMLButtonElement | undefined = $state();
 
+	let busy = $derived(choosing !== null);
 	let name = $derived(me ? me.name : remembered);
 	let left = $derived(me?.changesLeft ?? 0);
 	let wait = $derived(me?.changesResetAt ? untilText(me.changesResetAt, now) : 'a moment');
@@ -89,7 +94,6 @@
 	}
 
 	async function choose(next: string) {
-		busy = true;
 		choosing = next;
 		error = '';
 		note = '';
@@ -107,7 +111,6 @@
 				error = 'Could not change your name. Try again.';
 			}
 		} finally {
-			busy = false;
 			choosing = null;
 		}
 	}
@@ -121,17 +124,18 @@
 		if (open && e.key === 'Escape') close();
 	}
 
+	const outside = (t: EventTarget | null) => open && pill && t instanceof Node && !pill.contains(t);
+
 	function onPointer(e: PointerEvent) {
-		if (open && pill && e.target instanceof Node && !pill.contains(e.target)) open = false;
+		if (outside(e.target)) open = false;
 	}
 
 	// Tabbing out of the picker closes it.
 	function onFocusOut(e: FocusEvent) {
-		const to = e.relatedTarget;
-		if (open && pill && to instanceof Node && !pill.contains(to)) open = false;
+		if (outside(e.relatedTarget)) open = false;
 	}
 
-	const flip = (node: Element) => fly(node, { y: reducedMotion() ? 0 : -10, duration: reducedMotion() ? 0 : 180 });
+	const flip = (node: Element) => fly(node, { y: -10, duration: reducedMotion() ? 0 : 180 });
 </script>
 
 <svelte:window onkeydown={onKey} onpointerdown={onPointer} />
@@ -153,7 +157,7 @@
 			<span class="title">Mamdani Chess</span>
 		</a>
 		<nav class="links" aria-label="Main">
-			{#each links as l (l.href)}
+			{#each siteLinks as l (l.href)}
 				<a href={l.href} aria-current={page.url.pathname === l.href ? 'page' : undefined}>{l.label}</a>
 			{/each}
 		</nav>

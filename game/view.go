@@ -165,20 +165,15 @@ func boardJSON(p *rules.Position) (b [64]string) {
 	return b
 }
 
-var kindLetters = map[rules.Kind]string{
-	rules.Pawn: "P", rules.Knight: "N", rules.Bishop: "B",
-	rules.Rook: "R", rules.Queen: "Q", rules.King: "K",
-}
-
 // pieceCode returns "wP", "bK" and so on, "M" for the Mamdani, "" for none.
 func pieceCode(p rules.Piece) string { return pieceCodes[p] }
 
 // pieceCodes holds every piece's code, so filling a board never allocates.
 // NoPiece's slot stays "".
 var pieceCodes = func() (codes [16]string) {
-	for k, letter := range kindLetters {
+	for k := rules.Pawn; k <= rules.King; k++ {
 		for _, c := range []rules.Color{rules.White, rules.Black} {
-			codes[rules.NewPiece(c, k)] = colorName(c)[:1] + letter
+			codes[rules.NewPiece(c, k)] = colorName(c)[:1] + k.Letter()
 		}
 	}
 	codes[rules.MamdaniPiece] = "M"

@@ -142,6 +142,13 @@ func (r *run) fail(what string, err error) {
 	}
 }
 
+// record adds one latency to the list s points at.
+func (r *run) record(s *[]time.Duration, d time.Duration) {
+	r.mu.Lock()
+	*s = append(*s, d)
+	r.mu.Unlock()
+}
+
 // client is one browser: its own cookie jar, so its own guest.
 func (r *run) client() *http.Client {
 	jar, _ := cookiejar.New(nil)
@@ -247,9 +254,7 @@ func (r *run) game(seed uint64) {
 		t0, ok := sent[v.Seq]
 		sentMu.Unlock()
 		if ok {
-			r.mu.Lock()
-			r.viewLatency = append(r.viewLatency, at.Sub(t0))
-			r.mu.Unlock()
+			r.record(&r.viewLatency, at.Sub(t0))
 		}
 	}
 
@@ -316,9 +321,7 @@ func (r *run) game(seed uint64) {
 			r.fail("move", fmt.Errorf("status %d", resp.StatusCode))
 			break
 		}
-		r.mu.Lock()
-		r.moveLatency = append(r.moveLatency, time.Since(t0))
-		r.mu.Unlock()
+		r.record(&r.moveLatency, time.Since(t0))
 		r.moves.Add(1)
 	}
 	if resp, err := r.post(white, "/api/games/"+code+"/resign", nil); err == nil {

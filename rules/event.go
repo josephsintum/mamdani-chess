@@ -8,7 +8,7 @@ const (
 	Captured      EventKind = "captured"       // Square, Piece
 	PotholeClosed EventKind = "pothole_closed" // Square, Color = roller; at its last round, or the oldest pushed out by the cap
 	Repaired      EventKind = "repaired"       // Square: by the repair step, or a new pothole next to the Mamdani
-	RolledPothole EventKind = "rolled_pothole" // Roll: odd = nothing, even = a pothole opens
+	RolledPothole EventKind = "rolled_pothole" // Roll, Color = roller; odd = nothing, even = a pothole opens
 	Target        EventKind = "target"         // Square picked by the two placement d8s
 	Reroll        EventKind = "reroll"         // Square, Reason
 	SavingRoll    EventKind = "saving_roll"    // Square, Piece, Roll, Saved, Color = who rolls

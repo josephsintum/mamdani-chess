@@ -5,8 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
+	"maps"
 	"time"
 )
 
@@ -36,29 +35,26 @@ type Search struct {
 // moves its counters from "ended, road unknown" to what the stats say. A
 // game that has a row keeps it and counts nothing.
 func (s *Store) AddGameStats(ctx context.Context, code string, st GameStats) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	added, err := addGameStats(ctx, tx, code, st)
-	if err != nil || !added {
-		return err
-	}
-	var created int64
-	var result, winner sql.NullString
-	var playtest bool
-	f := gameFacts{}
-	err = tx.QueryRowContext(ctx, `SELECT created_at, kind, rematch_of IS NOT NULL, black IS NOT NULL, result, winner, playtest FROM games WHERE code = ?`, code).
-		Scan(&created, &f.Kind, &f.Rematch, &f.HasBlack, &result, &winner, &playtest)
-	if errors.Is(err, sql.ErrNoRows) {
-		return tx.Commit() // a stats row for no game: nothing to count
-	}
-	if err != nil {
-		return err
-	}
-	if !playtest && result.Valid && result.String != "retired" {
-		f.Created, f.Result, f.Winner = time.UnixMilli(created), result.String, winner.String
+	return s.counted(ctx, func(tx *sql.Tx, c counts) error {
+		added, err := addGameStats(ctx, tx, code, st)
+		if err != nil || !added {
+			return err
+		}
+		var f gameFacts
+		var result, winner sql.NullString
+		playtest, err := scanFacts(tx.QueryRowContext(ctx, `SELECT `+factsColumns+`, result, winner FROM games WHERE code = ?`, code),
+			&f, &result, &winner)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil // a stats row for no game: nothing to count
+		}
+		if err != nil {
+			return err
+		}
+		// An ended game that counts at all (countedGame).
+		if playtest || !result.Valid || result.String == "retired" {
+			return nil
+		}
+		f.Result, f.Winner = result.String, winner.String
 		if err := lastTurn(ctx, tx, code, &f); err != nil {
 			return err
 		}
@@ -67,11 +63,9 @@ func (s *Store) AddGameStats(ctx context.Context, code string, st GameStats) err
 		f.Stats = &st
 		after := counts{}
 		countEnded(after, s.zone, f)
-		if err := addCounts(ctx, tx, after.minus(before)); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+		maps.Copy(c, after.minus(before))
+		return nil
+	})
 }
 
 // addGameStats writes a stats row unless the game has one, and reports
@@ -80,7 +74,7 @@ func addGameStats(ctx context.Context, db execer, code string, st GameStats) (bo
 	res, err := db.ExecContext(ctx,
 		`INSERT OR IGNORE INTO game_stats (game, moves, opened, reset, closed_rounds, closed_cap, repaired, fell, saving_rolls, saved, white_lost, black_lost, mate_by_roll, open_hist)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		code, st.Moves, st.Opened, st.Reset, st.ClosedRounds, st.ClosedCap, st.Repaired, st.Fell, st.SavingRolls, st.Saved, st.WhiteLost, st.BlackLost, st.MateByRoll, formatHist(st.OpenHist))
+		code, st.Moves, st.Opened, st.Reset, st.ClosedRounds, st.ClosedCap, st.Repaired, st.Fell, st.SavingRolls, st.Saved, st.WhiteLost, st.BlackLost, st.MateByRoll, formatInts(st.OpenHist[:]))
 	if err != nil {
 		return false, err
 	}
@@ -92,32 +86,7 @@ func addGameStats(ctx context.Context, db execer, code string, st GameStats) (bo
 // going and has no stats row yet, with its turns, oldest first. Playtests'
 // games are included: their rows are kept, just not shown.
 func (s *Store) GamesWithoutStats(ctx context.Context) ([]SavedGame, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+savedGameColumns+`
-		 FROM games WHERE rules = ? AND result IN `+finishedReasons+` AND code NOT IN (SELECT game FROM game_stats) ORDER BY created_at`,
-		rulesVersion)
-	if err != nil {
-		return nil, err
-	}
-	var games []SavedGame
-	for rows.Next() {
-		g, err := scanSavedGame(rows)
-		if err != nil {
-			rows.Close()
-			return nil, err
-		}
-		games = append(games, g)
-	}
-	rows.Close() // one connection: close before the next query
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	for i := range games {
-		if games[i].Turns, err = s.turns(ctx, games[i].Code); err != nil {
-			return nil, err
-		}
-	}
-	return games, nil
+	return s.savedGames(ctx, `rules = ? AND result IN `+finishedReasons+` AND code NOT IN (SELECT game FROM game_stats)`, rulesVersion)
 }
 
 // GameKind returns a saved game's kind and whether a playtest started it.
@@ -135,46 +104,34 @@ func (s *Store) HasGameStats(ctx context.Context, code string) (bool, error) {
 
 // AddSearch logs one quick-match search and counts it.
 func (s *Store) AddSearch(ctx context.Context, sr Search) error {
-	c := counts{}
-	countSearch(c, s.zone, sr)
 	// No cap yet: milestone 07's per-IP limits will bound searches.
-	return s.insertFolded(ctx, c, "", "", 0,
-		`INSERT INTO searches (started_at, ended_at, matched, others) VALUES (?, ?, ?, ?)`, "",
-		sr.StartedAt.UnixMilli(), sr.EndedAt.UnixMilli(), sr.Matched, sr.Others)
+	return s.counted(ctx, func(tx *sql.Tx, c counts) error {
+		countSearch(c, s.zone, sr)
+		_, err := tx.ExecContext(ctx, `INSERT INTO searches (started_at, ended_at, matched, others) VALUES (?, ?, ?, ?)`,
+			sr.StartedAt.UnixMilli(), sr.EndedAt.UnixMilli(), sr.Matched, sr.Others)
+		return err
+	})
 }
 
 // AddEvent logs one event of kind ("practice", "reconnect", "restart") and
 // counts it.
 func (s *Store) AddEvent(ctx context.Context, kind string, at time.Time) error {
-	c := counts{}
-	countEvent(c, s.zone, kind, at, 1)
-	return s.insertFolded(ctx, c, DayOf(at, s.zone), "event."+kind, eventRowsPerDay,
-		`INSERT INTO events (at, kind) VALUES (?, ?)`,
-		`UPDATE events SET at = ?, n = n + 1 WHERE rowid = (SELECT rowid FROM events WHERE kind = ?2 ORDER BY rowid DESC LIMIT 1)`,
-		at.UnixMilli(), kind)
+	return s.counted(ctx, func(tx *sql.Tx, c counts) error {
+		countEvent(c, s.zone, kind, at, 1)
+		return insertFolded(ctx, tx, DayOf(at, s.zone), "event."+kind, eventRowsPerDay,
+			`INSERT INTO events (at, kind) VALUES (?, ?)`,
+			`UPDATE events SET at = ?, n = n + 1 WHERE rowid = (SELECT rowid FROM events WHERE kind = ?2 ORDER BY rowid DESC LIMIT 1)`,
+			at.UnixMilli(), kind)
+	})
 }
 
-// formatHist writes [6]int as "9,14,19,22,18,18"; parseHist reads it back.
-func formatHist(h [6]int) string {
-	parts := make([]string, len(h))
-	for i, n := range h {
-		parts[i] = strconv.Itoa(n)
-	}
-	return strings.Join(parts, ",")
-}
-
+// parseHist reads back a [6]int that formatInts wrote, "9,14,19,22,18,18".
 func parseHist(s string) ([6]int, error) {
 	var h [6]int
-	parts := strings.Split(s, ",")
-	if len(parts) != len(h) {
+	ns, err := parseInts(s)
+	if err != nil || len(ns) != len(h) {
 		return h, fmt.Errorf("bad open_hist %q", s)
 	}
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil {
-			return h, fmt.Errorf("bad open_hist %q", s)
-		}
-		h[i] = n
-	}
+	copy(h[:], ns)
 	return h, nil
 }

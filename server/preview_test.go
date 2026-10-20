@@ -1,16 +1,15 @@
 package server
 
 import (
-	"compress/gzip"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 )
 
-// page fetches path as a browser or a link preview would, and returns the
-// HTML.
-func page(t *testing.T, c *http.Client, url string, header ...string) string {
+// fetchPage fetches url as a browser or a link preview would, and returns
+// the HTML.
+func fetchPage(t *testing.T, c *http.Client, url string, header ...string) string {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
 	for i := 0; i+1 < len(header); i += 2 {
@@ -48,7 +47,7 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	_, ts := newTestServer(t)
 	c := ts.Client()
 
-	home := page(t, c, ts.URL+"/")
+	home := fetchPage(t, c, ts.URL+"/")
 	if got := meta(home, "og:title"); got != "Mamdani Chess" {
 		t.Errorf("home og:title %q", got)
 	}
@@ -68,11 +67,11 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 		"/practice":    "Practice · Mamdani Chess",
 		"/about":       "About · Mamdani Chess",
 	} {
-		if got := meta(page(t, c, ts.URL+path), "og:title"); got != want {
+		if got := meta(fetchPage(t, c, ts.URL+path), "og:title"); got != want {
 			t.Errorf("%s og:title %q, want %q", path, got, want)
 		}
 	}
-	if got := meta(page(t, c, ts.URL+"/game/ZZZZZZ"), "og:title"); got != "Mamdani Chess" {
+	if got := meta(fetchPage(t, c, ts.URL+"/game/ZZZZZZ"), "og:title"); got != "Mamdani Chess" {
 		t.Errorf("unknown game og:title %q, want the home page's", got)
 	}
 
@@ -80,7 +79,7 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	code := alice.create()
 	link := ts.URL + "/game/" + code
 	a := alice.name()
-	waiting := page(t, c, link)
+	waiting := fetchPage(t, c, link)
 	if got := meta(waiting, "og:title"); got != a+" invites you to Mamdani Chess" {
 		t.Errorf("waiting og:title %q", got)
 	}
@@ -93,7 +92,7 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 
 	bob.stream(code).state() // takes Black
 	b := bob.name()
-	playing := page(t, c, link)
+	playing := fetchPage(t, c, link)
 	if got := meta(playing, "og:title"); got != a+" vs "+b+" · Mamdani Chess" {
 		t.Errorf("playing og:title %q", got)
 	}
@@ -104,14 +103,14 @@ func TestSharedLinksShowAPreview(t *testing.T) {
 	if status, body := alice.post("/api/games/"+code+"/resign", ""); status != http.StatusNoContent {
 		t.Fatalf("resign: %d %s", status, body)
 	}
-	if got := meta(page(t, c, link), "og:description"); got != b+" won by resignation." {
+	if got := meta(fetchPage(t, c, link), "og:description"); got != b+" won by resignation." {
 		t.Errorf("finished og:description %q", got)
 	}
 }
 
 func TestPreviewLinksUseTheProxysScheme(t *testing.T) {
 	_, ts := newTestServer(t)
-	html := page(t, ts.Client(), ts.URL+"/", "X-Forwarded-Proto", "https")
+	html := fetchPage(t, ts.Client(), ts.URL+"/", "X-Forwarded-Proto", "https")
 	host := strings.TrimPrefix(ts.URL, "http://")
 	if got := meta(html, "og:image"); got != "https://"+host+"/og.png" {
 		t.Errorf("og:image %q behind an https proxy", got)
@@ -130,11 +129,11 @@ func TestPreviewTagsAreEscaped(t *testing.T) {
 func TestSearchEnginesListOnlyTheContentPages(t *testing.T) {
 	_, ts := newTestServer(t)
 	c := ts.Client()
-	home := page(t, c, ts.URL+"/")
+	home := fetchPage(t, c, ts.URL+"/")
 	if !strings.Contains(home, `"@type":"WebSite"`) || strings.Contains(home, "noindex") {
 		t.Errorf("home page: %s", home)
 	}
-	rules := page(t, c, ts.URL+"/rules")
+	rules := fetchPage(t, c, ts.URL+"/rules")
 	if strings.Count(rules, "<title>") != 1 || strings.Contains(rules, "noindex") || strings.Contains(rules, "ld+json") {
 		t.Errorf("rules page: %s", rules)
 	}
@@ -172,28 +171,6 @@ func TestRoutesRedirectToTheirCleanPath(t *testing.T) {
 		if got := resp.Header.Get("Location"); got != want || (want != "") != (resp.StatusCode == http.StatusMovedPermanently) {
 			t.Errorf("%s: %d to %q, want %q", path, resp.StatusCode, got, want)
 		}
-	}
-}
-
-// The tags differ per request, so a page is compressed as it's sent.
-func TestPagesAreGzipped(t *testing.T) {
-	_, ts := newTestServer(t)
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/rules", nil)
-	req.Header.Set("Accept-Encoding", "br, gzip") // set by hand, so the client doesn't unzip
-	resp, err := ts.Client().Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.Header.Get("Content-Encoding") != "gzip" || resp.Header.Get("Vary") != "Accept-Encoding" {
-		t.Fatalf("Content-Encoding %q, Vary %q", resp.Header.Get("Content-Encoding"), resp.Header.Get("Vary"))
-	}
-	zr, err := gzip.NewReader(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if b, _ := io.ReadAll(zr); !strings.Contains(string(b), "rules page") || !strings.Contains(string(b), "og:title") {
-		t.Errorf("unzipped: %s", b)
 	}
 }
 

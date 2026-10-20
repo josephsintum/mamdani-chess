@@ -27,42 +27,30 @@ const eventRowsPerDay = 1000
 
 // AddBrowserError counts an error and keeps its message.
 func (s *Store) AddBrowserError(ctx context.Context, e BrowserError) error {
-	c := counts{}
-	countError(c, s.zone, e.At, 1)
-	return s.insertFolded(ctx, c, DayOf(e.At, s.zone), "errors", errorRowsPerDay,
-		`INSERT INTO browser_errors (at, path, message) VALUES (?, ?, ?)`,
-		`UPDATE browser_errors SET at = ?, path = ?, message = ?, n = n + 1
-		 WHERE rowid = (SELECT rowid FROM browser_errors ORDER BY rowid DESC LIMIT 1)`,
-		e.At.UnixMilli(), e.Path, e.Message)
+	return s.counted(ctx, func(tx *sql.Tx, c counts) error {
+		countError(c, s.zone, e.At, 1)
+		return insertFolded(ctx, tx, DayOf(e.At, s.zone), "errors", errorRowsPerDay,
+			`INSERT INTO browser_errors (at, path, message) VALUES (?, ?, ?)`,
+			`UPDATE browser_errors SET at = ?, path = ?, message = ?, n = n + 1
+			 WHERE rowid = (SELECT MAX(rowid) FROM browser_errors)`,
+			e.At.UnixMilli(), e.Path, e.Message)
+	})
 }
 
-// insertFolded adds a row with args and its counts, in one transaction.
-// With a fold query, once the day's key has counted limit, fold runs
-// instead with the same args, folding the report into the newest row.
-func (s *Store) insertFolded(ctx context.Context, c counts, day, key string, limit int, insert, fold string, args ...any) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
+// insertFolded runs insert with args, or, once the day's key has counted
+// limit, fold with the same args, folding the report into the newest row.
+func insertFolded(ctx context.Context, tx *sql.Tx, day, key string, limit int, insert, fold string, args ...any) error {
+	var today int
+	err := tx.QueryRowContext(ctx, `SELECT n FROM stats_days WHERE day = ? AND key = ?`, day, key).Scan(&today)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	defer tx.Rollback()
 	query := insert
-	if fold != "" {
-		var today int
-		err = tx.QueryRowContext(ctx, `SELECT n FROM stats_days WHERE day = ? AND key = ?`, day, key).Scan(&today)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if today >= limit {
-			query = fold
-		}
+	if today >= limit {
+		query = fold
 	}
-	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-		return err
-	}
-	if err := addCounts(ctx, tx, c); err != nil {
-		return err
-	}
-	return tx.Commit()
+	_, err = tx.ExecContext(ctx, query, args...)
+	return err
 }
 
 // LatestError is the newest stored error message with from <= at < to,

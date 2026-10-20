@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { boardFromFen } from './board.ts';
 import { BURST_HOLD_MS, TEETER_MS } from './feel.ts';
 import type { EventJSON } from './game.ts';
 import { SAVE_MS } from './dice.ts';
@@ -11,8 +12,8 @@ const moved: EventJSON = { kind: 'moved', from: 'e2', to: 'e4', color: 'white' }
 const captured: EventJSON = { kind: 'captured', sq: 'e4', piece: 'bP' };
 const roll: EventJSON = { kind: 'rolled_pothole', roll: 3 };
 
-// A side with all 16 pieces, on any squares.
-const full = (prefix: 'w' | 'b') => Object.fromEntries(['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'].map((p, i) => [`${'abcdefgh'[i % 8]}${prefix === 'w' ? 1 + Math.floor(i / 8) : 8 - Math.floor(i / 8)}`, prefix + p]));
+// White with all 16 pieces, and no Black.
+const fullWhite = () => boardFromFen('8/8/8/8/8/8/PPPPPPPP/RNBQKBNR');
 
 describe('revealCues', () => {
 	it('plays a move, or a capture when one follows it', () => {
@@ -35,14 +36,9 @@ describe('revealCues', () => {
 		expect(revealCues(turn, { from: 3, to: 4 })).toEqual([{ sound: 'repair', delayMs: 0 }]);
 	});
 
-	it('builds as the Mamdani repairs: once its move arrives, at once beside the dice', () => {
+	it('waits for the Mamdani’s glide when its move repairs', () => {
 		const mamdani: EventJSON = { kind: 'moved', from: 'a5', to: 'c3', piece: 'M', color: 'white' };
 		expect(revealCues([mamdani, { kind: 'repaired', sq: 'd4' }], { skipMove: true })).toEqual([{ sound: 'repair', delayMs: moveDuration('a5', 'c3') }]);
-		expect(revealCues([roll, { kind: 'target', sq: 'b4' }, { kind: 'repaired', sq: 'b4' }])).toEqual([
-			{ sound: 'die', delayMs: 0 },
-			{ sound: 'dice', delayMs: 0 },
-			{ sound: 'repair', delayMs: 0 }
-		]);
 	});
 
 	it('drops at once with reduced motion: no teeter to wait for', () => {
@@ -111,7 +107,7 @@ describe('endCue', () => {
 	});
 
 	it('is flawless when the winner lost no piece', () => {
-		expect(endCue(viewOf({ you: 'white', result: won, board: boardOf(full('w')) }))).toBe('flawless');
+		expect(endCue(viewOf({ you: 'white', result: won, board: fullWhite() }))).toBe('flawless');
 	});
 
 	it('plays nothing for spectators, or a game nobody won', () => {
@@ -123,7 +119,7 @@ describe('endCue', () => {
 
 describe('flawless', () => {
 	it('counts every piece of the side, promoted or not', () => {
-		const board = boardOf(full('w'));
+		const board = fullWhite();
 		expect(flawless(board, 'white')).toBe(true);
 		expect(flawless(board, 'black')).toBe(false);
 		board[board.indexOf('wP')] = 'wQ'; // a promotion

@@ -8,6 +8,8 @@ import (
 	"html/template"
 	"math"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,9 +38,11 @@ var statsTemplate = template.Must(template.New("stats").Funcs(template.FuncMap{
 	},
 }).Parse(statsHTML))
 
-// statsRange reads ?days= (7, 30, 90 or all; anything else is 30): to is
-// the start of tomorrow in loc, so today counts in full.
-func statsRange(q string, now time.Time, loc *time.Location) (from, to time.Time, label string) {
+// statsRange reads ?days= (7, 30, 90 or all; anything else is 30) as the
+// range's key and its days from <= day < to. To is the start of tomorrow
+// in loc, so today counts in full, and before starts the range of the same
+// length that ends at from. All time has neither from nor before.
+func statsRange(q string, now time.Time, loc *time.Location) (key string, from, to, before time.Time) {
 	y, m, d := now.In(loc).Date()
 	to = time.Date(y, m, d+1, 0, 0, 0, 0, loc)
 	days := 30
@@ -48,10 +52,10 @@ func statsRange(q string, now time.Time, loc *time.Location) (from, to time.Time
 	case "90":
 		days = 90
 	case "all":
-		return time.Time{}, to, "All time"
+		return q, time.Time{}, to, time.Time{}
 	}
 	from = to.AddDate(0, 0, -days)
-	return from, to, rangeLabel(from, to)
+	return strconv.Itoa(days), from, to, from.AddDate(0, 0, -days)
 }
 
 // rangeLabel names the days from <= day < to, e.g. "Sep 9 – Oct 8, 2026".
@@ -61,15 +65,6 @@ func rangeLabel(from, to time.Time) string {
 		return from.Format("Jan 2") + " – " + last.Format("Jan 2, 2006")
 	}
 	return from.Format("Jan 2, 2006") + " – " + last.Format("Jan 2, 2006")
-}
-
-// rangeBefore is the range of the same number of days that ends at from.
-func rangeBefore(from, to time.Time) time.Time {
-	days := 0
-	for t := from; t.Before(to); t = t.AddDate(0, 0, 1) {
-		days++
-	}
-	return from.AddDate(0, 0, -days)
 }
 
 // change is a KPI against the range before: Text like "+18%", "−4%",
@@ -135,6 +130,15 @@ func top(rows []store.Count) int {
 	return n
 }
 
+// total is the sum of the counts.
+func total(rows []store.Count) int {
+	n := 0
+	for _, r := range rows {
+		n += r.N
+	}
+	return n
+}
+
 // share is n as a whole percentage of of, 0 when of is 0.
 func share(n, of int) int {
 	if of == 0 {
@@ -145,7 +149,7 @@ func share(n, of int) int {
 
 // statsPage is what the template reads.
 type statsPage struct {
-	Range, Days string
+	Range       string
 	Zone        string // the zone the days and hours are in, e.g. "Pacific time (PDT)"
 	Ranges      []statsRangeOption
 	LatestError string
@@ -197,10 +201,10 @@ var heatBlocks = [12]string{"12–2 am", "2–4 am", "4–6 am", "6–8 am", "8�
 // heatRows shades each weekday × two-hour block by its share of the
 // busiest block: 0 for none, then up to a quarter, half, 85%, and the rest.
 func heatRows(h store.Heat) []heatRow {
-	top := 0
+	busiest := 0
 	for _, row := range h {
 		for _, n := range row {
-			top = max(top, n)
+			busiest = max(busiest, n)
 		}
 	}
 	days := [7]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
@@ -209,7 +213,7 @@ func heatRows(h store.Heat) []heatRow {
 		hr := heatRow{Day: days[d]}
 		for b, n := range row {
 			level := 0
-			switch t := 100 * n / max(top, 1); {
+			switch t := 100 * n / max(busiest, 1); {
 			case n == 0:
 			case t <= 25:
 				level = 1
@@ -245,14 +249,11 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), statsTimeout)
 	defer cancel()
 	loc := s.store.Zone()
-	days := r.URL.Query().Get("days")
-	from, to, label := statsRange(days, time.Now(), loc)
+	key, from, to, prevFrom := statsRange(r.URL.Query().Get("days"), time.Now(), loc)
 	fromDay, toDay := "", store.DayOf(to, loc)
 	readFrom := ""
-	var prevFrom time.Time
 	if !from.IsZero() {
 		fromDay = store.DayOf(from, loc)
-		prevFrom = rangeBefore(from, to)
 		readFrom = store.DayOf(prevFrom, loc)
 	}
 	// One read for the range and the range before it.
@@ -261,12 +262,9 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "stats counters", err)
 		return
 	}
-	split := len(counted)
-	for i, d := range counted {
-		if d.Day >= fromDay {
-			split = i
-			break
-		}
+	split := slices.IndexFunc(counted, func(d store.DayCounts) bool { return d.Day >= fromDay })
+	if split < 0 {
+		split = len(counted)
 	}
 	section := store.Summarize(counted[split:], fromDay, toDay)
 	latest, err := s.store.LatestError(ctx, from, to)
@@ -274,32 +272,29 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "latest error", err)
 		return
 	}
-	page := statsPage{Range: label, Days: days, Zone: zoneLabel(loc, time.Now()), LatestError: latest, Stale: s.store.CountersStale()}
+	page := statsPage{Range: "All time", Zone: zoneLabel(loc, time.Now()), LatestError: latest, Stale: s.store.CountersStale()}
+	page.PracticeTotal = practiceGames(section)
 	if !from.IsZero() {
 		prev := store.Summarize(counted[:split], readFrom, fromDay)
+		page.Range = rangeLabel(from, to)
 		page.Before = "vs " + rangeLabel(prevFrom, from)
 		page.Games = pctChange(section.Games, prev.Games)
 		page.GotGoing = pctChange(section.GotGoing, prev.GotGoing)
-		page.Practice = pctChange(practiceGames(section), practiceGames(prev))
+		page.Practice = pctChange(page.PracticeTotal, practiceGames(prev))
 		page.Found = ptsChange(section.Quick.Matched, section.Quick.Searches, prev.Quick.Matched, prev.Quick.Searches)
 	}
 	for _, o := range []statsRangeOption{{"7", "7 days", false}, {"30", "30 days", false}, {"90", "90 days", false}, {"all", "All", false}} {
-		o.On = o.Days == days || (days != "7" && days != "90" && days != "all" && o.Days == "30")
+		o.On = o.Days == key
 		page.Ranges = append(page.Ranges, o)
 	}
 	page.Section = section
 	for _, d := range section.Days {
 		page.QuickTotal += d.Quick
 		page.FriendTotal += d.Friend
-		page.PracticeTotal += d.Practice
 		page.DayKindMax = max(page.DayKindMax, d.Quick+d.Friend+d.Practice)
 	}
-	for _, c := range section.WinnerLeft {
-		page.LeftKnown += c.N
-	}
-	for _, c := range section.Friend.Join {
-		page.JoinKnown += c.N
-	}
+	page.LeftKnown = total(section.WinnerLeft)
+	page.JoinKnown = total(section.Friend.Join)
 	turns := 0
 	for _, n := range section.Road.OpenHist {
 		turns += n

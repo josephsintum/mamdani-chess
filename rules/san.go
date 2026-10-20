@@ -2,8 +2,6 @@ package rules
 
 import "strings"
 
-var sanLetters = map[Kind]string{Knight: "N", Bishop: "B", Rook: "R", Queen: "Q", King: "K"}
-
 // SAN returns m in standard algebraic notation for the log: "e4", "Nbd2",
 // "exd5", "e8=Q", "O-O", "Qh5+". A Mamdani move is "M" plus its square:
 // "Mb5". "#" marks checkmate: a mating move ends the game with no pothole
@@ -27,7 +25,7 @@ func (p *Position) SAN(m Move) string {
 				b.WriteByte(byte('a' + m.From.File()))
 			}
 		} else {
-			b.WriteString(sanLetters[pc.Kind()])
+			b.WriteByte(kindLetters[pc.Kind()])
 			b.WriteString(p.disambiguate(m))
 		}
 		if capture {
@@ -36,7 +34,7 @@ func (p *Position) SAN(m Move) string {
 		b.WriteString(m.To.String())
 		if m.Promo != NoKind {
 			b.WriteByte('=')
-			b.WriteString(sanLetters[m.Promo])
+			b.WriteByte(kindLetters[m.Promo])
 		}
 	}
 	q := *p

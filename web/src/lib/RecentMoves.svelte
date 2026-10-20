@@ -25,9 +25,7 @@
 			<span class="row">
 				<span class="n">{first + k + 1}.</span>
 				{#each [row.white, row.black] as p, j (j)}
-					<span class="ply" class:current={p?.i === log.length - 1}>
-						{#if p}<MoveText entry={p} rolling={rolling && p.i === log.length - 1} />{/if}
-					</span>
+					{#if p}<MoveText entry={p} rolling={rolling && p.i === log.length - 1} current={p.i === log.length - 1} />{:else}<span></span>{/if}
 				{/each}
 			</span>
 		{/each}
@@ -73,18 +71,5 @@
 		font-family: var(--font-mono);
 		font-size: 13px;
 		color: var(--text-muted);
-	}
-	.ply {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		justify-self: start;
-		min-width: 0;
-		padding: 3px 6px;
-		border-radius: 6px;
-	}
-	.ply.current {
-		background: var(--accent-wash);
-		box-shadow: inset 0 0 0 1px var(--accent-line);
 	}
 </style>

@@ -26,6 +26,8 @@ func TestEventJSONOmitsFieldsThatDontApply(t *testing.T) {
 		{rules.Event{Kind: rules.PotholeClosed, Square: rules.C4, Color: rules.Black},
 			`{"kind":"pothole_closed","sq":"c4","color":"black"}`},
 		{rules.Event{Kind: rules.Repaired, Square: rules.C4}, `{"kind":"repaired","sq":"c4"}`},
+		{rules.Event{Kind: rules.PotholeReset, Square: rules.D4, Color: rules.White, Was: rules.Black, Left: 1},
+			`{"kind":"pothole_reset","sq":"d4","color":"white","was":"black","left":1}`},
 	}
 	for _, c := range cases {
 		b, err := json.Marshal(eventJSON(c.e))
@@ -72,6 +74,15 @@ func TestDescribe(t *testing.T) {
 	if got, want := describe(ev), "repairs d4 · d8 2 → g8 · bN falls"; got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
+	ev = []rules.Event{
+		{Kind: rules.Moved},
+		{Kind: rules.RolledPothole, Roll: 6},
+		{Kind: rules.Target, Square: rules.D4},
+		{Kind: rules.PotholeReset, Square: rules.D4},
+	}
+	if got, want := describe(ev), "d8 6 → d4 reset"; got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
 }
 
 func TestDescribeShowsOnlyTheCapClosing(t *testing.T) {
@@ -86,17 +97,6 @@ func TestDescribeShowsOnlyTheCapClosing(t *testing.T) {
 		{Kind: rules.PotholeOpened, Square: rules.E4, Color: rules.White},
 	}
 	if got, want := describe(ev), "d8 2 → e4 · c4 closes"; got != want {
-		t.Errorf("got  %q\nwant %q", got, want)
-	}
-}
-
-func TestPotholeReset(t *testing.T) {
-	e := rules.Event{Kind: rules.PotholeReset, Square: rules.D4, Color: rules.White, Was: rules.Black, Left: 1}
-	if got, want := eventJSON(e), (EventJSON{Kind: rules.PotholeReset, Sq: "d4", Color: "white", Was: "black", Left: 1}); got != want {
-		t.Errorf("got  %+v\nwant %+v", got, want)
-	}
-	ev := []rules.Event{{Kind: rules.Moved}, {Kind: rules.RolledPothole, Roll: 6}, {Kind: rules.Target, Square: rules.D4}, e}
-	if got, want := describe(ev), "d8 6 → d4 reset"; got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
 }
@@ -118,19 +118,11 @@ func TestPieceCodes(t *testing.T) {
 	}
 }
 
-// playOpening plays four plain plies (odd dice) with alice as White and
-// bob as Black.
-func playOpening(t *testing.T, g *Game) {
-	t.Helper()
-	plays(t, g, "e2e4", "e7e5", "g1f3", "b8c6")
-}
-
 // Views share the game's log instead of copying it, so a view already sent
 // must not change when the game moves on.
 func TestViewKeepsItsLogAsTheGameMovesOn(t *testing.T) {
-	g := create(t, NewHub(odd{}, nil), "alice")
-	join(t, g, "bob")
-	playOpening(t, g)
+	g, _, _ := seated(t, NewHub(odd{}, nil))
+	plays(t, g, "e2e4", "e7e5", "g1f3", "b8c6")
 	v, err := g.View("carol")
 	if err != nil {
 		t.Fatal(err)
@@ -150,9 +142,8 @@ func TestViewKeepsItsLogAsTheGameMovesOn(t *testing.T) {
 // A view costs a few allocations, however long the game: none per piece,
 // square name, legal move or log entry.
 func TestViewAllocations(t *testing.T) {
-	g := create(t, NewHub(odd{}, nil), "alice")
-	join(t, g, "bob")
-	playOpening(t, g)
+	g, _, _ := seated(t, NewHub(odd{}, nil))
+	plays(t, g, "e2e4", "e7e5", "g1f3", "b8c6")
 	for name, r := range map[string]role{"player to move": role(rules.White), "spectator": roleSpectator} {
 		var n float64
 		g.do(func() { n = testing.AllocsPerRun(100, func() { g.viewFor(r) }) })

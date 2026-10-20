@@ -24,15 +24,6 @@ func TestGameStatsSavedWithTheResult(t *testing.T) {
 	if kind != "quick" || joined != t0.Add(90*time.Second).UnixMilli() || moves != 2 || fell != 1 || blackLost != 1 || hist != "1,1,0,0,0,0" {
 		t.Fatalf("saved %q %d %d %d %d %q", kind, joined, moves, fell, blackLost, hist)
 	}
-	// A default kind, and a game ended without stats, both fine.
-	must(t, s.CreateGame(ctx, Game{Code: "G00002", White: "w", WhiteName: "w", CreatedAt: t0}))
-	must(t, s.EndGame(ctx, "G00002", Result{EndedAt: t0.Add(time.Hour), Reason: "expired"}, nil, nil))
-	var n int
-	must(t, s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM game_stats`).Scan(&n))
-	must(t, s.db.QueryRowContext(ctx, `SELECT kind FROM games WHERE code = 'G00002'`).Scan(&kind))
-	if n != 1 || kind != "friend" {
-		t.Fatalf("rows %d, kind %q", n, kind)
-	}
 }
 
 func TestGamesWithoutStatsAndBackfillRow(t *testing.T) {

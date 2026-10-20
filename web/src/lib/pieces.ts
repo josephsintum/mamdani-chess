@@ -14,6 +14,9 @@ export interface PieceRef {
 /** A piece on a square, before it has an id. */
 type Placed = Omit<PieceRef, 'id'>;
 
+/** The image for a piece code ("wN"), the Mamdani's ("M") too. */
+export const pieceSrc = (code: string) => (code === 'M' ? '/mamdani/piece.webp' : `/pieces/${code}.svg`);
+
 /** The distance between two squares, in squares (a diagonal step is √2). */
 export function distance(a: string, b: string): number {
 	return Math.hypot(a.charCodeAt(0) - b.charCodeAt(0), Number(a[1]) - Number(b[1]));

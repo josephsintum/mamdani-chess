@@ -73,7 +73,10 @@ section{display:flex;flex-direction:column;gap:16px}
 <div class="axis">{{with .Section.Days}}<span>{{(index . 0).Day}}</span><span>{{(index . (len . | sub1)).Day}}</span>{{end}}</div>
 </div>
 <div class="grid g2">
-{{template "list" dict "Title" "How games end" "Sub" (printf "%d games created in the range" .Section.Games) "Rows" .Section.Ends "Top" (top .Section.Ends) "Of" .Section.Games}}
+<div class="card"><div><h3>How games end</h3><p class="sub">{{.Section.Games}} games created in the range</p></div>
+<div class="rows">{{$top := top .Section.Ends}}{{$of := .Section.Games}}{{range .Section.Ends}}
+<div class="row"><div class="row-top"><span>{{.Label}}</span><span class="val">{{.N}} <small>{{share .N $of}}%</small></span></div><div class="track"><i style="width:{{pct .N $top}}%"></i></div></div>{{end}}
+{{if not .Section.Ends}}<p class="note">Nothing yet</p>{{end}}</div></div>
 <div class="card"><div><h3>Game length</h3><p class="sub">Moves by both sides, games that got going</p></div>
 {{template "hist" .Section.Lengths}}
 <div class="list"><div><span>Decided on the clock</span><span class="val">{{.Section.OnClock}} of {{.Section.GotGoing}} · {{share .Section.OnClock .Section.GotGoing}}%</span></div></div>
@@ -158,8 +161,3 @@ section{display:flex;flex-direction:column;gap:16px}
 
 {{define "hist"}}<div class="chart"><div class="hist">{{$m := top .}}{{range .}}<div class="hcol">{{.N}}<i style="height:calc((100% - 24px) * {{pct .N $m}} / 100)"></i></div>{{end}}</div>
 <div class="hlab">{{range .}}<span>{{.Label}}</span>{{end}}</div></div>{{end}}
-
-{{define "list"}}<div class="card"><div><h3>{{.Title}}</h3><p class="sub">{{.Sub}}</p></div>
-<div class="rows">{{$of := .Of}}{{range .Rows}}
-<div class="row"><div class="row-top"><span>{{.Label}}</span><span class="val">{{.N}} <small>{{share .N $of}}%</small></span></div><div class="track"><i style="width:{{pct .N $.Top}}%"></i></div></div>{{end}}
-{{if not .Rows}}<p class="note">Nothing yet</p>{{end}}</div></div>{{end}}

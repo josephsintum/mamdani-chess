@@ -11,43 +11,50 @@ import (
 // turn's events as they are played (restore replays them, so a restart
 // rebuilds it), and hands the total to the store with the result.
 type road struct {
-	moves, opened, reset, closedRounds, closedCap, repaired int
-	fell, savingRolls, saved                                int
-	openHist                                                [6]int // turns that ended with k holes open
+	st     store.GameStats // all but MateByRoll, which stats works out
+	rolled bool            // the latest turn rolled the pothole die
 }
 
 // add counts one turn's events; pos is the position after them. A
 // pothole_closed before the turn's roll is a hole that ran its rounds, one
 // after it is the cap closing the oldest.
 func (r *road) add(ev []rules.Event, pos *rules.Position) {
-	r.moves++
+	r.st.Moves++
 	rolled := false
 	for _, e := range ev {
 		switch e.Kind {
 		case rules.RolledPothole:
 			rolled = true
 		case rules.PotholeOpened:
-			r.opened++
+			r.st.Opened++
 		case rules.PotholeReset:
-			r.reset++
+			r.st.Reset++
 		case rules.PotholeClosed:
 			if rolled {
-				r.closedCap++
+				r.st.ClosedCap++
 			} else {
-				r.closedRounds++
+				r.st.ClosedRounds++
 			}
 		case rules.Repaired:
-			r.repaired++
+			r.st.Repaired++
 		case rules.Fell:
-			r.fell++
+			r.st.Fell++
+			switch {
+			case e.Piece == rules.MamdaniPiece: // nobody's loss
+			case e.Piece.Color() == rules.White:
+				r.st.WhiteLost++
+			default:
+				r.st.BlackLost++
+			}
 		case rules.SavingRoll:
-			r.savingRolls++
+			r.st.SavingRolls++
 			if e.Saved {
-				r.saved++
+				r.st.Saved++
 			}
 		}
 	}
-	r.openHist[min(openHoles(pos), len(r.openHist)-1)]++
+	r.st.OpenHist[min(openHoles(pos), len(r.st.OpenHist)-1)]++
+	r.rolled = rolled
 }
 
 // openHoles counts the position's open potholes.
@@ -61,24 +68,23 @@ func openHoles(pos *rules.Position) int {
 	return n
 }
 
-// stats is the total as the store keeps it. last is the final turn's
-// events (a checkmate whose turn rolled the dice is a mate by a roll) and
-// lost the pieces each side lost to potholes.
-func (r *road) stats(result rules.Result, last []rules.Event, lost [2][]string) store.GameStats {
-	st := store.GameStats{
-		Moves: r.moves, Opened: r.opened, Reset: r.reset, ClosedRounds: r.closedRounds, ClosedCap: r.closedCap, Repaired: r.repaired,
-		Fell: r.fell, SavingRolls: r.savingRolls, Saved: r.saved,
-		WhiteLost: len(lost[rules.White]), BlackLost: len(lost[rules.Black]),
-		OpenHist: r.openHist,
-	}
-	if result.Reason == rules.Checkmate {
-		for _, e := range last {
-			if e.Kind == rules.RolledPothole {
-				st.MateByRoll = true
-			}
-		}
-	}
+// stats is the total as the store keeps it, for a game that ended for
+// reason: a checkmate whose final turn rolled the dice is a mate by a roll.
+func (r *road) stats(reason rules.Reason) store.GameStats {
+	st := r.st
+	st.MateByRoll = reason == rules.Checkmate && r.rolled
 	return st
+}
+
+// view is the part of the stats a game's view shows; pos is the game's
+// position. Only a fall takes the Mamdani off the board.
+func (r *road) view(pos *rules.Position) StatsJSON {
+	return StatsJSON{
+		SavingRolls: r.st.SavingRolls,
+		Saved:       r.st.Saved,
+		Repaired:    r.st.Repaired,
+		MamdaniFell: pos.Mamdani == rules.NoSquare,
+	}
 }
 
 // StatsOf replays a saved game's turns from the start with their recorded
@@ -87,45 +93,16 @@ func (r *road) stats(result rules.Result, last []rules.Event, lost [2][]string) 
 func StatsOf(turns []store.Turn, result store.Result) (store.GameStats, error) {
 	g := rules.NewGame()
 	var r road
-	var lost [2][]string
-	var last []rules.Event
 	for _, t := range turns {
 		m, err := rules.ParseMove(t.Move)
 		if err != nil {
 			return store.GameStats{}, fmt.Errorf("ply %d: %w", t.Ply, err)
 		}
-		ev, err := playScripted(g, m, t.Dice)
+		ev, err := g.PlayRecorded(m, t.Dice)
 		if err != nil {
 			return store.GameStats{}, fmt.Errorf("ply %d (%s): %w", t.Ply, t.Move, err)
 		}
-		for _, e := range ev {
-			if e.Kind == rules.Fell && e.Piece != rules.MamdaniPiece {
-				c := e.Piece.Color()
-				lost[c] = append(lost[c], pieceCode(e.Piece))
-			}
-		}
 		r.add(ev, &g.Pos)
-		last = ev
 	}
-	res := savedRules(&result)
-	if rules.Reason(result.Reason) != rules.Checkmate {
-		last = nil
-	}
-	return r.stats(res, last, lost), nil
-}
-
-// playScripted plays m with the recorded dice, turning the dice running
-// out (a panic in ScriptedDice) into an error.
-func playScripted(g *rules.Game, m rules.Move, dice []int) (ev []rules.Event, err error) {
-	script := &rules.ScriptedDice{Rolls: dice}
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("%v", r)
-		}
-	}()
-	ev, err = g.Play(m, script)
-	if err == nil && script.Left() != 0 {
-		err = fmt.Errorf("%d unused dice", script.Left())
-	}
-	return ev, err
+	return r.stats(rules.Reason(result.Reason)), nil
 }

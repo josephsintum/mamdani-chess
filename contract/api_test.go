@@ -19,6 +19,13 @@ import (
 	"mamdani-chess/rules"
 )
 
+// codeRE is a game code: six of the letters and digits that can't be
+// mistaken for one another.
+const codeRE = "[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}"
+
+// codeBody is the body that answers a request that starts a game.
+var codeBody = regexp.MustCompile(`^\{"code":"` + codeRE + `"\}\n$`)
+
 // viewKeys is a view's keys, in the order the server sends them.
 var viewKeys = []string{"code", "status", "you", "board", "mamdani", "potholes", "turn", "check", "legal", "last", "log", "lost", "taken", "stats", "result", "seq", "clock", "online", "players", "rematch"}
 
@@ -83,7 +90,7 @@ func TestGuestCookie(t *testing.T) {
 		t.Errorf("Set-Cookie behind https = %q", set)
 	}
 	p := c.players(1)[0]
-	p.get("/api/me")
+	p.get("/") // the API keeps the cookie the app shell set
 	if again := p.fetch(http.MethodGet, "/api/me"); again.header.Values("Set-Cookie") != nil {
 		t.Errorf("a guest with a cookie got another: %q", again.header.Values("Set-Cookie"))
 	}
@@ -118,7 +125,7 @@ func TestCreateGame(t *testing.T) {
 	if r.status != 201 || r.header.Get("Content-Type") != "application/json" {
 		t.Errorf("POST /api/games: %d %q", r.status, r.header.Get("Content-Type"))
 	}
-	if !regexp.MustCompile(`^\{"code":"[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}"\}\n$`).MatchString(r.body) {
+	if !codeBody.MatchString(r.body) {
 		t.Errorf("POST /api/games body %q", r.body)
 	}
 }
@@ -127,9 +134,10 @@ func TestCreateGame(t *testing.T) {
 // the live games list never shows it.
 func TestPractice(t *testing.T) {
 	c := newCheck(t, 5*time.Second)
-	p, other := c.players(2)[0], c.players(1)[0]
+	ps := c.players(2)
+	p, other := ps[0], ps[1]
 	r := p.fetch(http.MethodPost, "/api/practice")
-	if r.status != 201 || !regexp.MustCompile(`^\{"code":"[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}"\}\n$`).MatchString(r.body) {
+	if r.status != 201 || !codeBody.MatchString(r.body) {
 		t.Fatalf("POST /api/practice: %d %q", r.status, r.body)
 	}
 	code := decode[struct{ Code string }](t, r.body).Code
@@ -222,13 +230,14 @@ func TestMoveErrors(t *testing.T) {
 	if status, body := carol.post(move, `{"from":"e2","to":"e4","seq":0}`); status != 403 || body != `{"error":"you are not playing in this game"}` {
 		t.Errorf("carol moves: %d %s", status, body)
 	}
+	// A conflict carries the caller's own view, so the page can resync.
 	for _, r := range []struct {
-		who         *player
-		body, error string
+		who              *player
+		you, body, error string
 	}{
-		{g.bob, `{"from":"e7","to":"e5","seq":0}`, "not your turn"},
-		{g.alice, `{"from":"e2","to":"e4","seq":5}`, "the game has moved on; reload the position"},
-		{g.alice, `{"from":"e2","to":"e5","seq":0}`, "illegal move"},
+		{g.bob, "black", `{"from":"e7","to":"e5","seq":0}`, "not your turn"},
+		{g.alice, "white", `{"from":"e2","to":"e4","seq":5}`, "the game has moved on; reload the position"},
+		{g.alice, "white", `{"from":"e2","to":"e5","seq":0}`, "illegal move"},
 	} {
 		status, text := r.who.post(move, r.body)
 		var out struct {
@@ -239,8 +248,8 @@ func TestMoveErrors(t *testing.T) {
 			t.Errorf("%s: %d %.200s: %v", r.body, status, text, err)
 			continue
 		}
-		expectJSON(t, []any{r.body, status, keys(t, []byte(text)), out.Error, out.State.Seq},
-			fmt.Sprintf(`[%s,409,["error","state"],%s,0]`, js(r.body), js(r.error)))
+		expectJSON(t, []any{r.body, status, keys(t, []byte(text)), out.Error, out.State.You, out.State.Seq},
+			fmt.Sprintf(`[%s,409,["error","state"],%s,%s,0]`, js(r.body), js(r.error), js(r.you)))
 	}
 	for _, r := range []struct{ body, text string }{
 		{`{"from":"e9","to":"e4","seq":0}`, `{"error":"bad move"}`},
@@ -419,8 +428,13 @@ func TestRematch(t *testing.T) {
 	g.alice.post("/api/games/"+g.code+"/resign", "")
 	g.a.state()
 	g.b.state()
-	if status, text := g.alice.post(rematch, `{"decline":"yes"}`); status != 400 {
-		t.Errorf(`{"decline":"yes"}: %d %s, want 400`, status, text)
+	if status, text := c.players(1)[0].post(rematch, "{}"); status != 403 || text != `{"error":"you are not playing in this game"}` {
+		t.Errorf("a spectator's rematch: %d %s", status, text)
+	}
+	for _, body := range []string{`{"decline":"yes"}`, ""} {
+		if status, text := g.alice.post(rematch, body); status != 400 {
+			t.Errorf("%q: %d %s, want 400", body, status, text)
+		}
 	}
 	expectPost := func(p *player, body string) {
 		t.Helper()
@@ -437,7 +451,7 @@ func TestRematch(t *testing.T) {
 	expectJSON(t, g.a.state().get("rematch"), `{"offer":"black"}`)
 	g.alice.post(rematch, "{}") // accepts
 	next := g.a.state().Rematch.Code
-	if !regexp.MustCompile(`^[A-Z2-9]{6}$`).MatchString(next) || next == g.code {
+	if !regexp.MustCompile(`^`+codeRE+`$`).MatchString(next) || next == g.code {
 		t.Fatalf("rematch code %q (the game was %s)", next, g.code)
 	}
 	nb := g.bob.stream(next).state()
@@ -464,6 +478,9 @@ func TestQuickMatch(t *testing.T) {
 	if n != before+1 {
 		t.Errorf("queued: looking %d, want %d", n, before+1)
 	}
+	if n := looking(carol); n != before+1 {
+		t.Errorf("carol sees %d looking, want %d", n, before+1)
+	}
 	if alice.name() == "" {
 		t.Error("queueing gave alice no name")
 	}
@@ -472,7 +489,7 @@ func TestQuickMatch(t *testing.T) {
 	}
 	bobStream := bob.open("/api/match")
 	rest := a.rest() // alice's stream ends after "matched"
-	m := regexp.MustCompile(`^retry: 3600000\nevent: matched\ndata: (\{"code":"[A-Z2-9]{6}"\})\n\n$`).FindStringSubmatch(rest)
+	m := regexp.MustCompile(`^retry: 3600000\nevent: matched\ndata: (\{"code":"` + codeRE + `"\})\n\n$`).FindStringSubmatch(rest)
 	if m == nil {
 		t.Fatalf("alice's stream ended with %q", rest)
 	}
@@ -487,6 +504,9 @@ func TestQuickMatch(t *testing.T) {
 	}
 	if va.Status != game.Playing {
 		t.Errorf("status %s, want playing", va.Status)
+	}
+	if va.Players.White == "" || va.Players.Black == "" {
+		t.Errorf("players %+v, want both named", va.Players)
 	}
 	if status, text := alice.get("/api/match"); status != 409 || text != `{"code":"`+code+`","error":"you're already in a game"}`+"\n" {
 		t.Errorf("queueing again: %d %q", status, text)
@@ -539,6 +559,7 @@ func TestNames(t *testing.T) {
 	if status, text := p.post("/api/me/name", `{"name":"not-on-offer"}`); status != 409 || text != `{"error":"that name isn't on offer"}` {
 		t.Errorf("a name not on offer: %d %s", status, text)
 	}
+	var chosen string
 	for i := range 3 {
 		_, o, _ := getOffers()
 		if len(o.Names) == 0 {
@@ -547,14 +568,23 @@ func TestNames(t *testing.T) {
 		body, _ := json.Marshal(map[string]string{"name": o.Names[0]})
 		status, text := p.post("/api/me/name", string(body))
 		out := decode[struct {
-			Name        string
-			ChangesLeft int
+			Name           string
+			ChangesLeft    int
+			ChangesResetAt *int64
 		}](t, text)
-		expectJSON(t, []any{status, keys(t, []byte(text)), out.Name, out.ChangesLeft},
-			fmt.Sprintf(`[200,["name","changesLeft","changesResetAt"],%s,%d]`, js(o.Names[0]), 2-i))
+		expectJSON(t, []any{status, keys(t, []byte(text)), out.Name, out.ChangesLeft, out.ChangesResetAt != nil},
+			fmt.Sprintf(`[200,["name","changesLeft","changesResetAt"],%s,%d,true]`, js(o.Names[0]), 2-i))
+		chosen = o.Names[0]
+	}
+	if after := p.me(); after.Name == nil || *after.Name != chosen || after.ChangesLeft != 0 || after.ChangesResetAt == nil {
+		t.Errorf("/api/me after three changes: %s, want the name %s and none left", after.raw, chosen)
 	}
 	status, text := p.get("/api/me/names")
-	expectJSON(t, []any{status, keys(t, []byte(text)), decode[apiError](t, text).Error}, `[429,["changesResetAt","error"],"no name changes left today"]`)
+	out := decode[struct {
+		Error          string
+		ChangesResetAt int64
+	}](t, text)
+	expectJSON(t, []any{status, keys(t, []byte(text)), out.Error, out.ChangesResetAt > 0}, `[429,["changesResetAt","error"],"no name changes left today",true]`)
 	if status, text := p.post("/api/me/name", `{"name":"x"}`); status != 429 {
 		t.Errorf("a fourth change: %d %s, want 429", status, text)
 	}
@@ -573,6 +603,9 @@ func TestAppAndPreviews(t *testing.T) {
 		res := c.do(http.MethodGet, "/", http.Header{"Accept-Encoding": {accept}})
 		if got := header(res, "Content-Encoding"); got != want {
 			t.Errorf("GET / with Accept-Encoding %q: Content-Encoding %v, want %v", accept, got, want)
+		}
+		if vary := header(res, "Vary"); vary != "Accept-Encoding" {
+			t.Errorf("GET / with Accept-Encoding %q: Vary %v", accept, vary)
 		}
 	}
 	for _, want := range []string{
@@ -707,7 +740,7 @@ func TestStatsPage(t *testing.T) {
 	res := c.do(http.MethodGet, "/stats", nil)
 	expectJSON(t, []any{res.status, header(res, "WWW-Authenticate")}, `[401,"Basic realm=\"stats\""]`)
 	res = c.do(http.MethodGet, "/stats?days=7", http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(":"+pass))}})
-	if res.status != 200 || !strings.Contains(res.body, "<h1>Stats</h1>") || !strings.Contains(res.body, "7 days") {
-		t.Errorf("GET /stats: %d, HTML %v", res.status, strings.Contains(res.body, "<h1>Stats</h1>"))
+	if res.status != 200 || header(res, "Content-Type") != "text/html; charset=utf-8" || !strings.Contains(res.body, "<h1>Stats</h1>") || !strings.Contains(res.body, "7 days") {
+		t.Errorf("GET /stats: %d %v, HTML %v", res.status, header(res, "Content-Type"), strings.Contains(res.body, "<h1>Stats</h1>"))
 	}
 }

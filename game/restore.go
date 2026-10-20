@@ -1,7 +1,6 @@
 package game
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -39,13 +38,15 @@ func (h *Hub) Restore(saved []store.SavedGame) int {
 	return n
 }
 
-func (h *Hub) restore(sg store.SavedGame, now time.Time) error {
+func (h *Hub) restore(sg store.SavedGame, now time.Time) (err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.games[sg.Code] != nil {
-		return errors.New("already running")
-	}
-	g := newGame(h, sg.Game, h.forget(sg.Code)) // a game that won't replay never runs, so never exits
+	defer func() {
+		if r := recover(); r != nil { // one bad game mustn't stop the server starting
+			err = fmt.Errorf("%v", r)
+		}
+	}()
+	g := newGame(h, sg.Game)
 	for _, t := range sg.Turns {
 		if err := g.replay(t); err != nil {
 			return fmt.Errorf("ply %d (%s): %w", t.Ply, t.Move, err)
@@ -77,7 +78,7 @@ func (h *Hub) restore(sg store.SavedGame, now time.Time) error {
 
 // replay plays one saved turn with its recorded dice and sets the clocks
 // it ended with.
-func (g *Game) replay(t store.Turn) (err error) {
+func (g *Game) replay(t store.Turn) error {
 	m, err := rules.ParseMove(t.Move)
 	if err != nil {
 		return err
@@ -85,18 +86,12 @@ func (g *Game) replay(t store.Turn) (err error) {
 	if t.Ply != len(g.g.Turns) {
 		return fmt.Errorf("expected ply %d", len(g.g.Turns))
 	}
-	script := &rules.ScriptedDice{Rolls: t.Dice}
-	defer func() {
-		if r := recover(); r != nil { // the recorded dice ran out
-			err = fmt.Errorf("%v", r)
-		}
-	}()
-	if err := g.apply(m, script); err != nil {
+	before := g.g.Pos
+	ev, err := g.g.PlayRecorded(m, t.Dice)
+	if err != nil {
 		return err
 	}
-	if script.Left() != 0 {
-		return fmt.Errorf("%d unused dice", script.Left())
-	}
+	g.record(&before, m, ev)
 	g.clock.remaining = [2]time.Duration{
 		time.Duration(t.WhiteMS) * time.Millisecond,
 		time.Duration(t.BlackMS) * time.Millisecond,

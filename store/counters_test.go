@@ -3,55 +3,11 @@ package store
 import (
 	"fmt"
 	"math/rand/v2"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"testing"
 	"time"
 )
-
-func openTempIn(t *testing.T, zone *time.Location) (*Store, string) {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "test.db")
-	s, err := OpenIn(path, zone)
-	if err != nil {
-		t.Fatalf("OpenIn: %v", err)
-	}
-	t.Cleanup(func() { s.Close() })
-	return s, path
-}
-
-// counters reads every counter as "day key" → n, leaving out zeros (an
-// amount moved away by a later write).
-func counters(t *testing.T, s *Store) map[string]int {
-	t.Helper()
-	rows, err := s.db.QueryContext(t.Context(), `SELECT day, key, n FROM stats_days`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	out := map[string]int{}
-	for rows.Next() {
-		var day, key string
-		var n int
-		if err := rows.Scan(&day, &key, &n); err != nil {
-			t.Fatal(err)
-		}
-		if n != 0 {
-			out[day+" "+key] = n
-		}
-	}
-	return out
-}
-
-// keysOn prefixes each key with day, for comparing with counters.
-func keysOn(day string, kv map[string]int) map[string]int {
-	out := map[string]int{}
-	for k, n := range kv {
-		out[day+" "+k] = n
-	}
-	return out
-}
 
 func TestCountedGameWrites(t *testing.T) {
 	ctx := t.Context()

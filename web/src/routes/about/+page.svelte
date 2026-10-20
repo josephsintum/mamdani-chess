@@ -1,22 +1,19 @@
 <script lang="ts">
 	import Header from '#lib/Header.svelte';
+	import PageHead from '#lib/PageHead.svelte';
 	import SiteFooter from '#lib/SiteFooter.svelte';
 
 	// What this site is, who it owes, and what it keeps about you.
 </script>
 
-<svelte:head>
-	<title>About · Mamdani Chess</title>
-	<!-- Here, not from the server, so it goes when the app navigates on. -->
-	<link rel="canonical" href="https://mamdanichess.com/about" />
-</svelte:head>
+<PageHead title="About · Mamdani Chess" path="/about" />
 
 <Header />
 
-<main>
+<main class="content">
 	<article>
 		<header class="intro">
-			<h1>About</h1>
+			<h1 class="page-title">About</h1>
 			<p class="lede">
 				Mamdani Chess is chess with potholes, to play with friends in the browser. It's the original Pot-Hole Chess plus
 				one new piece, the Mamdani, which both players share and which repairs potholes.
@@ -24,7 +21,7 @@
 		</header>
 
 		<section aria-labelledby="unofficial">
-			<h2 id="unofficial">Unofficial and ad-free</h2>
+			<h2 class="section-title" id="unofficial">Unofficial and ad-free</h2>
 			<p>
 				This is a fan project. It isn't affiliated with or endorsed by Zohran Mamdani, any campaign or any city
 				office. There are no ads, nothing to buy and no sign-up.
@@ -32,7 +29,7 @@
 		</section>
 
 		<section aria-labelledby="credits">
-			<h2 id="credits">Credits</h2>
+			<h2 class="section-title" id="credits">Credits</h2>
 			<ul>
 				<li>
 					<strong>The game:</strong>
@@ -71,7 +68,7 @@
 		</section>
 
 		<section aria-labelledby="privacy">
-			<h2 id="privacy">What we keep</h2>
+			<h2 class="section-title" id="privacy">What we keep</h2>
 			<ul>
 				<li>
 					<strong>One cookie.</strong> It holds a random ID that tells the server you're the same guest, so you keep your
@@ -99,7 +96,7 @@
 		</section>
 
 		<section aria-labelledby="source">
-			<h2 id="source">Source</h2>
+			<h2 class="section-title" id="source">Source</h2>
 			<p>
 				The code is public on
 				<a href="https://github.com/josephsintum/mamdani-chess" target="_blank" rel="noopener">GitHub</a>.
@@ -111,11 +108,6 @@
 </main>
 
 <style>
-	main {
-		max-width: 1120px;
-		margin: 0 auto;
-		padding: 56px 32px 0;
-	}
 	article {
 		display: flex;
 		flex-direction: column;
@@ -127,15 +119,6 @@
 		flex-direction: column;
 		gap: 16px;
 	}
-	h1 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: clamp(56px, 9vw, 80px);
-		line-height: 0.92;
-		text-transform: uppercase;
-	}
 	.lede {
 		font-size: 19px;
 	}
@@ -145,12 +128,7 @@
 		gap: 14px;
 	}
 	h2 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
 		font-size: 36px;
-		text-transform: uppercase;
 	}
 	p,
 	ul {
@@ -171,9 +149,6 @@
 		color: var(--accent);
 	}
 	@media (max-width: 799px) {
-		main {
-			padding: 32px 16px 0;
-		}
 		article {
 			gap: 40px;
 		}

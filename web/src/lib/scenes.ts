@@ -3,7 +3,7 @@
 // is a position and a few steps; sandbox.ts plays each turn as the server
 // would send it, so every effect is the one players see in a game.
 
-import { boardFromFen } from './lobby.ts';
+import { boardFromFen } from './board.ts';
 import { emptyView, playTurn, type RollScript } from './sandbox.ts';
 import type { Color, MoveJSON, Pothole, View } from './wire.gen.ts';
 

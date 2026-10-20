@@ -5,9 +5,9 @@
 // the Go server is the only source of truth for play.
 
 import { HOLE_CAP, HOLE_ROUNDS } from './wire.gen.ts';
-import { squareAt, squareIndex } from './board.ts';
+import { boardFromFen, boardOf, pieceOn, queenDirs, slides, squareAt, squareIndex, type Dir } from './board.ts';
 import { applyMove } from './pieces.ts';
-import { rerollReasons, type Color, type EventJSON, type LogEntry, type MoveJSON, type View } from './game.ts';
+import { opponent, rerollReasons, type Color, type EventJSON, type LogEntry, type MoveJSON, type View } from './game.ts';
 
 /** What the dice do on the next turn. */
 export interface RollScript {
@@ -47,69 +47,49 @@ export function emptyView(): View {
 	};
 }
 
-function place(v: View, pieces: Record<string, string>): View {
-	for (const [s, p] of Object.entries(pieces)) v.board[squareIndex(s)] = p;
-	return v;
+/** An empty view with these pieces (by square) and `extra` over it. */
+function setUp(pieces: Record<string, string>, extra: Partial<View> = {}): View {
+	return { ...emptyView(), board: boardOf(pieces), ...extra };
 }
 
 /** The standard setup with the Mamdani on a5. */
 export function startView(): View {
-	const v = emptyView();
-	const back = 'RNBQKBNR';
-	for (let f = 0; f < 8; f++) {
-		v.board[squareIndex(squareAt(f, 0))] = 'w' + back[f];
-		v.board[squareIndex(squareAt(f, 1))] = 'wP';
-		v.board[squareIndex(squareAt(f, 6))] = 'bP';
-		v.board[squareIndex(squareAt(f, 7))] = 'b' + back[f];
-	}
-	v.mamdani = 'a5';
-	return v;
+	return { ...emptyView(), board: boardFromFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR'), mamdani: 'a5' };
 }
 
 /** Preset positions for testing particular parts of the UI. */
 export const positions = {
 	start: startView,
 	/** Sliders and the Mamdani with potholes in their lines: shows the × marks. */
-	blockedLines: (): View => {
-		const v = place(emptyView(), { e1: 'wK', a1: 'wR', c1: 'wB', d1: 'wQ', e8: 'bK', h8: 'bR', f8: 'bB' });
-		v.mamdani = 'h4';
-		v.potholes = [
-			{ sq: 'a4', by: 'black', left: 2 },
-			{ sq: 'f4', by: 'white', left: 1 }
-		];
-		return v;
-	},
+	blockedLines: (): View =>
+		setUp(
+			{ e1: 'wK', a1: 'wR', c1: 'wB', d1: 'wQ', e8: 'bK', h8: 'bR', f8: 'bB' },
+			{
+				mamdani: 'h4',
+				potholes: [
+					{ sq: 'a4', by: 'black', left: 2 },
+					{ sq: 'f4', by: 'white', left: 1 }
+				]
+			}
+		),
 	/** A white pawn on b7 with b8 empty: shows the promotion picker. */
-	promotion: (): View => {
-		const v = place(emptyView(), { e1: 'wK', b7: 'wP', e8: 'bK', h7: 'bP' });
-		v.mamdani = 'a5';
-		return v;
-	},
+	promotion: (): View => setUp({ e1: 'wK', b7: 'wP', e8: 'bK', h7: 'bP' }, { mamdani: 'a5' }),
 	/**
 	 * The Mamdani's repairs. Move it c3–e5 to fix the pothole on f6, or roll
 	 * "Pothole opens" on d4 (next to it) to see one fixed before it opens.
 	 */
-	repair: (): View => {
-		const v = place(emptyView(), { e1: 'wK', b2: 'wP', g2: 'wP', e8: 'bK', b7: 'bP', g7: 'bP' });
-		v.mamdani = 'c3';
-		v.potholes = [{ sq: 'f6', by: 'black', left: 3 }];
-		return v;
-	},
+	repair: (): View => setUp({ e1: 'wK', b2: 'wP', g2: 'wP', e8: 'bK', b7: 'bP', g7: 'bP' }, { mamdani: 'c3', potholes: [{ sq: 'f6', by: 'black', left: 3 }] }),
 	/** Black has just its king and a rook: press Resignation (Black wins) for the two-pieces line. */
-	twoLeft: (): View => place(emptyView(), { e1: 'wK', a1: 'wR', h2: 'wP', e8: 'bK', h8: 'bR' }),
+	twoLeft: (): View => setUp({ e1: 'wK', a1: 'wR', h2: 'wP', e8: 'bK', h8: 'bR' }),
 	/** King and rooks on their squares: castle with e1–g1 or e1–c1. */
-	castling: (): View => {
-		const v = place(emptyView(), { e1: 'wK', a1: 'wR', h1: 'wR', e8: 'bK', a8: 'bR', h8: 'bR' });
-		v.mamdani = 'a5';
-		return v;
-	}
+	castling: (): View => setUp({ e1: 'wK', a1: 'wR', h1: 'wR', e8: 'bK', a8: 'bR', h8: 'bR' }, { mamdani: 'a5' })
 };
 
 function colorOf(piece: string): Color {
 	return piece.startsWith('w') ? 'white' : 'black';
 }
 
-const steps: Record<string, number[][]> = {
+const steps: Record<string, readonly Dir[]> = {
 	N: [
 		[1, 2],
 		[2, 1],
@@ -120,22 +100,7 @@ const steps: Record<string, number[][]> = {
 		[-2, 1],
 		[-1, 2]
 	],
-	K: [
-		[1, 0],
-		[-1, 0],
-		[0, 1],
-		[0, -1],
-		[1, 1],
-		[1, -1],
-		[-1, 1],
-		[-1, -1]
-	]
-};
-const lines: Record<string, number[][]> = {
-	R: steps.K.slice(0, 4),
-	B: steps.K.slice(4),
-	Q: steps.K,
-	M: steps.K
+	K: queenDirs
 };
 
 /**
@@ -147,10 +112,7 @@ const lines: Record<string, number[][]> = {
  */
 export function freeMoves(v: View, anySide: boolean): MoveJSON[] {
 	const holes = new Set(v.potholes.map((p) => p.sq));
-	const at = (f: number, r: number) => {
-		const s = squareAt(f, r);
-		return s === v.mamdani ? 'M' : v.board[squareIndex(s)];
-	};
+	const at = (f: number, r: number) => pieceOn(v, squareAt(f, r));
 	const onBoard = (f: number, r: number) => f >= 0 && f < 8 && r >= 0 && r < 8;
 	const free = (f: number, r: number) => onBoard(f, r) && !at(f, r) && !holes.has(squareAt(f, r));
 	const moves: MoveJSON[] = [];
@@ -176,8 +138,8 @@ export function freeMoves(v: View, anySide: boolean): MoveJSON[] {
 			return !isMamdani && !!t && t !== 'M' && colorOf(t) !== colorOf(piece);
 		};
 
-		if (lines[kind]) {
-			for (const [df, dr] of lines[kind]) {
+		if (slides[kind]) {
+			for (const [df, dr] of slides[kind]) {
 				for (let f = f0 + df, r = r0 + dr; onBoard(f, r); f += df, r += dr) {
 					if (holes.has(squareAt(f, r))) break;
 					if (at(f, r)) {
@@ -228,7 +190,7 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 	const v: View = JSON.parse(JSON.stringify(prev));
 	const ev: EventJSON[] = [];
 	const isMamdani = move.from === v.mamdani;
-	const piece = isMamdani ? 'M' : v.board[squareIndex(move.from)];
+	const piece = pieceOn(v, move.from);
 	const mover: Color = isMamdani ? v.turn : colorOf(piece);
 
 	// The move.
@@ -268,7 +230,7 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 		const t = roll.target;
 		ev.push({ kind: 'target', sq: t });
 		let text = `→ ${t}`;
-		const occupant = t === v.mamdani ? 'M' : v.board[squareIndex(t)];
+		const occupant = pieceOn(v, t);
 		let opens = true;
 		const hole = v.potholes.find((h) => h.sq === t);
 		if (hole) {
@@ -337,7 +299,7 @@ export function playTurn(prev: View, move: MoveJSON, roll: RollScript): View {
 		if (e.kind === 'repaired') entry.repaired = true;
 	}
 	v.log.push(entry);
-	v.turn = mover === 'white' ? 'black' : 'white';
+	v.turn = opponent(mover);
 	v.seq++;
 	return v;
 }

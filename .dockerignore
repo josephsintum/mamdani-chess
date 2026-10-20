@@ -1,6 +1,13 @@
 .git
+.github
+.archify
+.claude
+.idea
+.superpowers
+.worktrees
 **/node_modules
 web/.svelte-kit
 web/build
 data
 docs
+*.md

@@ -2,13 +2,12 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Header from '#lib/Header.svelte';
-	import MiniBoard from '#lib/MiniBoard.svelte';
+	import MiniBoard, { heroBoard } from '#lib/MiniBoard.svelte';
+	import PageHead from '#lib/PageHead.svelte';
 	import SiteFooter from '#lib/SiteFooter.svelte';
 	import { FriendGame } from '#lib/friend.svelte.ts';
-	import { boardFromFen, isCode, liveGames, me, normalizeCode, type LiveGame, type Me } from '#lib/lobby.ts';
+	import { isCode, liveGames, me, normalizeCode, type LiveGame, type Me } from '#lib/lobby.ts';
 
-	// The canvas's hero position: a pothole open on f4, the Mamdani on a5.
-	const demo = boardFromFen('r1bqkb1r/1p3ppp/p1n1pn2/3N4/3P4/5N2/PP2PPPP/R1BQKB1R');
 	const REFRESH_MS = 10_000;
 
 	let user = $state<Me | null>(null);
@@ -28,22 +27,24 @@
 	}
 
 	// Your name, changes and any game you're in (the Rejoin banner).
-	function refreshMe() {
-		me()
-			.then((m) => (user = m))
-			.catch(() => {}); // keep what's shown, as refresh does
+	async function refreshMe() {
+		try {
+			user = await me();
+		} catch {
+			// Keep what's shown, as refresh does.
+		}
 	}
 
 	// Every 10 s while the tab is visible, and at once when it comes back.
 	function update() {
 		if (!document.hidden) {
 			void refresh();
-			refreshMe();
+			void refreshMe();
 		}
 	}
 
 	onMount(() => {
-		refreshMe();
+		void refreshMe();
 		void refresh();
 		const timer = setInterval(update, REFRESH_MS);
 		return () => clearInterval(timer);
@@ -55,11 +56,7 @@
 	}
 </script>
 
-<svelte:head>
-	<title>Mamdani Chess</title>
-	<!-- Here, not from the server, so it goes when the app navigates on. -->
-	<link rel="canonical" href="https://mamdanichess.com/" />
-</svelte:head>
+<PageHead title="Mamdani Chess" path="/" />
 
 <svelte:document onvisibilitychange={update} />
 
@@ -69,7 +66,7 @@
 	<section class="hero">
 		<div class="pitch">
 			<p class="eyebrow">A chess variant · 10+5 · No sign-up</p>
-			<h1>Chess.<br />With potholes.</h1>
+			<h1 class="page-title">Chess.<br />With potholes.</h1>
 			<p class="lede">
 				Every move rolls the dice. Potholes open and swallow pieces. The Mamdani, a neutral piece either player can
 				move, blocks lines and fixes the road.
@@ -123,7 +120,7 @@
 		</div>
 		<div class="demo">
 			<MiniBoard
-				board={demo}
+				board={heroBoard}
 				potholes={[{ sq: 'f4', by: 'white', left: 3 }]}
 				mamdani="a5"
 				last={{ from: 'e7', to: 'e6' }}
@@ -135,7 +132,7 @@
 
 	<section class="how" aria-labelledby="how-heading">
 		<div class="how-text">
-			<h2 id="how-heading">How it works</h2>
+			<h2 class="section-title" id="how-heading">How it works</h2>
 			<div class="steps">
 				<div>
 					<span class="num hazard">01</span>
@@ -159,7 +156,7 @@
 					<p>If the Mamdani has a clear line to a doomed piece, roll a d8. Odd, and the piece is saved.</p>
 				</div>
 			</div>
-			<p class="learn"><a href="/how-to-play">See it played →</a><a href="/rules">Full rules →</a></p>
+			<p class="learn"><a class="arrow-link" href="/how-to-play">See it played →</a><a class="arrow-link" href="/rules">Full rules →</a></p>
 		</div>
 		<figure class="reel">
 			<iframe
@@ -179,10 +176,10 @@
 	</section>
 
 	<!-- Only while someone is playing: an empty list says nothing useful. -->
-	{#if games && games.length > 0}
+	{#if games?.length}
 		<section class="live" aria-labelledby="live-heading">
 			<div class="live-head">
-				<h2 id="live-heading">Live now</h2>
+				<h2 class="section-title" id="live-heading">Live now</h2>
 				<span class="count"><span class="dot"></span>{games.length} {games.length === 1 ? 'game' : 'games'}</span>
 			</div>
 			<ul class="cards">
@@ -218,45 +215,45 @@
 	{/if}
 
 	<section class="faq" aria-labelledby="faq-heading">
-		<h2 id="faq-heading">Questions</h2>
+		<h2 class="section-title" id="faq-heading">Questions</h2>
 		<div class="qs">
-			<details>
+			<details class="disclosure">
 				<summary>Isn’t it all luck?</summary>
 				<p>Less than it looks. A roll only hurts the pieces it lands on, and where you keep the Mamdani decides which of yours it can save or shield. Kings never fall, so the dice finish a king only after play has trapped it.</p>
 			</details>
-			<details>
+			<details class="disclosure">
 				<summary>Why didn’t my king fall?</summary>
 				<p>Kings never fall. When the dice land on a king they roll again, and the target blinks twice to show it.</p>
 			</details>
-			<details>
+			<details class="disclosure">
 				<summary>Why can’t my rook go there?</summary>
 				<p>Bishops, rooks, queens and the Mamdani can’t slide across a pothole, and nothing can land on one. Pick up a piece and an × marks each square a pothole cuts it off from. Knights jump, so potholes never stop them.</p>
 			</details>
-			<details>
+			<details class="disclosure">
 				<summary>Who moves the Mamdani?</summary>
 				<p>Either player, on their turn, instead of a piece. It moves like a queen onto empty squares, never captures and can’t be captured, and repairs any pothole next to it.</p>
 			</details>
-			<details>
+			<details class="disclosure">
 				<summary>Do I need an account?</summary>
 				<p>No. You get a made-up name when you first play, kept with a cookie in this browser. Tap the die beside your name for a new one.</p>
 			</details>
-			<details>
+			<details class="disclosure">
 				<summary>What if my opponent leaves or my connection drops?</summary>
 				<p>The game goes on and the clock keeps running. Your tab reconnects by itself and keeps your seat. A player who doesn’t come back loses on time.</p>
 			</details>
-			<details>
+			<details class="disclosure">
 				<summary>Are games public?</summary>
 				<p>Yes. Anyone with a game’s link can watch, and games being played are listed under Live now.</p>
 			</details>
-			<details>
+			<details class="disclosure">
 				<summary>What happens when the site updates?</summary>
 				<p>Games pause, open tabs reconnect on their own, and the clock of the side to move starts again 10 seconds after.</p>
 			</details>
-			<details>
+			<details class="disclosure">
 				<summary>Can I play the computer?</summary>
 				<p>No, only people. To try things out alone, <a href="/practice">practice</a> and play both sides.</p>
 			</details>
-			<details>
+			<details class="disclosure">
 				<summary>Is this affiliated with Zohran Mamdani?</summary>
 				<p>No. It’s an unofficial, ad-free fan project. More on the <a href="/about">About</a> page.</p>
 			</details>
@@ -326,13 +323,8 @@
 		text-transform: uppercase;
 	}
 	h1 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
 		font-size: clamp(56px, 8vw, 104px);
 		line-height: 0.9;
-		text-transform: uppercase;
 	}
 	.lede {
 		margin: 0;
@@ -484,20 +476,14 @@
 		gap: 8px 24px;
 		margin: 32px 0 0;
 	}
-	.learn a {
-		padding: 10px 0;
-		margin: -10px 0;
-		color: var(--accent);
-		font-weight: 600;
-		text-decoration: none;
-	}
-	.learn a:hover {
-		text-decoration: underline;
-		text-underline-offset: 3px;
+	.how,
+	.live,
+	.faq {
+		padding: 56px 0 72px;
+		border-top: 1px solid var(--surface-2);
 	}
 	.live {
-		padding: 56px 0 88px;
-		border-top: 1px solid var(--surface-2);
+		padding-bottom: 88px;
 	}
 	.live-head {
 		display: flex;
@@ -505,14 +491,6 @@
 		justify-content: space-between;
 		gap: 16px;
 		margin-bottom: 24px;
-	}
-	h2 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: 44px;
-		text-transform: uppercase;
 	}
 	.count {
 		display: flex;
@@ -595,8 +573,6 @@
 		grid-template-columns: minmax(0, 1fr) 400px;
 		gap: 64px;
 		align-items: start;
-		padding: 56px 0 72px;
-		border-top: 1px solid var(--surface-2);
 	}
 	.how h2 {
 		margin-bottom: 32px;
@@ -632,13 +608,6 @@
 	figcaption a {
 		color: var(--accent);
 	}
-	/* Too narrow for the reel beside the steps: the reel goes under them. */
-	@media (max-width: 959px) {
-		.how {
-			grid-template-columns: minmax(0, 1fr);
-			gap: 32px;
-		}
-	}
 	.steps div {
 		display: flex;
 		flex-direction: column;
@@ -668,10 +637,6 @@
 		font-size: 16px;
 		line-height: 1.55;
 	}
-	.faq {
-		padding: 56px 0 72px;
-		border-top: 1px solid var(--surface-2);
-	}
 	.faq h2 {
 		margin-bottom: 24px;
 	}
@@ -684,29 +649,14 @@
 		border-bottom: 1px solid var(--surface-2);
 	}
 	summary {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
 		min-height: 56px;
 		padding: 12px 0;
 		color: var(--text);
 		font-weight: 600;
-		cursor: pointer;
-		list-style: none;
-	}
-	summary::-webkit-details-marker {
-		display: none;
 	}
 	summary::after {
-		content: '+';
 		flex-shrink: 0;
-		color: var(--accent);
-		font-family: var(--font-mono);
 		font-size: 22px;
-	}
-	details[open] summary::after {
-		content: '−';
 	}
 	details p {
 		margin: 0 0 18px;
@@ -719,6 +669,13 @@
 	.error {
 		margin: 0;
 		color: var(--hazard-text);
+	}
+	/* Too narrow for the reel beside the steps: the reel goes under them. */
+	@media (max-width: 959px) {
+		.how {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 32px;
+		}
 	}
 	/* Phones (canvas "Home (phone)"): one column, no demo board, live games
 	   in a row that scrolls sideways. */
@@ -795,9 +752,7 @@
 		.meta {
 			font-size: 12px;
 		}
-		.how {
-			padding: 32px 0 40px;
-		}
+		.how,
 		.live,
 		.faq {
 			padding: 32px 0 40px;

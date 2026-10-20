@@ -1,14 +1,15 @@
 <script lang="ts">
+	import { siteLinks } from './Header.svelte';
+
 	// The footer on the site's pages (not the game): where to learn the game,
 	// the original game's credit, and that this is a fan project.
 </script>
 
 <footer>
 	<nav aria-label="Site">
-		<a href="/how-to-play">How to play</a>
-		<a href="/rules">Rules</a>
-		<a href="/practice">Practice</a>
-		<a href="/about">About</a>
+		{#each siteLinks as l (l.href)}
+			<a href={l.href}>{l.label}</a>
+		{/each}
 	</nav>
 	<p>
 		Based on Pot-Hole Chess by Peter Spicer and Michael Chamberlain (2001). An unofficial fan project, not affiliated with

@@ -1,8 +1,10 @@
 package store
 
 import (
+	"math"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -44,7 +46,7 @@ func (c counts) minus(other counts) counts {
 
 // DayOf is t's day in loc, as stats_days stores it.
 func DayOf(t time.Time, loc *time.Location) string {
-	return t.In(loc).Format("2006-01-02")
+	return t.In(loc).Format(time.DateOnly)
 }
 
 // between is how long from a to b as the saved rows tell it: both in whole
@@ -208,6 +210,13 @@ func countError(c counts, loc *time.Location, at time.Time, n int) {
 	c.add(DayOf(at, loc), "errors", n)
 }
 
+// finished are the results of a game that was played to the end (not
+// aborted, expired or retired); finishedReasons is the same list in SQL.
+var (
+	finished        = []string{"checkmate", "stalemate", "fifty_moves", "repetition", "insufficient_material", "timeout", "timeout_vs_insufficient", "resignation"}
+	finishedReasons = "('" + strings.Join(finished, "','") + "')"
+)
+
 // isFinished reports a result of a game that got going: played to the
 // end, not aborted, expired or retired.
 func isFinished(reason string) bool { return slices.Contains(finished, reason) }
@@ -219,7 +228,7 @@ type bucket struct {
 	upTo       int64 // moves, or milliseconds; the last bucket has no limit
 }
 
-const noLimit = int64(^uint64(0) >> 1)
+const noLimit = math.MaxInt64
 
 var (
 	movesBuckets = []bucket{{"1-10", "1–10", 10}, {"11-20", "11–20", 20}, {"21-30", "21–30", 30}, {"31-40", "31–40", 40},

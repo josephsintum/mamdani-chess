@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-var t0 = time.UnixMilli(1_791_000_000_000)
-
 func TestGameRoundTrip(t *testing.T) {
 	ctx := t.Context()
 	s, path := openTemp(t)
@@ -62,17 +60,13 @@ func TestEndGameWithoutAFinalTurn(t *testing.T) {
 	}
 }
 
-func TestEndGameFailsForAnUnknownGame(t *testing.T) {
+func TestGuardedUpdatesFailForAnUnknownGame(t *testing.T) {
 	s, _ := openTemp(t)
 	if err := s.EndGame(t.Context(), "NOPE00", Result{EndedAt: t0, Reason: "timeout"}, nil, nil); err == nil {
-		t.Fatal("ending a game that was never saved should fail")
+		t.Error("ending a game that was never saved should fail")
 	}
-}
-
-func TestSeatBlackFailsForAnUnknownGame(t *testing.T) {
-	s, _ := openTemp(t)
 	if err := s.SeatBlack(t.Context(), "NOPE00", "bob", "", t0); err == nil {
-		t.Fatal("seating Black in a game that was never saved should fail")
+		t.Error("seating Black in a game that was never saved should fail")
 	}
 }
 
@@ -132,13 +126,6 @@ func TestExpireWaiting(t *testing.T) {
 	must(t, err)
 	if len(got) != 2 || got[0].Code == "STALE0" || got[1].Code == "STALE0" {
 		t.Fatalf("loaded %+v; STALE0 should have expired", got)
-	}
-}
-
-func must(t testing.TB, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -226,7 +213,7 @@ func TestMigration6RetiresRules2Games(t *testing.T) {
 // work once it upgrades.
 func TestCountersMigrateAfterGameStats(t *testing.T) {
 	ctx := t.Context()
-	s := openAt(t, 8, `DROP TABLE IF EXISTS stats_days`, `DROP TABLE IF EXISTS stats_state`)
+	s := openAt(t, 8)
 	if _, err := s.EnsureCounters(ctx, t0); err != nil {
 		t.Fatalf("EnsureCounters: %v", err)
 	}

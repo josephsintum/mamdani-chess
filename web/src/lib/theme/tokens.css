@@ -25,6 +25,12 @@
 	--piece-light: #fbf8f0;
 	--piece-dark: #141518;
 	--piece-outline: #fbf8f0; /* the white border around every piece */
+	/* That border as a filter: the piece's own shape offset four ways, no
+	   blur. 2 px on the board, 1 px for the small pieces beside it. */
+	--piece-outline-2: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
+		drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
+	--piece-outline-1: drop-shadow(1px 0 0 var(--piece-outline)) drop-shadow(-1px 0 0 var(--piece-outline))
+		drop-shadow(0 1px 0 var(--piece-outline)) drop-shadow(0 -1px 0 var(--piece-outline));
 	--trail-white: #fbf8f099; /* the streak behind a gliding piece */
 	--trail-black: #1415188c;
 	--trail-mamdani: #f2c2308c;

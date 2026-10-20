@@ -2,7 +2,8 @@
 // dice play out, and the dice tray's lines. No DOM, so it is unit-tested.
 
 import { HOLE_CAP, HOLE_ROUNDS } from './wire.gen.ts';
-import { firstDiceStep, SAVE_MS, SCAN_MS, stepDice, THROW_MS, type DieSpec } from './dice.ts';
+import type { Ending, Quip, Say } from './catchphrases.ts';
+import { dicePill, firstDiceStep, landsAt, oddRoll, scanOf, stepDice, withRoll, type DicePill, type DieSpec, type Scan } from './dice.ts';
 import { capitalize, isPlayer, opponent, pieceName, reasons, rerollReasons, sideName, squareName, type Color, type EventJSON, type LogEntry, type View } from './game.ts';
 
 export function squareIndex(name: string): number {
@@ -12,6 +13,31 @@ export function squareIndex(name: string): number {
 /** The square at a file and rank, both 0–7: (4, 0) is e1. */
 export function squareAt(file: number, rank: number): string {
 	return squareName(rank * 8 + file);
+}
+
+/** A board with the given pieces, e.g. { e1: 'wK' }. */
+export function boardOf(pieces: Record<string, string>): string[] {
+	const board = Array<string>(64).fill('');
+	for (const [sq, p] of Object.entries(pieces)) board[squareIndex(sq)] = p;
+	return board;
+}
+
+/** A board from a FEN's piece placement ("rnbqkbnr/pppppppp/8/…"), index 0 = a1. */
+export function boardFromFen(placement: string): string[] {
+	const board = Array<string>(64).fill('');
+	placement.split('/').forEach((row, i) => {
+		let file = 0;
+		for (const ch of row) {
+			if (/\d/.test(ch)) {
+				file += Number(ch);
+				continue;
+			}
+			const color = ch === ch.toUpperCase() ? 'w' : 'b';
+			board[(7 - i) * 8 + file] = color + ch.toUpperCase();
+			file++;
+		}
+	});
+	return board;
 }
 
 /** What stands on a square: a piece code, "M" for the Mamdani, or "". */
@@ -69,7 +95,8 @@ export function moveRows(log: readonly LogEntry[]): { white?: Ply; black?: Ply }
 	return rows;
 }
 
-type Dir = readonly [number, number];
+/** A step across the board: files, ranks. */
+export type Dir = readonly [number, number];
 const rookDirs: readonly Dir[] = [
 	[1, 0],
 	[-1, 0],
@@ -82,8 +109,9 @@ const bishopDirs: readonly Dir[] = [
 	[-1, 1],
 	[-1, -1]
 ];
-const queenDirs = [...rookDirs, ...bishopDirs];
-const slides: Record<string, readonly Dir[]> = { B: bishopDirs, R: rookDirs, Q: queenDirs, M: queenDirs };
+export const queenDirs = [...rookDirs, ...bishopDirs];
+/** The lines each slider (and the Mamdani) moves along. */
+export const slides: Record<string, readonly Dir[]> = { B: bishopDirs, R: rookDirs, Q: queenDirs, M: queenDirs };
 
 /**
  * The squares the piece on `from` could reach if the potholes in its way
@@ -150,7 +178,6 @@ export function stageAt(view: View, shown: number): Stage {
 	let mamdani = view.mamdani;
 	let target = '';
 	const lost = { white: [...view.lost.white], black: [...view.lost.black] };
-	const roll = firstDiceStep(view.last);
 	view.last.forEach((e, i) => {
 		const revealed = i < shown;
 		if (e.kind === 'target' && revealed) target = e.sq ?? '';
@@ -176,7 +203,7 @@ export function stageAt(view: View, shown: number): Stage {
 			potholes = potholes.map((p) => (p.sq === e.sq ? { ...p, by: was, left } : p));
 		}
 		// The cap closes the oldest hole as a new one opens: until then it stays.
-		if (e.kind === 'pothole_closed' && !revealed && i > roll && e.sq && e.color && !withFall()) potholes = [...potholes, { sq: e.sq, by: e.color, left: 1 }];
+		if (e.kind === 'pothole_closed' && !revealed && withRoll(view.last, i) && e.sq && e.color && !withFall()) potholes = [...potholes, { sq: e.sq, by: e.color, left: 1 }];
 	});
 	return { board, potholes, mamdani, target: shown < view.last.length ? target : '', lost };
 }
@@ -205,32 +232,25 @@ export interface DiceStep {
 	revealAt?: number;
 }
 
-/** When a step's outcome can show: once its dice have landed. */
-function revealAt(e: EventJSON): number | undefined {
-	if (e.kind === 'rolled_pothole') return THROW_MS;
-	if (e.kind === 'target') return SCAN_MS;
-	if (e.kind === 'saving_roll') return SAVE_MS;
-	return undefined;
-}
+/** "White" or "Black" for a hole's roller. */
+const rollerName = (c: Color | undefined) => sideName(c ?? 'white');
 
-function colorTitle(c: Color | undefined): string {
-	return sideName(c ?? 'white');
-}
+/** Why the dice picked again, as a reroll event says it. */
+const rerollWhy = (e: EventJSON) => rerollReasons[e.reason ?? ''] ?? e.reason ?? '';
 
 /** The dice tray's lines for the first `shown` events of the latest turn. */
 export function diceSteps(view: View, shown: number): DiceStep[] {
 	const steps: DiceStep[] = [];
-	const roll = firstDiceStep(view.last);
 	view.last.slice(0, shown).forEach((e, i) => {
 		switch (e.kind) {
 			case 'rolled_pothole': {
-				const even = (e.roll ?? 1) % 2 === 0;
+				const even = !oddRoll(e);
 				steps.push({
 					title: even ? 'Even. A pothole opens' : 'Odd. No pothole',
 					detail: `d8 rolled ${e.roll}`,
 					dice: stepDice(view, i),
 					tone: even ? 'normal' : 'muted',
-					revealAt: revealAt(e)
+					revealAt: landsAt(e)
 				});
 				break;
 			}
@@ -245,11 +265,11 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 					: occupant
 						? `${capitalize(pieceName(occupant))} is there`
 						: 'Empty square';
-				steps.push({ title: `Square ${sq}`, detail: `File ${file} = ${sq[0]}, rank ${rank}. ${there}`, dice: stepDice(view, i), tone: 'normal', revealAt: revealAt(e) });
+				steps.push({ title: `Square ${sq}`, detail: `File ${file} = ${sq[0]}, rank ${rank}. ${there}`, dice: stepDice(view, i), tone: 'normal', revealAt: landsAt(e) });
 				break;
 			}
 			case 'reroll':
-				steps.push({ title: 'Re-roll', detail: capitalize(rerollReasons[e.reason ?? ''] ?? e.reason ?? ''), dice: [], tone: 'muted' });
+				steps.push({ title: 'Re-roll', detail: capitalize(rerollWhy(e)), dice: [], tone: 'muted' });
 				break;
 			case 'saving_roll': {
 				const who = capitalize(pieceName(e.piece));
@@ -261,7 +281,7 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 							: `The Mamdani on ${view.mamdani || stageAt(view, i).mamdani} has a clear line to ${e.sq}.`,
 					dice: stepDice(view, i),
 					tone: e.saved ? 'good' : 'hazard',
-					revealAt: revealAt(e)
+					revealAt: landsAt(e)
 				});
 				break;
 			}
@@ -271,7 +291,7 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 			case 'pothole_opened':
 				steps.push({
 					title: `Pothole opens on ${e.sq}`,
-					detail: `It closes after ${HOLE_ROUNDS} of ${colorTitle(e.color)}’s moves`,
+					detail: `It closes after ${HOLE_ROUNDS} of ${rollerName(e.color)}’s moves`,
 					dice: [],
 					tone: 'hazard'
 				});
@@ -279,18 +299,17 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 			case 'pothole_reset':
 				steps.push({
 					title: `Pothole on ${e.sq} reset`,
-					detail: `Now ${colorTitle(e.color)}’s: it closes after ${HOLE_ROUNDS} of their moves`,
+					detail: `Now ${rollerName(e.color)}’s: it closes after ${HOLE_ROUNDS} of their moves`,
 					dice: [],
 					tone: 'hazard'
 				});
 				break;
 			case 'repaired':
-				if (i > roll) steps.push({ title: 'Repaired at once', detail: `${e.sq} is next to the Mamdani`, dice: [], tone: 'good' });
+				if (withRoll(view.last, i)) steps.push({ title: 'Repaired at once', detail: `${e.sq} is next to the Mamdani`, dice: [], tone: 'good' });
 				break;
 			case 'pothole_closed':
-				// Before the roll a hole closes on its own schedule (the tray notes it);
-				// during the roll only the cap closes one.
-				if (i > roll) steps.push({ title: `At most ${HOLE_CAP} potholes`, detail: `The oldest, on ${e.sq}, closes`, dice: [], tone: 'muted' });
+				// Before the roll a hole closes on its own schedule (the tray notes it).
+				if (withRoll(view.last, i)) steps.push({ title: `At most ${HOLE_CAP} potholes`, detail: `The oldest, on ${e.sq}, closes`, dice: [], tone: 'muted' });
 				break;
 			case 'no_pothole':
 				steps.push({ title: 'No pothole this turn', detail: '64 re-rolls found no valid square', dice: [], tone: 'muted' });
@@ -340,7 +359,7 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 	view.last.slice(0, shown).forEach((e, i) => {
 		switch (e.kind) {
 			case 'rolled_pothole': {
-				const even = (e.roll ?? 1) % 2 === 0;
+				const even = !oddRoll(e);
 				chips.push({ text: String(e.roll), kind: 'die', dice: stepDice(view, i) });
 				[line, tone, pending] = even ? ['Even: a pothole opens · finding its square…', 'normal', true] : ['Odd: nothing happens', 'muted', false];
 				break;
@@ -357,8 +376,7 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 				const folded = prev?.text.endsWith('↻') ? 2 : prev?.text.startsWith('↻') ? Number(prev.text.slice(1)) + 1 : 0;
 				if (folded) chips[chips.length - 1] = { text: `↻${folded}`, kind: 'plain' };
 				else chips.push({ text: `${e.sq}↻`, kind: 'plain' });
-				const why = rerollReasons[e.reason ?? ''] ?? e.reason ?? '';
-				[line, tone, pending] = [`Re-roll: ${why}`, 'muted', true];
+				[line, tone, pending] = [`Re-roll: ${rerollWhy(e)}`, 'muted', true];
 				break;
 			}
 			case 'saving_roll':
@@ -373,13 +391,13 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 				// After a fall the fall is the news; on an empty square the hole is.
 				if (chips[chips.length - 1]?.kind === 'square') {
 					chips.push({ text: 'opens', kind: 'bad' });
-					[line, tone] = [`Pothole on ${e.sq} · closes after ${HOLE_ROUNDS} of ${colorTitle(e.color)}’s moves`, 'hazard'];
+					[line, tone] = [`Pothole on ${e.sq} · closes after ${HOLE_ROUNDS} of ${rollerName(e.color)}’s moves`, 'hazard'];
 				}
 				if (capped) chips.push({ text: `${capped} closes`, kind: 'plain' });
 				break;
 			case 'pothole_reset':
 				chips.push({ text: 'reset', kind: 'bad' });
-				[line, tone] = [`Pothole on ${e.sq} reset · ${colorTitle(e.color)}’s now, ${HOLE_ROUNDS} rounds`, 'hazard'];
+				[line, tone] = [`Pothole on ${e.sq} reset · ${rollerName(e.color)}’s now, ${HOLE_ROUNDS} rounds`, 'hazard'];
 				break;
 			case 'repaired':
 				if (square === e.sq) {
@@ -388,8 +406,7 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 				}
 				break;
 			case 'pothole_closed':
-				// Only the cap closes a hole during the roll.
-				if (i > rollAt) capped = e.sq ?? '';
+				if (withRoll(view.last, i)) capped = e.sq ?? '';
 				break;
 			case 'no_pothole':
 				chips.push({ text: 'none', kind: 'plain' });
@@ -399,7 +416,7 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 	});
 	if (pending) chips.push({ text: '?', kind: 'pending' });
 	const latest = view.last[Math.min(shown, view.last.length) - 1];
-	return { who: roll.color ?? mover, chips, line, tone, lineAt: latest ? revealAt(latest) : undefined };
+	return { who: roll.color ?? mover, chips, line, tone, lineAt: latest ? landsAt(latest) : undefined };
 }
 
 /** Whether the dice, not the move, delivered checkmate: a mating move ends the game before any roll. */
@@ -420,8 +437,7 @@ export interface Repair {
  * during the roll fixes a hole before it opens. Each key plays once.
  */
 export function repairsShown(view: View, shown: number): Repair[] {
-	const roll = firstDiceStep(view.last);
-	return view.last.flatMap((e, i) => (e.kind === 'repaired' && e.sq && i < shown ? [{ sq: e.sq, key: `${view.seq}:${i}`, hole: i < roll }] : []));
+	return view.last.flatMap((e, i) => (e.kind === 'repaired' && e.sq && i < shown ? [{ sq: e.sq, key: `${view.seq}:${i}`, hole: !withRoll(view.last, i) }] : []));
 }
 
 /**
@@ -548,4 +564,49 @@ export function matedKing(view: View): string {
 	const r = view.result;
 	if (r?.reason !== 'checkmate' || r.draw || !r.winner) return '';
 	return kingSquare(view.board, opponent(r.winner));
+}
+
+/** What the board plays over a turn as it is revealed: Board's effect props. */
+export interface BoardEffects {
+	lastMove: { from: string; to: string } | null;
+	/** The square of a piece a saving roll has saved, so it hops out. */
+	saved: string;
+	repairs: Repair[];
+	pill: DicePill | null;
+	scan: Scan | null;
+	/** The target blinks: the dice re-rolled it. */
+	reroll: boolean;
+	quip: Quip | null;
+	mated: { sq: string; key: string } | null;
+}
+
+/**
+ * Board's effects for the first `shown` events of the view's turn, for the
+ * game page and ScriptedBoard alike. The repairs, the dice's pill and scan,
+ * and the turn's speech bubbles show only on a turn that plays out
+ * (`animated`); `quiet` (instant mode) turns every effect but the move's
+ * marks off. Once the dice stop, `ending` says the game's end line (on a
+ * game that ended here) and `mate` keys the checkmate burst. `say` is the
+ * board's quipper().
+ */
+export function boardEffects(
+	view: View,
+	shown: number,
+	{ animating, animated, quiet, say, ending = null, mate = null }: { animating: boolean; animated: boolean; quiet: boolean; say: Say; ending?: Ending | null; mate?: string | null }
+): BoardEffects {
+	const live = animated && !quiet;
+	const moved = view.last.find((e) => e.kind === 'moved');
+	const stopped = !quiet && !animating;
+	const end = stopped && ending ? say(view, shown, ending) : null;
+	const sq = stopped && mate ? matedKing(view) : '';
+	return {
+		lastMove: moved?.from && moved.to ? { from: moved.from, to: moved.to } : null,
+		saved: view.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '',
+		repairs: live ? repairsShown(view, shown) : [],
+		pill: live ? dicePill(view, shown) : null,
+		scan: live ? scanOf(view, shown) : null,
+		reroll: animating && view.last[shown - 1]?.kind === 'reroll',
+		quip: end ?? (live ? say(view, shown) : null),
+		mated: sq && mate ? { sq, key: mate } : null
+	};
 }

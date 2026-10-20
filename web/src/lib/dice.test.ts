@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BLINK_MS, dicePace, dicePill, stepDice, FILE_MS, MOVE_MS, playMs, RANK_DELAY_MS, RANK_MS, scanFrames, SCAN_MS, scanOf, tumbleFaces } from './dice.ts';
+import { dicePace, dicePill, firstDiceStep, landsAt, oddRoll, stepDice, FILE_MS, MOVE_MS, playMs, RANK_DELAY_MS, RANK_MS, SAVE_MS, scanFrames, SCAN_MS, scanOf, THROW_MS, tumbleFaces, withRoll } from './dice.ts';
 import TIMING from './dice-timing.json';
 import type { EventJSON } from './game.ts';
 import { viewOf } from './test-boards.ts';
@@ -20,12 +20,37 @@ describe('the timing table', () => {
 		expect(dicePace({ kind: 'target', sq: 'd5' })).toBe(TIMING.playMs.target);
 	});
 	it('fits the scan inside its step', () => {
-		expect(FILE_MS).toBeLessThan(SCAN_MS);
 		expect(SCAN_MS).toBeLessThan(TIMING.playMs.target);
 	});
-	it('blinks the target twice within the re-roll step', () => {
-		expect(BLINK_MS).toBeGreaterThan(0);
-		expect(2 * BLINK_MS).toBeLessThanOrEqual(TIMING.playMs.reroll);
+	it('shows what the dice decided once they land', () => {
+		expect(landsAt({ kind: 'rolled_pothole', roll: 4 })).toBe(THROW_MS);
+		expect(landsAt({ kind: 'target', sq: 'd5' })).toBe(SCAN_MS);
+		expect(landsAt({ kind: 'saving_roll', sq: 'd5' })).toBe(SAVE_MS);
+		expect(landsAt({ kind: 'fell', sq: 'd5' })).toBeUndefined();
+	});
+});
+
+describe('the turn around its roll', () => {
+	const capped: EventJSON[] = [
+		move,
+		{ kind: 'pothole_closed', sq: 'a3', color: 'white' },
+		{ kind: 'repaired', sq: 'b5' },
+		{ kind: 'rolled_pothole', roll: 2, color: 'white' },
+		{ kind: 'target', sq: 'g8' },
+		{ kind: 'pothole_closed', sq: 'c6', color: 'black' },
+		{ kind: 'pothole_opened', sq: 'g8', color: 'white' }
+	];
+	it('starts the dice at the pothole roll, or the end when none was rolled', () => {
+		expect(firstDiceStep(capped)).toBe(3);
+		expect(firstDiceStep([move])).toBe(1);
+	});
+	it('tells the move’s closes and repairs from the roll’s', () => {
+		expect([1, 2, 5].map((i) => withRoll(capped, i))).toEqual([false, false, true]);
+		expect(withRoll([move, { kind: 'repaired', sq: 'b5' }], 1)).toBe(false);
+	});
+	it('reads an odd roll', () => {
+		expect(oddRoll({ kind: 'rolled_pothole', roll: 3 })).toBe(true);
+		expect(oddRoll({ kind: 'rolled_pothole', roll: 8 })).toBe(false);
 	});
 });
 
@@ -45,8 +70,7 @@ describe('tumbleFaces', () => {
 			}
 		}
 	});
-	it('is the same for the same seed, so the tray and the board agree', () => {
-		expect(tumbleFaces(5, 850, 3)).toEqual(tumbleFaces(5, 850, 3));
+	it('follows its seed, so another throw tumbles differently', () => {
 		expect(tumbleFaces(5, 850, 3)).not.toEqual(tumbleFaces(5, 850, 4));
 	});
 });

@@ -54,6 +54,10 @@ func (g *Game) publish() {
 	g.live.Store(l)
 }
 
+// playing reports whether l is a game being played and not practice: the
+// games List shows and Active picks from. nil (not yet published) isn't.
+func (l *Live) playing() bool { return l != nil && l.status == Playing && !l.practice }
+
 // Summary is a game at a glance, as a shared link's preview describes it.
 type Summary struct {
 	White, Black string // names; "" for an empty seat
@@ -93,7 +97,7 @@ func (h *Hub) Active(guest string) string {
 	var newest *Live
 	for _, g := range h.games {
 		l := g.live.Load()
-		if l == nil || l.status != Playing || l.practice || (l.seats[0] != guest && l.seats[1] != guest) {
+		if !l.playing() || (l.seats[0] != guest && l.seats[1] != guest) {
 			continue
 		}
 		if newest == nil || l.created.After(newest.created) {
@@ -113,7 +117,7 @@ func (h *Hub) List(limit int) []*Live {
 	h.mu.Lock()
 	games := make([]*Live, 0, len(h.games))
 	for _, g := range h.games {
-		if l := g.live.Load(); l != nil && l.status == Playing && !l.practice {
+		if l := g.live.Load(); l.playing() {
 			games = append(games, l)
 		}
 	}

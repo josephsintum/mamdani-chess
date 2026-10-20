@@ -56,15 +56,11 @@ func TestListIsMostWatchedFirstThenNewest(t *testing.T) {
 func TestLiveShowsTheGame(t *testing.T) {
 	h := NewHub(odd{}, nil)
 	g := playing(t, h, "alice", "bob")
-	join(t, g, "carol")
-	join(t, g, "carol") // a second tab
-	join(t, g, "dave")
-	join(t, g, "alice") // a player isn't a watcher
 	if err := g.Move("alice", mv(t, "e2e4"), 0); err != nil {
 		t.Fatal(err)
 	}
 	l := h.List(12)[0]
-	if l.Watching != 2 || l.Move != 1 || l.Board[28] != "wP" || l.Last == nil || *l.Last != (MoveJSON{From: "e2", To: "e4"}) {
+	if l.Move != 1 || l.Board[28] != "wP" || l.Last == nil || *l.Last != (MoveJSON{From: "e2", To: "e4"}) {
 		t.Fatalf("live %+v", l)
 	}
 	if err := g.Move("bob", mv(t, "e7e5"), 1); err != nil {

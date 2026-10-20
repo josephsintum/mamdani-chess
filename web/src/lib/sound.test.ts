@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { blockedStorage, memoryStorage } from './test-boards.ts';
 
 // Each test loads sound.ts afresh: it keeps the page's choice in the module.
 const fresh = async () => {
@@ -7,14 +8,8 @@ const fresh = async () => {
 };
 
 describe('sound setting', () => {
-	let items: Map<string, string>;
 	beforeEach(() => {
-		items = new Map();
-		vi.stubGlobal('localStorage', {
-			getItem: (k: string) => items.get(k) ?? null,
-			setItem: (k: string, v: string) => void items.set(k, v),
-			removeItem: (k: string) => void items.delete(k)
-		});
+		vi.stubGlobal('localStorage', memoryStorage());
 	});
 
 	it('is on by default', async () => {
@@ -30,17 +25,7 @@ describe('sound setting', () => {
 	});
 
 	it('keeps the choice for the page when storage is blocked', async () => {
-		vi.stubGlobal('localStorage', {
-			getItem: () => {
-				throw new Error('blocked');
-			},
-			setItem: () => {
-				throw new Error('blocked');
-			},
-			removeItem: () => {
-				throw new Error('blocked');
-			}
-		});
+		vi.stubGlobal('localStorage', blockedStorage());
 		const s = await fresh();
 		expect(s.soundOn()).toBe(true);
 		s.setSoundOn(false);

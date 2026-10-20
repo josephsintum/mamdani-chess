@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-	boardFromFen,
 	chooseName,
 	formatElapsed,
 	initials,
@@ -10,6 +9,7 @@ import {
 	rememberedName,
 	untilText
 } from './lobby.ts';
+import { blockedStorage, memoryStorage } from './test-boards.ts';
 
 describe('normalizeCode', () => {
 	it('upper-cases and keeps only code characters', () => {
@@ -46,19 +46,6 @@ describe('initials', () => {
 	});
 });
 
-describe('boardFromFen', () => {
-	it('puts a1 at index 0 and h8 at 63', () => {
-		const b = boardFromFen('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR');
-		expect(b[0]).toBe('wR');
-		expect(b[4]).toBe('wK');
-		expect(b[28]).toBe('wP'); // e4
-		expect(b[12]).toBe(''); // e2 is empty
-		expect(b[60]).toBe('bK');
-		expect(b[63]).toBe('bR');
-		expect(b.filter(Boolean)).toHaveLength(32);
-	});
-});
-
 describe('formatElapsed', () => {
 	it('counts whole seconds up', () => {
 		expect(formatElapsed(0)).toBe('0:00');
@@ -91,11 +78,7 @@ describe('rememberedName', () => {
 
 	beforeEach(() => {
 		store = new Map();
-		vi.stubGlobal('localStorage', {
-			getItem: (k: string) => store.get(k) ?? null,
-			setItem: (k: string, v: string) => void store.set(k, v),
-			removeItem: (k: string) => void store.delete(k)
-		});
+		vi.stubGlobal('localStorage', memoryStorage(store));
 	});
 	afterEach(() => {
 		vi.unstubAllGlobals();
@@ -127,11 +110,7 @@ describe('rememberedName', () => {
 		expect(rememberedName()).toBe('Pothole Pete');
 	});
 	it('is null when storage is blocked', () => {
-		vi.stubGlobal('localStorage', {
-			getItem: () => {
-				throw new Error('blocked');
-			}
-		});
+		vi.stubGlobal('localStorage', blockedStorage());
 		expect(rememberedName()).toBeNull();
 	});
 	it('still answers when storage is blocked', async () => {

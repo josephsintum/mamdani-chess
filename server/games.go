@@ -3,7 +3,6 @@ package server
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"mamdani-chess/game"
 	"mamdani-chess/rules"
@@ -87,32 +86,10 @@ func (s *Server) gameStream(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("again") == "1" {
 		s.logEvent(r, "reconnect")
 	}
-	fl, ok := startSSE(w)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-	ticker := time.NewTicker(s.heartbeat)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case <-s.done:
-			return
-		case v, open := <-sub.C:
-			if !open { // the game stopped
-				return
-			}
-			if writeEvent(w, fl, "state", v.JSON()) != nil {
-				return
-			}
-		case <-ticker.C:
-			if writeHeartbeat(w, fl) != nil {
-				return
-			}
-		}
-	}
+	fl := startSSE(w)
+	pump(s, r, w, fl, sub.C, func(v *game.View) bool {
+		return writeEvent(w, fl, "state", v.JSON()) == nil
+	})
 }
 
 type moveRequest struct {

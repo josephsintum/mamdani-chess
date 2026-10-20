@@ -46,7 +46,7 @@ describe('freeMoves', () => {
 		expect(tos(v, 'a5')).toEqual(['a3', 'a4', 'a6', 'b4', 'b5', 'b6', 'c3', 'c5', 'd5', 'e5', 'f5', 'g5', 'h5']);
 	});
 
-	it('lets pawns capture diagonally and offers all four promotions', () => {
+	it('offers all four promotions', () => {
 		const v = positions.promotion();
 		const promos = freeMoves(v, false).filter((m) => m.from === 'b7' && m.to === 'b8');
 		expect(promos.map((m) => m.promo).sort()).toEqual(['b', 'n', 'q', 'r']);
@@ -142,7 +142,6 @@ describe('playTurn', () => {
 	});
 
 	it('resets a pothole the dice land on: the roller’s now, newest, with every round', () => {
-		// The sandbox's default script: every even roll targets d4.
 		let v = playTurn(startView(), { from: 'e2', to: 'e4' }, { pothole: 2, target: 'd4' });
 		v = playTurn(v, { from: 'e7', to: 'e5' }, { pothole: 2, target: 'h6' });
 		v = playTurn(v, { from: 'g1', to: 'f3' }, odd);

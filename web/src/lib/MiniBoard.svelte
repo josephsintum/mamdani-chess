@@ -1,6 +1,15 @@
+<script lang="ts" module>
+	import { boardFromFen } from './board.ts';
+
+	// The canvas's hero position, on the home page and in the rules, each
+	// drawn with a pothole on f4 and the Mamdani on a5.
+	export const heroBoard = boardFromFen('r1bqkb1r/1p3ppp/p1n1pn2/3N4/3P4/5N2/PP2PPPP/R1BQKB1R');
+</script>
+
 <script lang="ts">
 	import { isDark } from './feel.ts';
 	import { squareName, type MoveJSON } from './game.ts';
+	import { pieceSrc } from './pieces.ts';
 	import type { Pothole } from './wire.gen.ts';
 
 	// A board to look at, not to play on: the live games list, the home
@@ -39,22 +48,20 @@
 <div class="mini" role="img" aria-label={label}>
 	{#each order as index (index)}
 		{@const sq = squareName(index)}
+		{@const hole = holes.get(sq)}
+		{@const piece = mamdani === sq ? 'M' : board[index]}
 		<span
 			class="square"
 			class:dark={isDark(index)}
 			class:last={last?.from === sq || last?.to === sq}
 		>
-			{#if holes.has(sq)}<span class="hole"></span>{/if}
-			{#if cones && holes.has(sq)}
-				<span class="cones">{#each { length: holes.get(sq)!.left } as _, i (i)}<span class="cone"></span>{/each}</span>
+			{#if hole}<span class="hole"></span>{/if}
+			{#if cones && hole}
+				<span class="cones">{#each { length: hole.left } as _, i (i)}<span class="cone"></span>{/each}</span>
 			{/if}
 			{#if dotted.has(sq)}<span class="dot"></span>{/if}
 			{#if target === sq}<span class="target"></span>{/if}
-			{#if mamdani === sq}
-				<img class="mamdani" src="/mamdani/piece.webp" alt="" draggable="false" />
-			{:else if board[index]}
-				<img src="/pieces/{board[index]}.svg" alt="" draggable="false" />
-			{/if}
+			{#if piece}<img class:mamdani={piece === 'M'} src={pieceSrc(piece)} alt="" draggable="false" />{/if}
 		</span>
 	{/each}
 </div>
@@ -95,8 +102,7 @@
 	img {
 		width: 100%;
 		height: 100%;
-		filter: drop-shadow(1px 0 0 var(--piece-outline)) drop-shadow(-1px 0 0 var(--piece-outline))
-			drop-shadow(0 1px 0 var(--piece-outline)) drop-shadow(0 -1px 0 var(--piece-outline));
+		filter: var(--piece-outline-1);
 	}
 	.hole {
 		width: 76%;
@@ -128,12 +134,10 @@
 	.target {
 		width: 100%;
 		height: 100%;
-		box-sizing: border-box;
 		border: max(2px, 0.6cqw) solid var(--target-ring);
 	}
 	.mamdani {
 		filter: none; /* its yellow border is its outline */
-		box-sizing: border-box;
 		width: 74%;
 		height: auto;
 		aspect-ratio: 1;

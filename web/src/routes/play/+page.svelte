@@ -26,6 +26,7 @@
 	// The game the guest is already playing, if any: one game at a time.
 	let already = $state('');
 	const friend = new FriendGame();
+	let foundTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// Back to a game the guest is seated in: straight in if nobody has
 	// moved yet (a reload of the opponent-found screen), otherwise ask.
@@ -37,7 +38,6 @@
 		}
 		already = code;
 	}
-	let foundTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function play(code: string) {
 		clearTimeout(foundTimer);
@@ -135,7 +135,7 @@
 	{#if already}
 		{@render ring(true)}
 		<div class="text" role="status">
-			<h1>You're in a game</h1>
+			<h1 class="page-title">You're in a game</h1>
 			<p>One game at a time: finish that one, then find another.</p>
 		</div>
 		<a class="cancel rejoin" href="/game/{already}">Rejoin game</a>
@@ -143,7 +143,7 @@
 	{:else if found}
 		{@render ring(true)}
 		<div class="text" role="status">
-			<h1>Opponent found</h1>
+			<h1 class="page-title">Opponent found</h1>
 			<div class="found">
 				{@render side(found.card.you, true)}
 				<p class="vs">vs</p>
@@ -157,7 +157,7 @@
 		{@render ring(false, formatElapsed(elapsed))}
 		<!-- Elevator music while waiting; it stops when this goes. -->
 		<div class="text" {@attach () => loop('waiting')}>
-			<h1>Looking for an opponent</h1>
+			<h1 class="page-title">Looking for an opponent</h1>
 			<p>You'll be paired with the next player who taps Play online. Colors are picked at random.</p>
 			<p class="sr-only" aria-live="polite">{connected ? 'In the queue.' : 'Connecting…'}</p>
 		</div>
@@ -225,13 +225,8 @@
 		gap: 12px;
 	}
 	h1 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
 		font-size: clamp(40px, 7vw, 64px);
 		line-height: 1;
-		text-transform: uppercase;
 	}
 	.text p {
 		margin: 0;

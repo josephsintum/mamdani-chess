@@ -5,12 +5,14 @@ import (
 	"compress/gzip"
 	"fmt"
 	"html"
+	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"path"
-	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"mamdani-chess/game"
 	"mamdani-chess/rules"
@@ -63,17 +65,21 @@ func isPageFile(name string) bool {
 		return true
 	}
 	for _, pg := range pages {
-		if pg.file != "" && pg.file == name {
+		if pg.file == name {
 			return true
 		}
 	}
 	return false
 }
 
-// gameRoute is the code in a game's path, /game/CODE.
+// gameRoute is the code in a game's path, /game/CODE, or "" for any other
+// path.
 func gameRoute(p string) (string, bool) {
 	code, ok := strings.CutPrefix(p, "/game/")
-	return code, ok && code != "" && !strings.Contains(code, "/")
+	if !ok || code == "" || strings.Contains(code, "/") {
+		return "", false
+	}
+	return code, true
 }
 
 // page serves the HTML for r's route with the preview tags for it. The
@@ -91,10 +97,10 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://"+siteHost+r.URL.RequestURI(), http.StatusMovedPermanently)
 		return
 	}
-	p := r.URL.Path
-	pg, known := pages[path.Clean(p)]
-	_, isGame := gameRoute(path.Clean(p))
-	if c := path.Clean(p); c != p && (known || isGame) {
+	p, c := r.URL.Path, path.Clean(r.URL.Path)
+	pg, known := pages[c]
+	code, isGame := gameRoute(c)
+	if c != p && (known || isGame) {
 		// A prerendered page loads its files by relative paths, which a
 		// trailing slash breaks. The target starts with a known route, so
 		// it can't lead off the site.
@@ -106,14 +112,13 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cookieValue(w, r)
-	listed := pg.file != ""
-	var b []byte
-	var err error
-	if listed {
-		b, err = fs.ReadFile(s.assets, pg.file)
+	file := pg.file
+	if file == "" {
+		file = shell
 	}
-	if !listed || err != nil {
-		listed = false
+	b, err := fs.ReadFile(s.assets, file)
+	if err != nil && file != shell {
+		file = shell
 		b, err = fs.ReadFile(s.assets, shell)
 	}
 	if err != nil {
@@ -130,26 +135,43 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 	}
 	// A prerendered page has its own <title>, from its <svelte:head>.
 	title := !bytes.Contains(b[:head], []byte("<title>"))
-	tags := []byte(previewTags(s.preview(p), baseURL(r), p, title) + seoTags(p, listed))
-	b = slices.Concat(b[:head], tags, b[head:])
+	listed := file != shell // only a prerendered page is listed
+	tags := previewTags(s.preview(pg, known, code), baseURL(r), p, title) + seoTags(p, listed)
+	// The page with the tags at the end of its head, sent in pieces rather
+	// than copied into one.
+	parts := net.Buffers{b[:head], []byte(tags), b[head:]}
+	var body io.WriterTo = &parts
+	size := len(b) + len(tags)
 	w.Header().Set("Cache-Control", "private, no-cache") // it can set the guest cookie: never in a shared cache
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Encoding")
 	if accepts(r.Header.Get("Accept-Encoding"), "gzip") {
 		// The tags differ per request, so the build's precompressed copies
 		// can't be used; a prerendered page is up to 160 KB.
-		var z bytes.Buffer
-		zw := gzip.NewWriter(&z)
-		zw.Write(b)
-		zw.Close()
-		b = z.Bytes()
+		z := gzipped(parts)
+		body, size = z, z.Len()
 		w.Header().Set("Content-Encoding", "gzip")
 	}
-	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+	w.Header().Set("Content-Length", strconv.Itoa(size))
 	w.WriteHeader(status)
 	if r.Method != http.MethodHead {
-		w.Write(b)
+		body.WriteTo(w)
 	}
+}
+
+// gzipWriters keeps compressors between pages: each one holds several
+// hundred KB.
+var gzipWriters = sync.Pool{New: func() any { return gzip.NewWriter(nil) }}
+
+// gzipped compresses parts, as a new gzip.Writer would.
+func gzipped(parts net.Buffers) *bytes.Buffer {
+	var z bytes.Buffer
+	zw := gzipWriters.Get().(*gzip.Writer)
+	zw.Reset(&z)
+	parts.WriteTo(zw)
+	zw.Close()
+	gzipWriters.Put(zw)
+	return &z
 }
 
 // seoTags tells search engines what to do with the page at p: the home
@@ -166,36 +188,33 @@ func seoTags(p string, listed bool) string {
 	return ""
 }
 
-// preview describes the page at path. A game link reads the game's last
-// published state, so it never waits on the game.
-func (s *Server) preview(path string) preview {
-	if pg, ok := pages[path]; ok {
+// preview describes a page: a known route (pg) by its own preview, a game
+// (code, "" for none) by the game's last published state, so it never
+// waits on the game, and anything else as the home page.
+func (s *Server) preview(pg route, known bool, code string) preview {
+	if known {
 		return pg.preview
 	}
-	code, ok := gameRoute(path)
-	if !ok {
-		return homePreview
+	if g, ok := s.games.Get(code); ok && code != "" {
+		return gamePreview(g.Summary())
 	}
-	g, ok := s.games.Get(code)
-	if !ok {
-		return homePreview
-	}
-	return gamePreview(g.Summary())
+	return homePreview
 }
 
 func gamePreview(sum game.Summary) preview {
 	white, black := orColor(sum.White, "White"), orColor(sum.Black, "Black")
+	title := white + " vs " + black + " · Mamdani Chess"
 	switch sum.Status {
 	case game.Waiting:
-		title := "You're invited to Mamdani Chess"
+		title = "You're invited to Mamdani Chess"
 		if sum.White != "" {
 			title = sum.White + " invites you to Mamdani Chess"
 		}
 		return preview{Title: title, Description: "Tap to take Black. 10+5, and potholes open under the pieces."}
 	case game.Playing:
-		return preview{Title: white + " vs " + black + " · Mamdani Chess", Description: fmt.Sprintf("Watch live, move %d.", sum.Plies/2+1)}
+		return preview{Title: title, Description: fmt.Sprintf("Watch live, move %d.", sum.Plies/2+1)}
 	}
-	return preview{Title: white + " vs " + black + " · Mamdani Chess", Description: resultLine(sum, white, black)}
+	return preview{Title: title, Description: resultLine(sum, white, black)}
 }
 
 // resultLine says how a finished game ended, e.g. "uws-bialy won by

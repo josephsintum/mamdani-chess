@@ -223,7 +223,7 @@ func TestMovesAndResultsAreSaved(t *testing.T) {
 	st := openStore(t)
 	// The first roll opens a pothole (2, then b4), so the saved dice matter.
 	g, _, _ := seated(t, NewHub(&script{rolls: []int{2, 2, 4}}, st))
-	openings(t, g)
+	plays(t, g, "e2e4", "e7e5")
 	if err := g.Resign("bob"); err != nil {
 		t.Fatal(err)
 	}
@@ -277,9 +277,16 @@ func (e *ended) EndGame(_ context.Context, _ string, r store.Result, _ *store.Tu
 func TestAGameNobodyJoinedExpiresWhenEvicted(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		st := &ended{}
-		create(t, NewHub(odd{}, st), "alice") // nobody ever opens the link
+		h := NewHub(odd{}, st)
+		g := create(t, h, "alice") // nobody ever opens the link
 		time.Sleep(DefaultIdle + time.Minute)
 		synctest.Wait()
+		if _, ok := h.Get(g.Code()); ok {
+			t.Fatal("unwatched game still listed after a quiet day")
+		}
+		if _, err := g.Join("alice"); !errors.Is(err, ErrGone) {
+			t.Errorf("join after eviction: got %v, want ErrGone", err)
+		}
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		if len(st.results) != 1 || st.results[0].Reason != string(Expired) || st.results[0].Winner != "" {

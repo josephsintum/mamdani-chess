@@ -16,7 +16,7 @@ const PracticeIdle = 10 * time.Minute
 // practice game, so each guest has at most one.
 func (h *Hub) CreatePractice(guest string) *Game {
 	sg := store.Game{Code: h.reserve(), White: guest, Black: guest, CreatedAt: time.Now()}
-	g := newGame(h, sg, h.forget(sg.Code))
+	g := newGame(h, sg)
 	g.practice, g.store, g.idle = true, nopStore{}, PracticeIdle
 	g.publish()
 	// Finding the old ones and adding this one under one lock means two

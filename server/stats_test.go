@@ -5,6 +5,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"regexp"
 	"strings"
@@ -16,24 +17,42 @@ import (
 
 func TestStatsRange(t *testing.T) {
 	ny, _ := time.LoadLocation("America/New_York")
+	day := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, ny) }
 	now := time.Date(2026, 10, 8, 23, 30, 0, 0, ny)
-	from, to, label := statsRange("30", now, ny)
-	if to != time.Date(2026, 10, 9, 0, 0, 0, 0, ny) || from != time.Date(2026, 9, 9, 0, 0, 0, 0, ny) || label != "Sep 9 – Oct 8, 2026" {
-		t.Errorf("30: %v %v %q", from, to, label)
+	key, from, to, before := statsRange("30", now, ny)
+	if key != "30" || to != day(10, 9) || from != day(9, 9) || before != day(8, 10) {
+		t.Errorf("30: %q %v %v %v", key, from, to, before)
 	}
-	if before := rangeBefore(from, to); before != time.Date(2026, 8, 10, 0, 0, 0, 0, ny) || rangeLabel(before, from) != "Aug 10 – Sep 8, 2026" {
-		t.Errorf("the 30 days before: %v %q", before, rangeLabel(before, from))
+	if got := rangeLabel(from, to) + ", " + rangeLabel(before, from); got != "Sep 9 – Oct 8, 2026, Aug 10 – Sep 8, 2026" {
+		t.Errorf("30 days and the 30 before: %q", got)
 	}
 	// Across the clock change, still 7 calendar days.
-	if before := rangeBefore(time.Date(2026, 11, 3, 0, 0, 0, 0, ny), time.Date(2026, 11, 10, 0, 0, 0, 0, ny)); before != time.Date(2026, 10, 27, 0, 0, 0, 0, ny) {
-		t.Errorf("the week before Nov 3: %v", before)
+	if _, from, _, before := statsRange("7", day(11, 9), ny); from != day(11, 3) || before != day(10, 27) {
+		t.Errorf("the week to Nov 9 and the one before: %v %v", from, before)
 	}
-	if from, _, label := statsRange("all", now, ny); !from.IsZero() || label != "All time" {
-		t.Errorf("all: %v %q", from, label)
+	if key, from, _, before := statsRange("all", now, ny); key != "all" || !from.IsZero() || !before.IsZero() {
+		t.Errorf("all: %q %v %v", key, from, before)
 	}
-	if from, _, _ := statsRange("nope", now, ny); from != time.Date(2026, 9, 9, 0, 0, 0, 0, ny) {
-		t.Errorf("an unknown range isn't 30 days: %v", from)
+	if key, from, _, _ := statsRange("nope", now, ny); key != "30" || from != day(9, 9) {
+		t.Errorf("an unknown range isn't 30 days: %q %v", key, from)
 	}
+}
+
+// statsGet fetches the stats page for ?days= with pass ("" for no
+// credentials) and returns the status, headers and body.
+func statsGet(t *testing.T, ts *httptest.Server, days, pass string) (int, http.Header, string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/stats?days="+days, nil)
+	if pass != "" {
+		req.SetBasicAuth("", pass)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header, string(b)
 }
 
 // The page names the zone its days and hours are in: a US zone by its
@@ -80,36 +99,16 @@ func TestStatsSaysWhenCountersAreStale(t *testing.T) {
 	}
 }
 
+// No credentials and the right password are in contract's TestStatsPage.
 func TestStatsNeedsPassword(t *testing.T) {
 	s, ts := newTestServer(t)
-	get := func(user, pass string) (int, http.Header, string) {
-		t.Helper()
-		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/stats?days=7", nil)
-		if user != "" || pass != "" {
-			req.SetBasicAuth(user, pass)
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(resp.Body)
-		return resp.StatusCode, resp.Header, string(b)
-	}
 	// No password configured: a 404 (with the app shell), as for any unknown path.
-	if status, _, body := get("", ""); status != 404 || !strings.Contains(body, "app shell") {
+	if status, _, body := statsGet(t, ts, "7", ""); status != 404 || !strings.Contains(body, "app shell") {
 		t.Errorf("without STATS_PASSWORD: %d %q", status, body)
 	}
 	s.StatsPassword = "hunter2"
-	if status, h, _ := get("", ""); status != 401 || h.Get("WWW-Authenticate") != `Basic realm="stats"` {
-		t.Errorf("no credentials: %d %q", status, h.Get("WWW-Authenticate"))
-	}
-	if status, _, _ := get("me", "wrong"); status != 401 {
+	if status, _, _ := statsGet(t, ts, "7", "wrong"); status != 401 {
 		t.Errorf("wrong password: %d", status)
-	}
-	status, h, body := get("anyone", "hunter2")
-	if status != 200 || !strings.HasPrefix(h.Get("Content-Type"), "text/html") || !strings.Contains(body, "<h1>Stats</h1>") {
-		t.Errorf("right password: %d %q", status, h.Get("Content-Type"))
 	}
 }
 
@@ -166,28 +165,17 @@ func TestStatsComparesWithTheRangeBefore(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	get := func(days string) string {
-		t.Helper()
-		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/stats?days="+days, nil)
-		req.SetBasicAuth("", "hunter2")
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(resp.Body)
-		return string(b)
-	}
 	chips := regexp.MustCompile(`<span class="chip (\w+)"[^>]*>(?:<svg.*?</svg>)?([^<]*)</span>`)
 	var got []string
-	for _, m := range chips.FindAllStringSubmatch(get("7"), -1) {
+	_, _, week := statsGet(t, ts, "7", "hunter2")
+	for _, m := range chips.FindAllStringSubmatch(week, -1) {
 		got = append(got, m[1]+" "+html.UnescapeString(m[2])) // the template writes + as &#43;
 	}
 	// Games 1 vs 2, got going 0 vs 0, practice 2 vs 1, found an opponent 50% vs 0%.
 	if want := []string{"down −50%", "flat 0%", "up +100%", "up +50 pts"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("chips %q, want %q", got, want)
 	}
-	if body := get("all"); strings.Contains(body, `class="chip`) {
+	if _, _, body := statsGet(t, ts, "all", "hunter2"); strings.Contains(body, `class="chip`) {
 		t.Error("all time shows a change")
 	}
 }
@@ -225,22 +213,15 @@ func TestStatsShowsTheGames(t *testing.T) {
 	if err := s.store.AddSearch(ctx, store.Search{StartedAt: now.Add(-time.Hour), EndedAt: now.Add(-time.Hour).Add(19 * time.Second), Matched: true}); err != nil {
 		t.Fatal(err)
 	}
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/stats?days=7", nil)
-	req.SetBasicAuth("", "hunter2")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	body := string(b)
+	_, _, body := statsGet(t, ts, "7", "hunter2")
 	for _, want := range []string{
 		`<h2>Games</h2>`, `<h2>Quick match</h2>`, `<h2>The road</h2>`,
 		"Checkmate", "Resignation", "Quick match 3", "Friend link 1", // games per day legend with totals
 		"How full the road gets", "Did the road decide it?", "Lost less to the road, and won",
 		"found an opponent", "Gave up within 30 s", "Under 1 min left", "Joined within 5 min", "Streams reopened", "Server restarts",
 		"from the 2 games with a stats row", "Rematches of friend games", "pieces, the Mamdani included",
-		"Mon 10 am–12 pm: 0 games", "Mon 10 pm–12 am: 0 games", "latest: TypeError: &lt;x&gt;",
+		"Mon 10 am–12 pm: ", "Mon 10 pm–12 am: ", // their counts depend on when the test runs
+		"latest: TypeError: &lt;x&gt;",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page lacks %q", want)

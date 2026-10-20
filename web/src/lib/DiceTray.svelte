@@ -29,7 +29,7 @@
 		<p class="muted">The dice roll after every move.</p>
 	{:else}
 		{#each notes as note (note)}
-			<p class="note">{note}</p>
+			<p class="muted">{note}</p>
 		{/each}
 		{#if steps.length === 0}
 			<p class="muted">{view.result ? 'The move ended the game: no roll.' : 'Rolling…'}</p>
@@ -88,8 +88,7 @@
 	p {
 		margin: 0;
 	}
-	.muted,
-	.note {
+	.muted {
 		color: var(--text-muted);
 		font-size: 14px;
 	}

@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// Count is one labelled count, a row of a list or a histogram's column.
+type Count struct {
+	Label string
+	N     int
+}
+
 // KindDay is one day's games created by kind, plus practice games started.
 type KindDay struct {
 	Day                     string
@@ -60,34 +66,25 @@ type Summary struct {
 func Summarize(days []DayCounts, fromDay, toDay string) Summary {
 	var out Summary
 	sum := map[string]int{}
+	byDay := map[string]map[string]int{}
+	start := fromDay
 	for _, d := range days {
 		for k, n := range d.N {
 			sum[k] += n
 		}
-	}
-	start := fromDay
-	if start == "" {
-		for _, d := range days {
-			if d.N["games.quick"]+d.N["games.friend"]+d.N["event.practice"] > 0 {
-				start = d.Day
-				break
-			}
-		}
-	}
-	byDay := map[string]map[string]int{}
-	for _, d := range days {
 		byDay[d.Day] = d.N
+		wd := weekday(d.Day)
+		for b := range 12 {
+			out.Heat[wd][b] += d.N["heat."+strconv.Itoa(b)]
+		}
+		if start == "" && d.N["games.quick"]+d.N["games.friend"]+d.N["event.practice"] > 0 {
+			start = d.Day
+		}
 	}
 	if start != "" {
 		for _, day := range daysFrom(start, toDay) {
 			n := byDay[day]
 			out.Days = append(out.Days, KindDay{Day: day, Quick: n["games.quick"], Friend: n["games.friend"], Practice: n["event.practice"]})
-		}
-	}
-	for _, d := range days {
-		wd := weekday(d.Day)
-		for b := range 12 {
-			out.Heat[wd][b] += d.N["heat."+strconv.Itoa(b)]
 		}
 	}
 
@@ -141,12 +138,12 @@ func histogram(sum map[string]int, prefix string, bs []bucket) []Count {
 
 // daysFrom lists the days from <= day < to (2006-01-02, calendar days).
 func daysFrom(from, to string) []string {
-	t, err := time.Parse("2006-01-02", from)
+	t, err := time.Parse(time.DateOnly, from)
 	if err != nil {
 		return nil
 	}
 	var out []string
-	for d := from; d < to; d = t.Format("2006-01-02") {
+	for d := from; d < to; d = t.Format(time.DateOnly) {
 		out = append(out, d)
 		t = t.AddDate(0, 0, 1)
 	}
@@ -155,7 +152,7 @@ func daysFrom(from, to string) []string {
 
 // weekday is a day's row in Heat: Monday 0 to Sunday 6.
 func weekday(day string) int {
-	t, err := time.Parse("2006-01-02", day)
+	t, err := time.Parse(time.DateOnly, day)
 	if err != nil {
 		return 0
 	}

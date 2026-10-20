@@ -4,7 +4,7 @@
 
 export type { Color, EventJSON, LogEntry, MoveJSON, View } from './wire.gen.ts';
 import type { Color, MoveJSON, View } from './wire.gen.ts';
-import { jsonOf, post } from './api.ts';
+import { fetchJSON, jsonOf, jsonPost, post } from './api.ts';
 
 export function squareName(index: number): string {
 	return 'abcdefgh'[index % 8] + (Math.floor(index / 8) + 1);
@@ -21,25 +21,15 @@ export const isPlayer = (you: View['you']): you is Color => you === 'white' || y
 export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Starts a friend game with the caller as White; returns its code. */
-export async function createGame(): Promise<string> {
-	const res = await fetch('/api/games', { method: 'POST' });
-	if (!res.ok) throw new Error(`could not create a game (${res.status})`);
-	return ((await res.json()) as { code: string }).code;
-}
+export const createGame = async () =>
+	(await fetchJSON<{ code: string }>('/api/games', 'create a game', { method: 'POST' })).code;
 
 /** Starts a practice game, the caller playing both sides; returns its code. */
-export async function createPractice(): Promise<string> {
-	const res = await fetch('/api/practice', { method: 'POST' });
-	if (!res.ok) throw new Error(`could not start a practice game (${res.status})`);
-	return ((await res.json()) as { code: string }).code;
-}
+export const createPractice = async () =>
+	(await fetchJSON<{ code: string }>('/api/practice', 'start a practice game', { method: 'POST' })).code;
 
 /** A game as anyone sees it (GET never takes a seat); throws if it can't be had. */
-export async function fetchView(code: string): Promise<View> {
-	const res = await fetch(`/api/games/${code}`);
-	if (!res.ok) throw new Error(`could not load the game (${res.status})`);
-	return (await res.json()) as View;
-}
+export const fetchView = (code: string) => fetchJSON<View>(`/api/games/${code}`, 'load the game');
 
 /**
  * What became of a move: the server took it, refused it (why, and the
@@ -53,11 +43,7 @@ export type SendOutcome = 'sent' | 'unsent' | { refused: string; state?: View };
 export async function trySendMove(code: string, move: MoveJSON, seq: number): Promise<SendOutcome> {
 	let res: Response;
 	try {
-		res = await fetch(`/api/games/${code}/move`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ ...move, seq })
-		});
+		res = await fetch(`/api/games/${code}/move`, jsonPost({ ...move, seq }));
 	} catch {
 		return 'unsent';
 	}
@@ -98,9 +84,7 @@ export function showsOffline(view: View, color: Color): boolean {
 }
 
 /** Offers or accepts a rematch, or declines one. Returns null or the error. */
-export async function rematch(code: string, decline = false): Promise<string | null> {
-	return post(`/api/games/${code}/rematch`, { decline });
-}
+export const rematch = (code: string, decline = false) => post(`/api/games/${code}/rematch`, { decline });
 
 /** Whether the game still exists: false only when the server says it's gone. */
 export async function gameExists(code: string): Promise<boolean> {
@@ -112,9 +96,7 @@ export async function gameExists(code: string): Promise<boolean> {
 }
 
 /** Ends the game; the caller's opponent wins. Returns null or the error. */
-export async function resign(code: string): Promise<string | null> {
-	return post(`/api/games/${code}/resign`);
-}
+export const resign = (code: string) => post(`/api/games/${code}/resign`);
 
 const pieceNames: Record<string, string> = {
 	P: 'pawn',

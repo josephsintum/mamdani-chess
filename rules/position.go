@@ -30,7 +30,7 @@ type Position struct {
 	Turn     Color
 	Castling Castling
 	EP       Square // en passant target square, or NoSquare
-	Halfmove int    // plies since the last pawn move, capture or fall
+	Halfmove int    // plies since the last pawn move, capture or piece's fall (not the Mamdani's)
 	Fullmove int
 
 	// The same pieces as Board, as sets: by color and by kind (indexed by
@@ -204,11 +204,6 @@ func StartPosition() Position {
 // IsPothole reports whether s holds an open pothole.
 func (p *Position) IsPothole(s Square) bool {
 	return p.potholes().Has(s)
-}
-
-// Blocked reports whether s stops a slider: a piece, the Mamdani or a pothole.
-func (p *Position) Blocked(s Square) bool {
-	return p.blocked().Has(s)
 }
 
 // King returns c's king square, or NoSquare if it has none (only in
