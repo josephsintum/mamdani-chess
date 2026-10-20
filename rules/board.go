@@ -38,12 +38,19 @@ const (
 	Mamdani
 )
 
+// kindLetters holds each Kind's letter, indexed by Kind.
+const kindLetters = " PNBRQKM"
+
+// Letter returns k's letter: "P", "N", "B", "R", "Q", "K", or "M" for the
+// Mamdani.
+func (k Kind) Letter() string { return kindLetters[k : k+1] }
+
 // Piece packs a Kind and a Color. The zero value is an empty square.
 type Piece uint8
 
 const NoPiece Piece = 0
 
-// MamdaniPiece names the Mamdani in events (Fell, SavingRoll).
+// MamdaniPiece names the Mamdani in events.
 const MamdaniPiece = Piece(Mamdani)
 
 func NewPiece(c Color, k Kind) Piece { return Piece(k) | Piece(c)<<3 }
@@ -158,20 +165,4 @@ func ParseSquare(name string) (Square, error) {
 		return NoSquare, fmt.Errorf("bad square %q", name)
 	}
 	return Square(int(name[1]-'1')*8 + int(name[0]-'a')), nil
-}
-
-// Sq is ParseSquare for literals; it panics on a bad name.
-func Sq(name string) Square {
-	s, err := ParseSquare(name)
-	if err != nil {
-		panic(err)
-	}
-	return s
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
 }

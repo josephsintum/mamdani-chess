@@ -34,12 +34,6 @@ func plays(t *testing.T, g *Game, ucis ...string) {
 	}
 }
 
-// openings plays both first moves, so White's clock starts ResolveDelay later.
-func openings(t *testing.T, g *Game) {
-	t.Helper()
-	plays(t, g, "e2e4", "e7e5")
-}
-
 // finish ends g if it is still on and lets it be evicted, so the synctest
 // bubble's goroutines are gone when the test returns.
 func finish(t *testing.T, g *Game) {
@@ -112,7 +106,7 @@ func TestClocksStartAfterBothFirstMoves(t *testing.T) {
 func TestTimeUsedAndIncrement(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		g, _, _ := seated(t, NewHub(odd{}, nil))
-		openings(t, g)
+		plays(t, g, "e2e4", "e7e5")
 		time.Sleep(ResolveDelay + 10*time.Second) // the dice pause is free
 		play(t, g, "alice", "g1f3", 2)
 		v := recvView(t, g, "bob")
@@ -129,7 +123,7 @@ func TestTimeUsedAndIncrement(t *testing.T) {
 func TestFlagFallLosesOnTime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		g, _, _ := seated(t, NewHub(odd{}, nil))
-		openings(t, g)
+		plays(t, g, "e2e4", "e7e5")
 		time.Sleep(ResolveDelay + InitialTime - time.Millisecond)
 		synctest.Wait()
 		if v := recvView(t, g, "bob"); v.Result != nil {
@@ -178,7 +172,7 @@ func TestFlagFallIsADrawWhenTheWinnerCannotMate(t *testing.T) {
 func TestAMoveAfterTheDeadlineLosesOnTime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		g, _, _ := seated(t, NewHub(odd{}, nil))
-		openings(t, g)
+		plays(t, g, "e2e4", "e7e5")
 		g.do(func() { g.clock.deadline = time.Now().Add(-time.Millisecond) }) // as if the timer were late
 		if err := g.Move("alice", mv(t, "g1f3"), 2); !errors.Is(err, ErrGameOver) {
 			t.Fatalf("late move: %v, want ErrGameOver", err)
@@ -195,7 +189,7 @@ func TestAMoveAfterTheDeadlineLosesOnTime(t *testing.T) {
 func TestAMoveReplacesTheDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		g, _, _ := seated(t, NewHub(odd{}, nil))
-		openings(t, g)
+		plays(t, g, "e2e4", "e7e5")
 		time.Sleep(ResolveDelay + 9*time.Minute)
 		play(t, g, "alice", "g1f3", 2) // white: 1:05 left
 		time.Sleep(ResolveDelay + time.Second)
@@ -221,7 +215,7 @@ func TestAMoveReplacesTheDeadline(t *testing.T) {
 func TestResignStopsTheClock(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		g, _, _ := seated(t, NewHub(odd{}, nil))
-		openings(t, g)
+		plays(t, g, "e2e4", "e7e5")
 		time.Sleep(ResolveDelay + 30*time.Second)
 		if err := g.Resign("alice"); err != nil {
 			t.Fatal(err)

@@ -2,25 +2,49 @@
 	import { figurine } from './board.ts';
 	import type { LogEntry } from './game.ts';
 	import LogMark from './LogMark.svelte';
+	import { pieceSrc } from './pieces.ts';
 
 	// One move as the logs draw it: the piece's icon, the rest of its SAN,
-	// then marks for what the dice did. Decorative: callers say it in words.
-	// rolling: the dice are still playing out, so the marks wait.
-	let { entry, rolling = false }: { entry: LogEntry; rolling?: boolean } = $props();
+	// then marks for what the dice did. Decorative: `label` says it in words.
+	// rolling: the dice are still playing out, so the marks wait. current:
+	// the latest move, highlighted.
+	let {
+		entry,
+		rolling = false,
+		current = false,
+		title,
+		label
+	}: { entry: LogEntry; rolling?: boolean; current?: boolean; title?: string; label?: string } = $props();
 
 	let fig = $derived(figurine(entry));
 </script>
 
-<span class="san" aria-hidden="true"
-	>{#if fig.icon === 'M'}<img class="mamdani" src="/mamdani/piece.webp" alt="" />{:else if fig.icon}<img src="/pieces/{fig.icon}.svg" alt="" />{/if}{fig.text}</span
->
-{#if !rolling}
-	{#if entry.repaired}<LogMark kind="repair" />{/if}
-	{#each entry.fell ?? [] as piece, j (j)}<LogMark kind="fell" {piece} />{/each}
-	{#if entry.opened}<LogMark kind="hole" />{/if}
-{/if}
+<span class="ply" class:current {title}>
+	{#if label}<span class="sr-only">{label}</span>{/if}
+	<span class="san" aria-hidden="true"
+		>{#if fig.icon}<img class:mamdani={fig.icon === 'M'} src={pieceSrc(fig.icon)} alt="" />{/if}{fig.text}</span
+	>
+	{#if !rolling}
+		{#if entry.repaired}<LogMark kind="repair" />{/if}
+		{#each entry.fell ?? [] as piece, j (j)}<LogMark kind="fell" {piece} />{/each}
+		{#if entry.opened}<LogMark kind="hole" />{/if}
+	{/if}
+</span>
 
 <style>
+	.ply {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		justify-self: start;
+		min-width: 0;
+		padding: 3px 6px;
+		border-radius: 6px;
+	}
+	.ply.current {
+		background: var(--accent-wash);
+		box-shadow: inset 0 0 0 1px var(--accent-line);
+	}
 	.san {
 		display: inline-flex;
 		align-items: center;
@@ -35,16 +59,13 @@
 		width: 18px;
 		height: 18px;
 		flex-shrink: 0;
-		/* The board's white outline, 1 px at this size, so black pieces show
-		   on the dark page. */
-		filter: drop-shadow(1px 0 0 var(--piece-outline)) drop-shadow(-1px 0 0 var(--piece-outline))
-			drop-shadow(0 1px 0 var(--piece-outline)) drop-shadow(0 -1px 0 var(--piece-outline));
+		/* The board's white outline, so black pieces show on the dark page. */
+		filter: var(--piece-outline-1);
 	}
 	.san .mamdani {
 		width: 16px;
 		height: 16px;
 		margin-right: 2px;
-		box-sizing: border-box;
 		border: 1px solid var(--accent);
 		border-radius: 22%;
 		object-fit: cover;

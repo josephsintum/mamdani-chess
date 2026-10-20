@@ -1,0 +1,71 @@
+/* The site's pages (not the game) share these. A page sets its own sizes in
+   its scoped styles, which win over these classes. */
+
+/* The column the rules, how-to-play and about pages sit in. */
+.content {
+	max-width: 1120px;
+	margin: 0 auto;
+	padding: 56px 32px 0;
+}
+@media (max-width: 799px) {
+	.content {
+		padding: 32px 16px 0;
+	}
+}
+
+/* A page's h1. */
+.page-title {
+	margin: 0;
+	color: var(--text);
+	font-family: var(--font-display);
+	font-weight: 800;
+	font-size: clamp(56px, 9vw, 80px);
+	line-height: 0.92;
+	text-transform: uppercase;
+}
+
+/* A section's h2. */
+.section-title {
+	margin: 0;
+	color: var(--text);
+	font-family: var(--font-display);
+	font-weight: 800;
+	font-size: 44px;
+	text-transform: uppercase;
+}
+
+/* "Full rules →": the padding makes it easier to tap, and the margin takes
+   that back out of the layout. */
+.arrow-link {
+	align-self: flex-start;
+	padding: 10px 0;
+	margin: -10px 0;
+	color: var(--accent);
+	font-weight: 600;
+	text-decoration: none;
+}
+.arrow-link:hover {
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+/* A <details> whose summary ends in + (− once open). */
+.disclosure summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	cursor: pointer;
+	list-style: none;
+}
+.disclosure summary::-webkit-details-marker {
+	display: none;
+}
+.disclosure summary::after {
+	content: '+';
+	color: var(--accent);
+	font-family: var(--font-mono);
+}
+.disclosure[open] summary::after {
+	content: '−';
+}

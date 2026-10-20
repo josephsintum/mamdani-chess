@@ -23,6 +23,13 @@ func (b *lockedBuffer) Write(p []byte) (int, error) {
 	return b.buf.Write(p)
 }
 
+// captureLogs sends s's logs, DEBUG and up, to a buffer the test reads.
+func captureLogs(s *Server) *lockedBuffer {
+	logs := &lockedBuffer{}
+	s.log = slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	return logs
+}
+
 // line waits up to a second for a log line containing want.
 func (b *lockedBuffer) line(want string) string {
 	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
@@ -38,13 +45,11 @@ func (b *lockedBuffer) line(want string) string {
 	return ""
 }
 
-// At INFO, every request would use Railway's 500 log lines/s with about 17
-// new visitors a second (a first visit loads about 30 files). Successful
-// requests log at DEBUG; refusals and errors stay at INFO.
+// Successful requests log at DEBUG, refusals and errors at INFO (see
+// ServeHTTP).
 func TestSuccessfulRequestsLogAtDebug(t *testing.T) {
 	s, ts := newTestServer(t)
-	logs := &lockedBuffer{}
-	s.log = slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logs := captureLogs(s)
 	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
 	code := alice.create()
 	alice.stream(code).state()
@@ -70,8 +75,7 @@ func TestSuccessfulRequestsLogAtDebug(t *testing.T) {
 // counts as slow.
 func TestSlowRequestsLogAtWarn(t *testing.T) {
 	s, ts := newTestServer(t)
-	logs := &lockedBuffer{}
-	s.log = slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logs := captureLogs(s)
 	s.slow = 20 * time.Millisecond
 	s.mux.HandleFunc("GET /api/test-slow", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(30 * time.Millisecond)

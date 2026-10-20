@@ -32,6 +32,7 @@ import reroll from './sounds/reroll.mp3';
 import saved from './sounds/saved.mp3';
 import victory from './sounds/victory.mp3';
 import waiting from './sounds/waiting.mp3';
+import { offSwitch } from './stored.ts';
 
 const urls = {
 	move,
@@ -295,29 +296,14 @@ export function loop(s: Clip): () => void {
 	};
 }
 
-const OFF_KEY = 'sound-off';
-// The choice made on this page, which holds even when storage is blocked.
-let chosen: boolean | undefined;
+const setting = offSwitch('sound-off');
 
 /** Sound is on unless this browser turned it off. */
-export function soundOn(): boolean {
-	if (chosen !== undefined) return chosen;
-	try {
-		return localStorage.getItem(OFF_KEY) === null;
-	} catch {
-		return true;
-	}
-}
+export const soundOn = setting.on;
 
 /** Turns all sound on or off at once, the waiting music too, and remembers it. */
 export function setSoundOn(on: boolean) {
-	chosen = on;
-	try {
-		if (on) localStorage.removeItem(OFF_KEY);
-		else localStorage.setItem(OFF_KEY, '1');
-	} catch {
-		// Blocked storage: the choice lasts while the page is open.
-	}
+	setting.set(on);
 	if (main) main.gain.value = on ? VOLUME : 0;
 	if (on) {
 		arm();

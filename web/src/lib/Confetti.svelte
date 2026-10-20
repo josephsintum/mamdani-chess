@@ -6,7 +6,6 @@
 </script>
 
 <script lang="ts">
-
 	// The winner's confetti: one canvas over the page for CONFETTI_MS, then
 	// `ondone` so the page removes it. The page shows it only to the winner,
 	// only when the game ended while they watched, never under reduced motion.
@@ -35,9 +34,9 @@
 		}
 		const css = getComputedStyle(canvas);
 		const colors: Record<Confetto['tone'], string> = {
-			accent: css.getPropertyValue('--accent').trim() || '#f2c230',
-			hazard: css.getPropertyValue('--hazard').trim() || '#ff7a3d',
-			cream: css.getPropertyValue('--piece-light').trim() || '#fbf8f0'
+			accent: css.getPropertyValue('--accent').trim(),
+			hazard: css.getPropertyValue('--hazard').trim(),
+			cream: css.getPropertyValue('--piece-light').trim()
 		};
 		const dpr = window.devicePixelRatio || 1;
 		let width = 0;

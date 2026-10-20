@@ -4,7 +4,7 @@
 	import { THROW_MS, type DieTone } from './dice.ts';
 	import { setTipsOn, tipsOn } from './tips.ts';
 
-	// The game page's "?": what each thing on the board means, links to the
+	// The "?" on the game and practice pages: what each thing on the board means, links to the
 	// rules (in a new tab, so the game keeps going), and the tips switch.
 	let { compact = false }: { compact?: boolean } = $props();
 
@@ -36,7 +36,7 @@
 </button>
 
 <dialog
-	{@attach (el) => void (dialog = el)}
+	bind:this={dialog}
 	aria-labelledby="help-title"
 	onclick={(e) => {
 		if (e.target === e.currentTarget) e.currentTarget.close(); // a click on the backdrop
@@ -261,7 +261,6 @@
 	.mamdani {
 		width: 30px;
 		height: 30px;
-		box-sizing: border-box;
 		border: 2px solid var(--accent);
 		border-radius: 22%;
 		object-fit: cover;

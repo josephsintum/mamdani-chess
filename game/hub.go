@@ -21,16 +21,15 @@ import (
 const DefaultIdle = 24 * time.Hour
 
 // Hub maps game codes to live games. A game leaves the hub when it stops:
-// evicted after Idle, or retired by a panic or a failed save.
+// evicted after DefaultIdle (PracticeIdle for practice), or retired by a
+// panic or a failed save.
 type Hub struct {
 	dice  rules.Dice
 	store Store
 	// newCode draws a game code; tests replace it to force a clash.
 	newCode func() string
-	// Idle is the eviction delay for games created from now on.
-	Idle  time.Duration
-	mu    sync.Mutex
-	games map[string]*Game
+	mu      sync.Mutex
+	games   map[string]*Game
 	// reserved holds codes being saved by create, so two creates can't
 	// pick the same one while neither holds mu.
 	reserved map[string]bool
@@ -42,7 +41,7 @@ func NewHub(dice rules.Dice, st Store) *Hub {
 	if st == nil {
 		st = nopStore{}
 	}
-	return &Hub{dice: dice, store: st, newCode: NewCode, Idle: DefaultIdle, games: map[string]*Game{}, reserved: map[string]bool{}}
+	return &Hub{dice: dice, store: st, newCode: NewCode, games: map[string]*Game{}, reserved: map[string]bool{}}
 }
 
 // Create starts a friend game with creator in White's seat, giving them a
@@ -106,7 +105,8 @@ func (h *Hub) create(sg store.Game) (*Game, error) {
 	}
 	h.mu.Lock()
 	delete(h.reserved, sg.Code)
-	g := h.add(sg)
+	g := newGame(h, sg)
+	h.games[sg.Code] = g
 	h.mu.Unlock()
 	if sg.Black != "" {
 		g.startCounting(now)
@@ -137,20 +137,11 @@ func (h *Hub) unreserve(code string) {
 	delete(h.reserved, code)
 }
 
-// add puts a new, not yet running game in the hub. The caller holds h.mu.
-func (h *Hub) add(sg store.Game) *Game {
-	g := newGame(h, sg, h.forget(sg.Code))
-	h.games[sg.Code] = g
-	return g
-}
-
-// forget returns a game's onExit: it takes code out of the hub.
-func (h *Hub) forget(code string) func() {
-	return func() {
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		delete(h.games, code)
-	}
+// remove takes a stopped game out of the hub.
+func (h *Hub) remove(code string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.games, code)
 }
 
 // guestTag is a short one-way tag for a guest ID, for logs. The ID itself

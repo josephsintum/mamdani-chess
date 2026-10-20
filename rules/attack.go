@@ -1,14 +1,9 @@
 package rules
 
-// Attacked reports whether any piece of color by attacks s. Potholes and the
-// Mamdani block sliders exactly like pieces do.
-func (p *Position) Attacked(s Square, by Color) bool {
-	return p.attackedWith(s, by, p.blocked())
-}
-
-// attackedWith is Attacked with the blocked set already worked out, for
-// callers that test several squares in one position.
-func (p *Position) attackedWith(s Square, by Color, blocked Bitboard) bool {
+// attacked reports whether any piece of color by attacks s, with sliders
+// stopped by blocked: the position's blocked set, which callers testing
+// several squares work out once.
+func (p *Position) attacked(s Square, by Color, blocked Bitboard) bool {
 	them := p.byColor[by]
 	straight := p.byKind[Rook] | p.byKind[Queen]
 	diagonal := p.byKind[Bishop] | p.byKind[Queen]
@@ -24,5 +19,5 @@ func (p *Position) attackedWith(s Square, by Color, blocked Bitboard) bool {
 // InCheck reports whether c's king is attacked.
 func (p *Position) InCheck(c Color) bool {
 	k := p.King(c)
-	return k != NoSquare && p.attackedWith(k, c.Other(), p.blocked())
+	return k != NoSquare && p.attacked(k, c.Other(), p.blocked())
 }

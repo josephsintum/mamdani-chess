@@ -10,14 +10,19 @@ import (
 // Run with: go test ./store -run XXX -bench . -benchtime 5x
 // The numbers go in the PR; Railway's vCPU is about 3–5× slower.
 
-// BenchmarkEndGame is one counted game end: the update, the final turn,
-// the stats row, the clock seek and the counters, in one transaction.
-func BenchmarkEndGame(b *testing.B) {
+func openBench(b *testing.B) *Store {
 	s, err := Open(filepath.Join(b.TempDir(), "bench.db"))
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer s.Close()
+	b.Cleanup(func() { s.Close() })
+	return s
+}
+
+// BenchmarkEndGame is one counted game end: the update, the final turn,
+// the stats row, the clock seek and the counters, in one transaction.
+func BenchmarkEndGame(b *testing.B) {
+	s := openBench(b)
 	ctx := b.Context()
 	st := &GameStats{Moves: 40, Opened: 12, Reset: 1, ClosedRounds: 9, ClosedCap: 2, Repaired: 1, Fell: 3, SavingRolls: 2, Saved: 1, WhiteLost: 1, BlackLost: 2, OpenHist: [6]int{4, 8, 10, 9, 6, 3}}
 	for i := 0; b.Loop(); i++ {
@@ -37,14 +42,12 @@ func seedGames(b *testing.B, s *Store, n, days int) {
 	ctx := b.Context()
 	start := t0.AddDate(0, 0, -days).UnixMilli()
 	step := int64(days) * int64(24*time.Hour/time.Millisecond) / int64(n)
-	for _, q := range []string{
+	if _, err := s.db.ExecContext(ctx,
 		`WITH RECURSIVE i(x) AS (SELECT 0 UNION ALL SELECT x + 1 FROM i WHERE x < ? - 1)
 		 INSERT INTO games (code, white, black, created_at, ended_at, result, winner, rules, kind, joined_at)
 		 SELECT printf('S%07d', x), 'w', 'b', ? + x * ?, ? + x * ? + 600000, 'checkmate', 'white', 3, 'quick', ? + x * ? FROM i`,
-	} {
-		if _, err := s.db.ExecContext(ctx, q, n, start, step, start, step, start, step); err != nil {
-			b.Fatal(err)
-		}
+		n, start, step, start, step, start, step); err != nil {
+		b.Fatal(err)
 	}
 	for _, q := range []string{
 		`INSERT INTO game_stats SELECT code, 40, 12, 1, 9, 2, 1, 3, 2, 1, 1, 2, 0, '4,8,10,9,6,3' FROM games`,
@@ -60,11 +63,7 @@ func seedGames(b *testing.B, s *Store, n, days int) {
 // BenchmarkRebuild recounts 100,000 games over 400 days. Budget: under 3 s
 // on Railway, so under about 0.6–1 s here.
 func BenchmarkRebuild(b *testing.B) {
-	s, err := Open(filepath.Join(b.TempDir(), "bench.db"))
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer s.Close()
+	s := openBench(b)
 	seedGames(b, s, 100_000, 400)
 	for b.Loop() {
 		if _, err := s.rebuild(b.Context(), t0); err != nil {
@@ -78,11 +77,7 @@ func BenchmarkRebuild(b *testing.B) {
 // 400 days of 1,000 searches and 1,000 events a day, the oldest day's past
 // the cutoff.
 func BenchmarkStartChecks(b *testing.B) {
-	s, err := Open(filepath.Join(b.TempDir(), "bench.db"))
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer s.Close()
+	s := openBench(b)
 	ctx := b.Context()
 	seedGames(b, s, 100_000, 400)
 	start := t0.AddDate(0, 0, -401).UnixMilli()
@@ -114,11 +109,7 @@ func BenchmarkStartChecks(b *testing.B) {
 // of 400 days of counters, the way the page does. It doesn't depend on how
 // many games there were.
 func BenchmarkCounts(b *testing.B) {
-	s, err := Open(filepath.Join(b.TempDir(), "bench.db"))
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer s.Close()
+	s := openBench(b)
 	seedGames(b, s, 20_000, 400)
 	if _, err := s.rebuild(b.Context(), t0); err != nil {
 		b.Fatal(err)

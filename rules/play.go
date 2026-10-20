@@ -62,9 +62,9 @@ func (p *Position) movePiece(m Move, ev *[]Event) {
 	}
 
 	if pc.Kind() == King && abs(m.To.File()-m.From.File()) == 2 {
-		rookFrom, rookTo := m.From.Offset(3, 0), m.From.Offset(1, 0)
+		rookFrom, rookTo := m.From+3, m.From+1
 		if m.To.File() < m.From.File() {
-			rookFrom, rookTo = m.From.Offset(-4, 0), m.From.Offset(-1, 0)
+			rookFrom, rookTo = m.From-4, m.From-1
 		}
 		p.put(rookTo, p.take(rookFrom))
 	}
@@ -81,6 +81,13 @@ func (p *Position) movePiece(m Move, ev *[]Event) {
 	} else {
 		p.Halfmove++
 	}
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // rightsLost returns the castling rights that disappear when a piece moves

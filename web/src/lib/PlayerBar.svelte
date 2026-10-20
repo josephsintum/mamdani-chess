@@ -53,7 +53,7 @@
 	let side = $derived(sideName(color));
 	let took = $derived(byKind(taken));
 	let gone = $derived(byKind(lost));
-	let names = (codes: string[]) => codes.map((p) => pieceName(p)).join(', ') || 'none';
+	const names = (codes: string[]) => codes.map((p) => pieceName(p)).join(', ') || 'none';
 	// The phone's one label for its row of pieces.
 	let summary = $derived(`Took: ${names(took)}${lead ? `, up ${lead}` : ''}. Lost to potholes: ${names(gone)}.`);
 	let label = $derived(name || side);
@@ -97,6 +97,11 @@
 	}
 </script>
 
+<!-- A row of pieces; pieces of one kind stack. -->
+{#snippet row(codes: string[], named: boolean)}
+	{#each codes as p, i (i)}<img src="/pieces/{p}.svg" alt={named ? pieceName(p) : ''} class:same={p === codes[i - 1]} />{/each}
+{/snippet}
+
 <div class="bar" class:compact>
 	<span class="swatch {color}" aria-hidden="true"></span>
 	<span class="who">
@@ -105,18 +110,18 @@
 		>
 		{#if compact}
 			{#if took.length > 0 || lead > 0 || gone.length > 0}<span class="sr-only">{summary}</span>{/if}
-			{#if took.length > 0}<span class="taken" aria-hidden="true">{#each took as p, i (i)}<img src="/pieces/{p}.svg" alt="" class:same={p === took[i - 1]} />{/each}</span>{/if}
+			{#if took.length > 0}<span class="taken" aria-hidden="true">{@render row(took, false)}</span>{/if}
 			{#if lead}<span class="lead" aria-hidden="true">+{lead}</span>{/if}
 			{#if gone.length > 0}<span class="pothole" aria-hidden="true"><LogMark kind="hole" />{gone.length}</span>{/if}
 		{:else}
 			<span class="lost">
 				Took:
-				{#if took.length === 0}none{:else}<span class="taken">{#each took as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} class:same={p === took[i - 1]} />{/each}</span>{/if}
+				{#if took.length === 0}none{:else}<span class="taken">{@render row(took, true)}</span>{/if}
 				{#if lead}<span class="lead">+{lead}</span>{/if}
 			</span>
 			<span class="lost">
 				Lost to potholes:
-				{#if gone.length === 0}none{:else}<span class="glyphs">{#each gone as p, i (i)}<img src="/pieces/{p}.svg" alt={pieceName(p)} class:same={p === gone[i - 1]} />{/each}</span>{/if}
+				{#if gone.length === 0}none{:else}<span class="glyphs">{@render row(gone, true)}</span>{/if}
 			</span>
 		{/if}
 	</span>
@@ -172,10 +177,15 @@
 		flex-grow: 1;
 		min-width: 0;
 	}
+	/* Short of room (a 320 px phone with its pill), the captured pieces go
+	   rather than show cut in half; the lead and the pothole count stay, and
+	   the row's label still lists everything. */
 	.compact .who {
+		container: who / inline-size;
 		flex-direction: row;
 		align-items: center;
 		gap: 6px;
+		overflow: hidden;
 	}
 	.compact .taken img {
 		width: 16px;
@@ -201,13 +211,7 @@
 	/* On a phone your bar is always the bottom one, so "(you)" is for screen
 	   readers only and the name gets the room. */
 	.you.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
 		margin: 0;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	.you {
 		margin-left: 6px;
@@ -242,13 +246,6 @@
 		flex-shrink: 1;
 		min-width: 0;
 		mask-image: linear-gradient(to right, #000 calc(100% - 8px), transparent);
-	}
-	/* Short of room (a 320 px phone with its pill), the captured pieces go
-	   rather than show cut in half; the lead and the pothole count stay, and
-	   the row's label still lists everything. */
-	.compact .who {
-		container: who / inline-size;
-		overflow: hidden;
 	}
 	@container who (max-width: 150px) {
 		.taken {
@@ -294,10 +291,8 @@
 		width: 18px;
 		height: 18px;
 		flex-shrink: 0;
-		/* The board's white outline, 1 px at this size, so black pieces show
-		   on the dark page. */
-		filter: drop-shadow(1px 0 0 var(--piece-outline)) drop-shadow(-1px 0 0 var(--piece-outline))
-			drop-shadow(0 1px 0 var(--piece-outline)) drop-shadow(0 -1px 0 var(--piece-outline));
+		/* The board's white outline, so black pieces show on the dark page. */
+		filter: var(--piece-outline-1);
 	}
 	.pill {
 		display: flex;
@@ -312,7 +307,6 @@
 	}
 	.compact .pill {
 		height: 28px;
-		box-sizing: border-box;
 		padding: 0 12px;
 		font-size: 13px;
 	}
@@ -338,7 +332,6 @@
 		flex-shrink: 0;
 		min-width: 92px;
 		padding: 6px 12px;
-		box-sizing: border-box;
 		border: 1px solid var(--line);
 		border-radius: 8px;
 		font-family: var(--font-mono);

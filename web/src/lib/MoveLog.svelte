@@ -21,10 +21,7 @@
 	{#if p}
 		{@const hidden = rolling && p.i === log.length - 1}
 		{@const dice = hidden ? 'rolling…' : p.dice || 'no roll'}
-		<span class="ply" class:current={p.i === log.length - 1} title={dice}>
-			<span class="sr-only">{p.san}, {dice}</span>
-			<MoveText entry={p} rolling={hidden} />
-		</span>
+		<MoveText entry={p} rolling={hidden} current={p.i === log.length - 1} title={dice} label="{p.san}, {dice}" />
 	{:else}
 		<span></span>
 	{/if}
@@ -98,19 +95,6 @@
 		font-family: var(--font-mono);
 		font-size: 13px;
 		color: var(--text-muted);
-	}
-	.ply {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		justify-self: start;
-		min-width: 0;
-		padding: 3px 6px;
-		border-radius: 6px;
-	}
-	.ply.current {
-		background: var(--accent-wash);
-		box-shadow: inset 0 0 0 1px var(--accent-line);
 	}
 	.legend {
 		display: flex;

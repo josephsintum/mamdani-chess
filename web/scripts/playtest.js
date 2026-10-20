@@ -150,7 +150,7 @@ let pairing = Promise.resolve();
 /** Both guests tap Play online, the second once the first is queued. */
 async function quickMatch(first, second) {
 	for (const p of [first, second]) {
-		await p.goto(`${opts.base}/`);
+		await p.goto(`${opts.base}/`, { waitUntil: 'networkidle' }); // hydrated, or WebKit drops the click
 		await p.getByRole('link', { name: /Play online/ }).click();
 		if (p === first) await p.getByText('Keep this tab open').waitFor();
 	}
@@ -190,7 +190,7 @@ async function playGame(browser, n) {
 		await (pairing = pairing.then(() => quickMatch(w, b)));
 		if (w.url() !== b.url()) errors.push(`quick match sent the guests to different games: ${w.url()} / ${b.url()}`);
 	} else {
-		await w.goto(`${opts.base}/`);
+		await w.goto(`${opts.base}/`, { waitUntil: 'networkidle' });
 		await w.getByRole('button', { name: 'Invite a friend' }).click();
 		await w.waitForURL(/\/game\//);
 	}

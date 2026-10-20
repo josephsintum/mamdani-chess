@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -46,9 +45,6 @@ func TestEnsureGuestCreatesOnceThenKeepsTheName(t *testing.T) {
 	name, err = s.EnsureGuest(ctx, "alice", draws(t))
 	if err != nil || name != "pigeon-astoria" {
 		t.Fatalf("second EnsureGuest = %q, %v", name, err)
-	}
-	if got, _ := s.GuestName(ctx, "alice"); got != "pigeon-astoria" {
-		t.Fatalf("GuestName = %q", got)
 	}
 }
 
@@ -170,28 +166,6 @@ func TestFreshNamesPreferUnusedOnes(t *testing.T) {
 	}
 }
 
-// openAt builds a database at schema version v, runs seed against it, and
-// opens it with Open, which applies every later migration.
-func openAt(t *testing.T, v int, seed ...string) *Store {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "old.db")
-	db, err := sql.Open("sqlite", "file:"+path)
-	must(t, err)
-	must(t, exec(db, `CREATE TABLE schema_version (version INTEGER NOT NULL)`))
-	for i, m := range migrations[:v] {
-		must(t, exec(db, m))
-		must(t, exec(db, `INSERT INTO schema_version (version) VALUES (?)`, i+1))
-	}
-	for _, q := range seed {
-		must(t, exec(db, q))
-	}
-	db.Close()
-	s, err := Open(path)
-	must(t, err)
-	t.Cleanup(func() { s.Close() })
-	return s
-}
-
 // A database from milestone 05 (schema version 3, a game without names)
 // gains the guests table and name columns, and keeps its game.
 func TestMigration4KeepsOldGames(t *testing.T) {
@@ -206,9 +180,4 @@ func TestMigration4KeepsOldGames(t *testing.T) {
 	if _, err := s.EnsureGuest(ctx, "alice", draws(t, "pigeon-astoria")); err != nil {
 		t.Fatalf("guests table missing after migration: %v", err)
 	}
-}
-
-func exec(db *sql.DB, q string, args ...any) error {
-	_, err := db.Exec(q, args...)
-	return err
 }

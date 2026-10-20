@@ -206,38 +206,52 @@ export function pickLine(kind: QuipKind, previous: string | undefined, random: (
 	return choices[Math.min(choices.length - 1, Math.floor(random() * choices.length))];
 }
 
+/** A speech bubble on the board: the line said at `sq`, after `delay` ms. */
+export interface Quip {
+	sq: string;
+	emoji: string;
+	line: string;
+	key: string;
+	delay: number;
+}
+
+/** A finished game's line, as a board asks for it: under `key`; winner-only lines need `winner`. */
+export type Ending = { key: string; winner: boolean };
+
 /**
  * Remembers the line picked for each moment, so it stays the same while the
  * board redraws, and the line said last, so the next moment says another.
- * Returns the bubble for the first `shown` events of turn `seq`, or null; or,
- * given `end` (from endQuip), the bubble for the game's end, under `key`.
- * After a fall it waits `delay` ms, the fall's length, so the piece drops
- * first; after a mate by a roll, until the burst's shards have flown.
+ * Returns `say`: the bubble for the first `shown` events of the view's turn,
+ * or null; or, given `ending`, the bubble for the game's end (endQuip), or
+ * null. After a fall it waits `delay` ms, the fall's length, so the piece
+ * drops first; after a mate, until the burst's shards have flown.
  */
 export function quipper(random: () => number = Math.random) {
 	const said = new Map<string, string>();
 	let last: string | undefined;
-	return (
-		events: EventJSON[],
-		seq: number,
-		shown: number,
-		ending?: { end: EndQuip; key: string; winner: boolean },
-		ctx?: TurnContext
-	): { sq: string; emoji: string; line: string; key: string; delay: number } | null => {
-		const found = quipFor(events, shown, ctx);
-		const q = ending ? { ...ending.end, key: ending.key } : found && { ...found, key: `${seq}:${found.index}` };
-		if (!q) return null;
+	const bubble = (q: { kind: QuipKind; sq: string; key: string; afterBurst?: true }, winner: boolean): Quip => {
 		let line = said.get(q.key);
 		if (!line) {
-			line = pickLine(q.kind, last, random, { winner: ending?.winner ?? true });
+			line = pickLine(q.kind, last, random, { winner });
 			said.set(q.key, line);
 			last = line;
 		}
 		const fell = q.kind === 'mamdaniFell' || q.kind === 'queenFell' || q.kind === 'wipedOut';
-		const delay = fell ? FALL_MS : ending?.end.afterBurst ? AFTER_BURST_MS : 0;
+		const delay = fell ? FALL_MS : q.afterBurst ? AFTER_BURST_MS : 0;
 		return { sq: q.sq, emoji: QUIPS[q.kind].emoji, line, key: q.key, delay };
 	};
+	return (view: View, shown: number, ending?: Ending): Quip | null => {
+		if (ending) {
+			const end = endQuip(view);
+			return end && bubble({ ...end, key: ending.key }, ending.winner);
+		}
+		const found = quipFor(view.last, shown, contextOf(view));
+		return found && bubble({ ...found, key: `${view.seq}:${found.index}` }, true);
+	};
 }
+
+/** What a quipper returns: a board's speech bubbles. */
+export type Say = ReturnType<typeof quipper>;
 
 /** A line's parts: text between ~tildes~ is drawn struck through. */
 export function lineParts(line: string): { text: string; struck: boolean }[] {

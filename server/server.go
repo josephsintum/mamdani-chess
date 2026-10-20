@@ -21,8 +21,7 @@ type Server struct {
 	games     *game.Hub
 	match     *match.Queue
 	assets    fs.FS
-	etags     sync.Map // etagKey → ETag of a static file
-	heartbeat time.Duration
+	etags     sync.Map      // etagKey → ETag of a static file
 	slow      time.Duration // a request taking longer logs at WARN
 	log       *slog.Logger
 	mux       *http.ServeMux
@@ -40,14 +39,13 @@ type Server struct {
 // assets. st is the database the hub saves games to.
 func New(st *store.Store, hub *game.Hub, assets fs.FS) *Server {
 	s := &Server{
-		store:     st,
-		games:     hub,
-		assets:    assets,
-		heartbeat: 15 * time.Second,
-		slow:      time.Second,
-		log:       slog.Default(),
-		mux:       http.NewServeMux(),
-		done:      make(chan struct{}),
+		store:  st,
+		games:  hub,
+		assets: assets,
+		slow:   time.Second,
+		log:    slog.Default(),
+		mux:    http.NewServeMux(),
+		done:   make(chan struct{}),
 	}
 	s.match = match.New(func(white, black string, playtest bool) (string, error) {
 		g, err := hub.CreatePair(white, black, playtest)

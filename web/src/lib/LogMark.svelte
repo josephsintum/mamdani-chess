@@ -2,12 +2,14 @@
 	// One of the move log's marks for what the dice did: a pothole opened, a
 	// piece fell, or the Mamdani repaired a hole. Decorative: the log entry's
 	// label says it in words.
+	import { pieceSrc } from './pieces.ts';
+
 	let { kind, piece = '' }: { kind: 'hole' | 'fell' | 'repair'; piece?: string } = $props();
 </script>
 
 {#if kind === 'fell'}
 	<span class="mark fell" aria-hidden="true"
-		>{#if piece === 'M'}<img class="mamdani" src="/mamdani/piece.webp" alt="" />{:else}<img src="/pieces/{piece}.svg" alt="" />{/if}<b>↓</b></span
+		><img class:mamdani={piece === 'M'} src={pieceSrc(piece)} alt="" /><b>↓</b></span
 	>
 {:else}
 	<span class="mark {kind}" aria-hidden="true"></span>
@@ -41,7 +43,6 @@
 		filter: drop-shadow(1px 0 0 var(--piece-outline)) drop-shadow(-1px 0 0 var(--piece-outline));
 	}
 	.fell .mamdani {
-		box-sizing: border-box;
 		border: 1px solid var(--accent);
 		border-radius: 22%;
 		object-fit: cover;

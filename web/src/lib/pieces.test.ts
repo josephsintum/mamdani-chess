@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { squareIndex } from './board.ts';
-import { applyMove, capturedSquare, moveDuration, reconcile, settlesGuess, type PieceRef } from './pieces.ts';
+import { applyMove, capturedSquare, moveDuration, pieceSrc, reconcile, settlesGuess, type PieceRef } from './pieces.ts';
 import { boardOf } from './test-boards.ts';
 
 describe('moveDuration', () => {
@@ -120,5 +120,13 @@ describe('settlesGuess', () => {
 
 	it('has nothing to settle without a guess', () => {
 		expect(settlesGuess(null, { seq: 8 })).toBe(true);
+	});
+});
+
+describe('pieceSrc', () => {
+	it('draws a piece from its SVG, and the Mamdani from its photo', () => {
+		expect(pieceSrc('wN')).toBe('/pieces/wN.svg');
+		expect(pieceSrc('bK')).toBe('/pieces/bK.svg');
+		expect(pieceSrc('M')).toBe('/mamdani/piece.webp');
 	});
 });

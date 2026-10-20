@@ -12,7 +12,7 @@
 	import { createPractice, fetchView, gameExists, isStale, reasons, sideName, trySendMove, type MoveJSON, type View } from '#lib/game.ts';
 	import { applyMove } from '#lib/pieces.ts';
 	import { retryDelay } from '#lib/reconnect.ts';
-	import { load, loadSoon, play } from '#lib/sound.ts';
+	import { CORE, load, loadSoon, play, SPECTATOR_LATER } from '#lib/sound.ts';
 	import { moveSound, turnCues } from '#lib/soundCues.ts';
 
 	// Practice: you play both sides of a game on the server, with its rules
@@ -125,24 +125,27 @@
 		if (c === code && !isStale(anim.view, now)) anim.receive(now);
 	}
 
+	function savedCode(): string | null {
+		try {
+			return sessionStorage.getItem(KEY);
+		} catch {
+			return null; // blocked storage: start a new game
+		}
+	}
+
 	onMount(() => {
 		// Only what practice plays: nobody joins, wins or loses.
-		load(['move', 'capture', 'die', 'dice', 'reroll', 'pothole', 'closed', 'saved', 'fell', 'check', 'error']);
-		loadSoon(['mamdani-fell', 'repair', 'checkmate']);
-		let saved: string | null = null;
-		try {
-			saved = sessionStorage.getItem(KEY);
-		} catch {
-			// Blocked storage: start a new game.
-		}
+		load(CORE.filter((s) => s !== 'notify'));
+		loadSoon(SPECTATOR_LATER);
+		const saved = savedCode();
 		if (saved) {
 			fetchView(saved)
 				.then((v) => {
 					if (!alive) return;
 					if (!v.practice) throw new Error('not a practice game');
-					code = saved!;
+					code = saved;
 					anim.receive(v);
-					follow(saved!);
+					follow(saved);
 				})
 				.catch(() => {
 					if (alive) void start();
@@ -166,7 +169,7 @@
 
 <main>
 	<header class="intro">
-		<h1>Practice</h1>
+		<h1 class="page-title">Practice</h1>
 		<p class="lede">
 			Play both sides with the real rules and dice, at your own pace. There's no clock, nothing is saved, and nobody else
 			can move here.
@@ -228,13 +231,7 @@
 		margin-bottom: 28px;
 	}
 	h1 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
 		font-size: clamp(48px, 8vw, 72px);
-		line-height: 0.92;
-		text-transform: uppercase;
 	}
 	.lede {
 		margin: 0;

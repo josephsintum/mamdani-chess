@@ -101,13 +101,7 @@ func TestErrorKeepsNoOne(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent || len(resp.Cookies()) != 0 {
 		t.Errorf("POST /api/error: %d, cookies %v; want 204 and none", resp.StatusCode, resp.Cookies())
 	}
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/error", strings.NewReader(`{"path":"/","message":"TypeError: y"}`))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Playtest", "1")
-	if resp, err = http.DefaultClient.Do(req); err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
+	newPlaytester(t, ts).post("/api/error", `{"path":"/","message":"TypeError: y"}`)
 	if n, latest := errorsSoFar(t, s); n != 1 || latest != "TypeError: x" {
 		t.Errorf("stored %d errors, latest %q; want only the person's", n, latest)
 	}

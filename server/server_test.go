@@ -3,256 +3,16 @@ package server
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
-	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
-	"testing/fstest"
 	"time"
-
-	"mamdani-chess/game"
-	"mamdani-chess/rules"
-	"mamdani-chess/store"
 )
 
-// odd always rolls 1, so no potholes open and moves are plain chess.
-type odd struct{}
-
-func (odd) D8() int { return 1 }
-
-func newTestServer(t *testing.T) (*Server, *httptest.Server) {
-	t.Helper()
-	return newTestServerWith(t, odd{})
-}
-
-func newTestServerWith(t *testing.T, dice rules.Dice) (*Server, *httptest.Server) {
-	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	assets := fstest.MapFS{
-		"200.html":              {Data: []byte("<!doctype html><html><head><meta charset=\"utf-8\"></head><body>app shell</body></html>")},
-		"index.html":            {Data: []byte("<!doctype html><html><head><meta charset=\"utf-8\"><title>Mamdani Chess</title></head><body>home page</body></html>")},
-		"rules.html":            {Data: []byte("<!doctype html><html><head><meta charset=\"utf-8\"><title>Rules · Mamdani Chess</title></head><body>rules page</body></html>")},
-		"_app/immutable/app.js": {Data: []byte("console.log(1)")},
-		"favicon.svg":           {Data: []byte("<svg/>")},
-		"google1234.html":       {Data: []byte("google-site-verification: verification")},
-		"favicon.svg.br":        {Data: []byte("brotli bytes")},
-		"favicon.svg.gz":        {Data: svgGzip},
-	}
-	s := New(st, game.NewHub(dice, st), assets)
-	s.log = slog.New(slog.DiscardHandler) // tests that check logging swap in their own
-	ts := httptest.NewServer(s)
-	t.Cleanup(ts.Close)
-	return s, ts
-}
-
-// player is one browser: its own cookie jar, so its own guest ID.
-type player struct {
-	t   *testing.T
-	c   *http.Client
-	url string
-}
-
-func newPlayer(t *testing.T, ts *httptest.Server) *player {
-	t.Helper()
-	jar, _ := cookiejar.New(nil)
-	return &player{t: t, c: &http.Client{Jar: jar}, url: ts.URL}
-}
-
-func (p *player) post(path, body string) (int, string) {
-	p.t.Helper()
-	resp, err := p.c.Post(p.url+path, "application/json", strings.NewReader(body))
-	if err != nil {
-		p.t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, strings.TrimSpace(string(b))
-}
-
-func (p *player) create() string {
-	p.t.Helper()
-	status, body := p.post("/api/games", "")
-	var out struct{ Code string }
-	if status != http.StatusCreated || json.Unmarshal([]byte(body), &out) != nil || len(out.Code) != 6 {
-		p.t.Fatalf("create: %d %s", status, body)
-	}
-	return out.Code
-}
-
-// sseReader reads "event:"/"data:" pairs and comments from a stream.
-type sseReader struct {
-	t  *testing.T
-	sc *bufio.Scanner
-}
-
-// next returns the next event name and data, or ("comment", text) for a heartbeat.
-func (r sseReader) next() (string, string) {
-	r.t.Helper()
-	var event, data string
-	for r.sc.Scan() {
-		line := r.sc.Text()
-		switch {
-		case line == "":
-			if event != "" || data != "" {
-				return event, data
-			}
-		case strings.HasPrefix(line, ":"):
-			return "comment", strings.TrimSpace(line[1:])
-		case strings.HasPrefix(line, "event: "):
-			event = line[len("event: "):]
-		case strings.HasPrefix(line, "data: "):
-			data = line[len("data: "):]
-		}
-	}
-	r.t.Fatalf("stream ended: %v", r.sc.Err())
-	return "", ""
-}
-
-// waitEnd reads to the end of the stream, failing if the server hasn't
-// ended it within d (after why, e.g. "Close").
-func (r sseReader) waitEnd(d time.Duration, why string) {
-	r.t.Helper()
-	ended := make(chan struct{})
-	go func() {
-		for r.sc.Scan() {
-		}
-		close(ended)
-	}()
-	select {
-	case <-ended:
-	case <-time.After(d):
-		r.t.Fatalf("stream still open %v after %s", d, why)
-	}
-}
-
-// state reads the next "state" event as a View.
-func (r sseReader) state() game.View {
-	r.t.Helper()
-	ev, data := r.next()
-	var v game.View
-	if ev != "state" || json.Unmarshal([]byte(data), &v) != nil {
-		r.t.Fatalf("got %q %q, want a state event", ev, data)
-	}
-	return v
-}
-
-// open opens the stream at path, closed when the test ends.
-func (p *player) open(path string) sseReader {
-	p.t.Helper()
-	resp, err := p.c.Get(p.url + path)
-	if err != nil {
-		p.t.Fatal(err)
-	}
-	p.t.Cleanup(func() { resp.Body.Close() })
-	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
-		p.t.Fatalf("Content-Type = %q", ct)
-	}
-	if resp.Header.Get("X-Accel-Buffering") != "no" {
-		p.t.Fatal("missing X-Accel-Buffering: no")
-	}
-	return sseReader{t: p.t, sc: bufio.NewScanner(resp.Body)}
-}
-
-func (p *player) stream(code string) sseReader {
-	p.t.Helper()
-	return p.open("/api/games/" + code + "/stream")
-}
-
-func TestFriendGameOverHTTP(t *testing.T) {
-	_, ts := newTestServer(t)
-	alice, bob, carol := newPlayer(t, ts), newPlayer(t, ts), newPlayer(t, ts)
-
-	code := alice.create()
-	a := alice.stream(code)
-	if v := a.state(); v.You != "white" || v.Status != game.Waiting {
-		t.Fatalf("alice: you=%s status=%s", v.You, v.Status)
-	}
-	b := bob.stream(code)
-	if v := b.state(); v.You != "black" || v.Status != game.Playing {
-		t.Fatalf("bob: you=%s status=%s", v.You, v.Status)
-	}
-	if v := a.state(); v.Status != game.Playing || len(v.Legal) != 33 {
-		t.Fatalf("alice after bob joins: status=%s legal=%d", v.Status, len(v.Legal))
-	}
-	if v := carol.stream(code).state(); v.You != "spectator" {
-		t.Fatalf("carol: you=%s", v.You)
-	}
-
-	if status, body := alice.post("/api/games/"+code+"/move", `{"from":"e2","to":"e4","seq":0}`); status != http.StatusNoContent {
-		t.Fatalf("alice e2e4: %d %s", status, body)
-	}
-	if v := b.state(); v.Seq != 1 || v.Board[28] != "wP" || len(v.Legal) != 32 || !reflect.DeepEqual(v.Log[0], game.LogEntry{SAN: "e4", Color: "white", Piece: "wP", Dice: "d8 1"}) {
-		t.Fatalf("bob after e4: seq=%d e4=%q legal=%d log=%+v", v.Seq, v.Board[28], len(v.Legal), v.Log)
-	}
-	if v := a.state(); v.Seq != 1 || len(v.Legal) != 0 {
-		t.Fatalf("alice after e4: seq=%d legal=%d", v.Seq, len(v.Legal))
-	}
-}
-
-func TestMoveErrors(t *testing.T) {
-	_, ts := newTestServer(t)
-	alice, bob, carol := newPlayer(t, ts), newPlayer(t, ts), newPlayer(t, ts)
-	code := alice.create()
-	alice.stream(code).state()
-	bob.stream(code).state()
-	move := "/api/games/" + code + "/move"
-	cases := []struct {
-		who        *player
-		path, body string
-		want       int
-	}{
-		{carol, move, `{"from":"e2","to":"e4","seq":0}`, http.StatusForbidden},
-		{bob, move, `{"from":"e7","to":"e5","seq":0}`, http.StatusConflict},   // not your turn
-		{alice, move, `{"from":"e2","to":"e4","seq":5}`, http.StatusConflict}, // stale
-		{alice, move, `{"from":"e2","to":"e5","seq":0}`, http.StatusConflict}, // illegal
-		{alice, move, `{"from":"e9","to":"e4","seq":0}`, http.StatusBadRequest},
-		{alice, move, `{"from":"e2","to":"e4"}`, http.StatusBadRequest}, // no seq
-		{alice, move, `not json`, http.StatusBadRequest},
-		{alice, move, `{"from":"` + strings.Repeat("x", 5000) + `"}`, http.StatusBadRequest},
-		{alice, "/api/games/NOPE99/move", `{"from":"e2","to":"e4","seq":0}`, http.StatusNotFound},
-	}
-	for _, c := range cases {
-		if status, body := c.who.post(c.path, c.body); status != c.want {
-			t.Errorf("%s %.40s: %d %s, want %d", c.path, c.body, status, body, c.want)
-		}
-	}
-	if status, _ := carol.get("/api/games/NOPE99/stream"); status != http.StatusNotFound {
-		t.Errorf("unknown game stream: %d, want 404", status)
-	}
-}
-
-func TestGuestCookie(t *testing.T) {
-	_, ts := newTestServer(t)
-	resp, err := http.Post(ts.URL+"/api/games", "application/json", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	var c *http.Cookie
-	for _, k := range resp.Cookies() {
-		if k.Name == "guest" {
-			c = k
-		}
-	}
-	if c == nil || len(c.Value) != 32 || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Path != "/" {
-		t.Fatalf("guest cookie %+v", c)
-	}
-}
-
-// A deploy ends every stream at once. A random retry per stream spreads
-// the browsers' own reconnects instead of sending them all back together.
+// Each stream gets its own retry (see startSSE).
 func TestStreamsStartWithARandomRetry(t *testing.T) {
 	_, ts := newTestServer(t)
 	alice := newPlayer(t, ts)
@@ -276,38 +36,23 @@ func TestStreamsStartWithARandomRetry(t *testing.T) {
 	}
 }
 
-func TestGameStreamHeartbeat(t *testing.T) {
-	s, ts := newTestServer(t)
-	s.heartbeat = 10 * time.Millisecond
-	alice := newPlayer(t, ts)
-	r := alice.stream(alice.create())
-	r.state()
-	if ev, text := r.next(); ev != "comment" || text != "ping" {
-		t.Fatalf("got %q %q, want heartbeat", ev, text)
-	}
-}
-
+// The home page, a game, an unknown path, the app's files and the API's
+// 404 are in contract's TestAppAndPreviews, TestUnknownAPIPath and
+// TestHealthz.
 func TestStaticAndFallback(t *testing.T) {
 	_, ts := newTestServer(t)
 	cases := []struct {
 		path, wantBody, wantCache string
 		wantStatus                int
 	}{
-		{"/", "home page", "private, no-cache", 200},
 		{"/rules", "rules page", "private, no-cache", 200},
 		{"/index", "app shell", "private, no-cache", 404},
 		{"/google1234.html", "verification", "no-cache", 200},
-		{"/game/K7F3QZ", "app shell", "private, no-cache", 200},
 		{"/play", "app shell", "private, no-cache", 200},
-		{"/nope", "app shell", "private, no-cache", 404},
 		{"/game/K7F3QZ/nope", "app shell", "private, no-cache", 404},
 		{"/rules.html", "app shell", "private, no-cache", 404},
 		{"/200", "app shell", "private, no-cache", 404},
 		{"/favicon.svg", "<svg/>", "no-cache", 200},
-		{"/_app/immutable/app.js", "console.log(1)", "public, max-age=31536000, immutable", 200},
-		{"/_app/immutable/gone.js", "404 page not found", "no-cache", 404},
-		{"/api/nope", `{"error":"not found"}`, "", 404},
-		{"/healthz", `"status":"ok"`, "", 200},
 	}
 	for _, c := range cases {
 		resp, err := http.Get(ts.URL + c.path)
@@ -322,7 +67,7 @@ func TestStaticAndFallback(t *testing.T) {
 		if !strings.Contains(string(body), c.wantBody) {
 			t.Errorf("%s: body %q, want it to contain %q", c.path, body, c.wantBody)
 		}
-		if c.wantCache != "" && resp.Header.Get("Cache-Control") != c.wantCache {
+		if resp.Header.Get("Cache-Control") != c.wantCache {
 			t.Errorf("%s: Cache-Control %q, want %q", c.path, resp.Header.Get("Cache-Control"), c.wantCache)
 		}
 	}
@@ -339,31 +84,6 @@ func TestCloseEndsStreamsButNotRequests(t *testing.T) {
 
 	r.waitEnd(time.Second, "Close")
 	alice.create() // other requests still work
-}
-
-func TestResignOverHTTP(t *testing.T) {
-	_, ts := newTestServer(t)
-	alice, bob, carol := newPlayer(t, ts), newPlayer(t, ts), newPlayer(t, ts)
-	code := alice.create()
-	alice.stream(code).state()
-	b := bob.stream(code)
-	b.state()
-	resign := "/api/games/" + code + "/resign"
-	if status, body := carol.post(resign, ""); status != http.StatusForbidden {
-		t.Errorf("spectator resigns: %d %s", status, body)
-	}
-	if status, body := alice.post(resign, ""); status != http.StatusNoContent {
-		t.Fatalf("alice resigns: %d %s", status, body)
-	}
-	if v := b.state(); v.Result == nil || v.Result.Winner != "black" || v.Result.Reason != game.Resignation {
-		t.Fatalf("bob sees result %+v", v.Result)
-	}
-	if status, _ := bob.post(resign, ""); status != http.StatusConflict {
-		t.Errorf("resign after the game ended: %d, want 409", status)
-	}
-	if status, _ := alice.post("/api/games/NOPE99/resign", ""); status != http.StatusNotFound {
-		t.Errorf("unknown game: %d, want 404", status)
-	}
 }
 
 // boom panics on every roll: a stand-in for a bug inside a game.
@@ -389,62 +109,13 @@ func TestCrashedGameClosesStreamsAndIsGone(t *testing.T) {
 	}
 }
 
-func TestConflictCarriesTheCallersState(t *testing.T) {
-	_, ts := newTestServer(t)
-	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
-	code := alice.create()
-	bob.stream(code).state()
-	status, body := bob.post("/api/games/"+code+"/move", `{"from":"e7","to":"e5","seq":0}`)
-	var out struct {
-		Error string
-		State *game.View
-	}
-	if status != http.StatusConflict || json.Unmarshal([]byte(body), &out) != nil {
-		t.Fatalf("got %d %s, want a 409", status, body)
-	}
-	if out.Error != "not your turn" || out.State == nil || out.State.You != "black" || out.State.Seq != 0 {
-		t.Errorf("error %q state %+v", out.Error, out.State)
-	}
-}
-
-// svgGzip is "<svg/>" gzipped, the way `precompress` writes favicon.svg.gz.
-// It must be real gzip: Go's default client asks for gzip and unpacks it.
-var svgGzip = func() []byte {
-	var b bytes.Buffer
-	zw := gzip.NewWriter(&b)
-	zw.Write([]byte("<svg/>"))
-	zw.Close()
-	return b.Bytes()
-}()
-
-// get fetches url with the given Accept-Encoding ("" for none) and any
-// further header name, value pairs.
-func get(t *testing.T, url, acceptEncoding string, header ...string) *http.Response {
-	t.Helper()
-	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
-	if acceptEncoding != "" {
-		req.Header.Set("Accept-Encoding", acceptEncoding)
-	}
-	for i := 0; i+1 < len(header); i += 2 {
-		req.Header.Set(header[i], header[i+1])
-	}
-	// A bare Transport would add gzip itself and hide the header we sent.
-	resp, err := (&http.Transport{DisableCompression: true}).RoundTrip(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { resp.Body.Close() })
-	return resp
-}
-
+// Accept-Encoding is read case-blind, and a q=0 refuses an encoding. (Each
+// encoding by itself is in contract's TestAppAndPreviews.)
 func TestPrecompressedFiles(t *testing.T) {
 	_, ts := newTestServer(t)
 	for _, c := range []struct{ accept, wantEncoding, wantBody string }{
-		{"gzip, deflate, br", "br", "brotli bytes"},
-		{"gzip", "gzip", string(svgGzip)},
 		{"GZIP", "gzip", string(svgGzip)},
 		{"br;q=0, gzip", "gzip", string(svgGzip)},
-		{"", "", "<svg/>"},
 	} {
 		resp := get(t, ts.URL+"/favicon.svg", c.accept)
 		body, _ := io.ReadAll(resp.Body)

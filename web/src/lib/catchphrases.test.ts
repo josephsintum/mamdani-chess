@@ -41,24 +41,24 @@ describe('pickLine', () => {
 });
 
 describe('quipper', () => {
-	const fall: EventJSON[] = [...roll, { kind: 'fell', sq: 'a5', piece: 'M' }, { kind: 'pothole_opened', sq: 'a5' }];
+	const fall = (seq: number) => viewOf({ seq, last: [...roll, { kind: 'fell', sq: 'a5', piece: 'M' }, { kind: 'pothole_opened', sq: 'a5' }] });
 	it('keeps the same line for a moment while the board redraws', () => {
 		const say = quipper(() => 0.5);
-		const first = say(fall, 7, 4);
+		const first = say(fall(7), 4);
 		expect(first).toMatchObject({ sq: 'a5', emoji: '😢', key: '7:3', delay: 550 });
-		expect(say(fall, 7, 5)).toEqual(first);
+		expect(say(fall(7), 5)).toEqual(first);
 	});
 	it('waits for a fall to finish, but not for a repair', () => {
-		const repair: EventJSON[] = [{ kind: 'moved', from: 'a5', to: 'b6' }, { kind: 'repaired', sq: 'c7' }];
-		expect(quipper()(repair, 3, 2)).toMatchObject({ delay: 0 });
+		const repair = viewOf({ seq: 3, last: [{ kind: 'moved', from: 'a5', to: 'b6' }, { kind: 'repaired', sq: 'c7' }] });
+		expect(quipper()(repair, 2)).toMatchObject({ delay: 0 });
 	});
 	it('says nothing before the moment is revealed', () => {
-		expect(quipper()(fall, 7, 3)).toBeNull();
+		expect(quipper()(fall(7), 3)).toBeNull();
 	});
 	it('never repeats the last line on the next moment', () => {
 		const say = quipper(() => 0);
-		const a = say(fall, 7, 4)!.line;
-		const b = say(fall, 9, 4)!.line;
+		const a = say(fall(7), 4)!.line;
+		const b = say(fall(9), 4)!.line;
 		expect(b).not.toBe(a);
 	});
 });
@@ -82,7 +82,7 @@ describe('struck-through words', () => {
 	});
 });
 
-describe('new moments', () => {
+describe('quipFor, for the placement dice', () => {
 	it('finds a king saved by a re-roll', () => {
 		const events: EventJSON[] = [...roll.slice(0, 2), { kind: 'target', sq: 'e1' }, { kind: 'reroll', sq: 'e1', reason: 'king' }, { kind: 'target', sq: 'g8' }];
 		expect(quipFor(events, 4)).toEqual({ kind: 'kingSpared', sq: 'e1', index: 3 });
@@ -154,11 +154,17 @@ describe('endQuip', () => {
 	});
 	it('gives the end its own key, and waits for the burst after a mate', () => {
 		const say = quipper(() => 0);
-		const b = say([], 9, 0, { end: { kind: 'mateByRoll', sq: 'e8', afterBurst: true }, key: 'G1:end', winner: true });
+		const mate = { winner: 'white', draw: false, reason: 'checkmate' } as const;
+		const last: EventJSON[] = [{ kind: 'moved', from: 'a2', to: 'a3' }, { kind: 'rolled_pothole', roll: 4 }];
+		const b = say(view({ last, result: mate }), 0, { key: 'G1:end', winner: true });
 		expect(b).toMatchObject({ sq: 'e8', emoji: '🗽', key: 'G1:end' });
 		expect(b!.delay).toBeGreaterThan(0);
-		expect(say([], 9, 0, { end: { kind: 'mateByMove', sq: 'e8', afterBurst: true }, key: 'G2:end', winner: true })!.delay).toBeGreaterThan(0);
-		expect(say([], 9, 0, { end: { kind: 'resigned', sq: 'e8' }, key: 'G3:end', winner: true })!.delay).toBe(0);
+		expect(say(view({ result: mate }), 0, { key: 'G2:end', winner: true })!.delay).toBeGreaterThan(0);
+		expect(say(view({ result: { winner: 'white', draw: false, reason: 'resignation' } }), 0, { key: 'G3:end', winner: true })!.delay).toBe(0);
+	});
+	it('says no end line for a game nobody won, nor one still on', () => {
+		expect(quipper()(view({ result: { draw: true, reason: 'aborted' } }), 0, { key: 'G:end', winner: false })).toBeNull();
+		expect(quipper()(view({}), 0, { key: 'G:end', winner: false })).toBeNull();
 	});
 });
 

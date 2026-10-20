@@ -47,7 +47,6 @@ type Game struct {
 	idle    time.Duration
 	calls   chan call
 	done    chan struct{} // closed when the game stops
-	onExit  func()        // tells the hub to forget the game
 	created time.Time     // orders the live games list
 	// live is the game as the live games list shows it, replaced after
 	// every call so the hub can list games without asking each one.
@@ -62,7 +61,6 @@ type Game struct {
 	log     []LogEntry  // only ever grows: views share it (see shared)
 	lost    [2][]string // piece codes lost to potholes, by color; only ever grow
 	taken   [2][]string // piece codes captured, by the capturer's color; only ever grow
-	stats   StatsJSON
 	road    road
 	clock   clock
 	rematch rematch
@@ -104,8 +102,8 @@ type call struct {
 // newGame returns the game sg describes (code, seats, names), not yet
 // running: the caller starts it with go g.loop() once its state is set.
 // After idle with no calls, the game stops if it is over or nobody is
-// watching; onExit runs when it stops.
-func newGame(h *Hub, sg store.Game, onExit func()) *Game {
+// watching.
+func newGame(h *Hub, sg store.Game) *Game {
 	return &Game{
 		code:     sg.Code,
 		kind:     sg.Kind,
@@ -113,10 +111,9 @@ func newGame(h *Hub, sg store.Game, onExit func()) *Game {
 		hub:      h,
 		dice:     h.dice,
 		store:    h.store,
-		idle:     h.Idle,
+		idle:     DefaultIdle,
 		calls:    make(chan call),
 		done:     make(chan struct{}),
-		onExit:   onExit,
 		created:  sg.CreatedAt,
 		g:        rules.NewGame(),
 		seats:    [2]string{sg.White, sg.Black},
@@ -175,7 +172,7 @@ func (g *Game) loop() {
 			g.publish()
 		case <-idle.C:
 			if g.g.Result.Over || len(g.subs) == 0 {
-				if !g.g.Result.Over { // still waiting for Black: nobody came
+				if !g.g.Result.Over { // waiting for Black, or practice nobody watches
 					g.end(time.Now(), rules.Result{Over: true, Reason: Expired}, nil)
 				}
 				slog.Info("game evicted", "code", g.code, "result", g.g.Result.Reason, "moves", len(g.g.Turns))
@@ -207,8 +204,8 @@ func (g *Game) end(now time.Time, r rules.Result, final *store.Turn) {
 	g.clock.deadline = time.Time{}
 	saved := savedResult(now, r)
 	var st *store.GameStats
-	if !g.practice && isFinished(r.Reason) {
-		s := g.road.stats(r, g.last, g.lost)
+	if !g.practice && !noWinner(r.Reason) { // a game that got going gets stats
+		s := g.road.stats(r.Reason)
 		st = &s
 	}
 	g.save("result", func(ctx context.Context) error { return g.store.EndGame(ctx, g.code, saved, final, st) })
@@ -253,9 +250,7 @@ func (g *Game) stop() {
 		close(sub.ch)
 	}
 	g.subs, g.streams, g.views = nil, nil, [3]builtView{}
-	if g.onExit != nil {
-		g.onExit()
-	}
+	g.hub.remove(g.code)
 }
 
 // do runs f on the game's goroutine and waits for it to finish. It returns
@@ -306,15 +301,15 @@ func (g *Game) Join(guest string) (*Sub, error) {
 			g.names[rules.Black] = name
 			g.startCounting(time.Now()) // White's first-move deadline
 			slog.Info("black joined", "code", g.code, "black", guestTag(guest))
-			g.addSub(sub)
-			g.broadcast() // White's view changes from waiting to playing
-			return
+			// Black has no stream yet, so they join below like a returning
+			// player, and the broadcast takes White's view from waiting to
+			// playing.
 		}
 		c, seated := g.seatOf(guest)
 		returning := seated && !g.connected(c)
 		g.addSub(sub)
 		if returning {
-			g.broadcast() // the opponent sees them connected again
+			g.broadcast() // the opponent sees them connected
 			return
 		}
 		send(sub, g.sharedView(g.roleOf(guest)))
@@ -386,9 +381,12 @@ func (g *Game) move(guest string, m rules.Move, seq int) error {
 		return ErrStale
 	}
 	running := g.running()
-	if err := g.apply(m, g.dice); err != nil { // an illegal move is refused here, unchanged
+	before := g.g.Pos
+	ev, err := g.g.Play(m, g.dice)
+	if err != nil { // an illegal move is refused here, unchanged
 		return err
 	}
+	g.record(&before, m, ev)
 	if running {
 		g.charge(color, now)
 		g.clock.remaining[color] += Increment
@@ -407,18 +405,14 @@ func (g *Game) move(guest string, m rules.Move, seq int) error {
 	return nil
 }
 
-// apply plays m and adds it to the log, lost pieces and stats.
-func (g *Game) apply(m rules.Move, dice rules.Dice) error {
-	color, before := g.g.Pos.Turn, g.g.Pos // SAN reads the position the move was made in
-	ev, err := g.g.Play(m, dice)
-	if err != nil {
-		return err
-	}
+// record adds a turn just played, m from before with events ev, to the
+// log, the pieces taken and lost, and the road. SAN reads the position the
+// move was made in.
+func (g *Game) record(before *rules.Position, m rules.Move, ev []rules.Event) {
 	g.last = ev
-	g.log = append(g.log, logEntry(before.SAN(m), color, ev))
+	g.log = append(g.log, logEntry(before.SAN(m), before.Turn, ev))
 	g.tally(ev)
 	g.road.add(ev, &g.g.Pos)
-	return nil
 }
 
 // logEntry is the log's line for a turn played as san by color.
@@ -439,27 +433,17 @@ func logEntry(san string, color rules.Color, ev []rules.Event) LogEntry {
 	return l
 }
 
-// tally adds a turn's events to the game's stats.
+// tally adds a turn's captures and falls to the pieces each side has taken
+// and lost.
 func (g *Game) tally(ev []rules.Event) {
 	for _, e := range ev {
-		switch e.Kind {
-		case rules.Captured:
+		switch {
+		case e.Kind == rules.Captured:
 			c := e.Piece.Color().Other()
 			g.taken[c] = append(g.taken[c], pieceCode(e.Piece))
-		case rules.Fell:
-			if e.Piece == rules.MamdaniPiece {
-				g.stats.MamdaniFell = true
-			} else {
-				c := e.Piece.Color()
-				g.lost[c] = append(g.lost[c], pieceCode(e.Piece))
-			}
-		case rules.SavingRoll:
-			g.stats.SavingRolls++
-			if e.Saved {
-				g.stats.Saved++
-			}
-		case rules.Repaired:
-			g.stats.Repaired++
+		case e.Kind == rules.Fell && e.Piece != rules.MamdaniPiece:
+			c := e.Piece.Color()
+			g.lost[c] = append(g.lost[c], pieceCode(e.Piece))
 		}
 	}
 }
@@ -562,14 +546,9 @@ func (g *Game) sharedView(r role) *View {
 	if b := g.views[r]; b.v != nil && now.Sub(b.at) < viewReuse {
 		return b.v
 	}
-	v := sealed(g.viewFor(r))
-	g.views[r] = builtView{v: v, at: now}
-	return v
-}
-
-// sealed encodes v for the streams it is about to be shared with.
-func sealed(v *View) *View {
+	v := g.viewFor(r)
 	v.data = v.JSON()
+	g.views[r] = builtView{v: v, at: now}
 	return v
 }
 
@@ -618,7 +597,7 @@ func (g *Game) viewFor(r role) *View {
 		Log:      shared(g.log),
 		Lost:     LostJSON{White: shared(g.lost[rules.White]), Black: shared(g.lost[rules.Black])},
 		Taken:    LostJSON{White: shared(g.taken[rules.White]), Black: shared(g.taken[rules.Black])},
-		Stats:    g.stats,
+		Stats:    g.road.view(),
 		Seq:      len(g.g.Turns),
 		Clock:    g.clockJSON(now),
 		Online:   OnlineJSON{White: g.connected(rules.White), Black: g.connected(rules.Black)},

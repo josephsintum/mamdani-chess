@@ -54,7 +54,7 @@
 		align-items: center;
 		gap: 6px;
 		min-height: 26px;
-		overflow: hidden; /* a turn too long for a very narrow phone clips, never wraps */
+		overflow: hidden; /* a turn too long for a very narrow phone clips, unless `wrap` */
 		font-family: var(--font-mono);
 		font-size: 13px;
 		font-weight: 600;
@@ -83,7 +83,6 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		box-sizing: border-box;
 		height: 26px;
 		min-width: 26px;
 		padding: 0 8px;

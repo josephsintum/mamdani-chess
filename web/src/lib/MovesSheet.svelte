@@ -16,7 +16,7 @@
 	let { view, shown, rolling }: { view: View; shown: number; rolling: boolean } = $props();
 
 	let dialog: HTMLDialogElement | undefined;
-	let still = $state(false); // no slide under reduced motion or instant mode
+	let still = $state(false); // no slide under reduced motion (or instant mode)
 	let returnTo: HTMLElement | null = null;
 
 	/** Opens the sheet; focus goes back to `from` when it closes. */
@@ -63,7 +63,6 @@
 		max-height: 100%;
 		margin: 0;
 		padding: 0;
-		box-sizing: border-box;
 		border: 0;
 		border-top: 1px solid var(--line);
 		border-radius: 16px 16px 0 0;
@@ -91,7 +90,6 @@
 		flex-direction: column;
 		gap: 12px;
 		height: 100%;
-		box-sizing: border-box;
 		padding: 56px 12px max(16px, env(safe-area-inset-bottom));
 		overflow-y: auto;
 	}
@@ -164,11 +162,6 @@
 	@keyframes slide-in {
 		from {
 			transform: translateX(100%);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.sheet[open] {
-			animation: none;
 		}
 	}
 </style>

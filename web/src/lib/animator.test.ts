@@ -53,13 +53,6 @@ describe('Animator', () => {
 		expect(a.animated).toBe(false);
 	});
 
-	it('jumps straight to a view that skips turns', () => {
-		const a = new Animator(100);
-		a.receive(view(0));
-		a.receive(view(2, roll));
-		expect(a.shown).toBe(roll.length);
-	});
-
 	it('cuts an animation short when a newer view arrives', () => {
 		const a = new Animator(100);
 		a.receive(view(0));

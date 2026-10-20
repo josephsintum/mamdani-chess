@@ -24,13 +24,31 @@ type odd struct{}
 
 func (odd) D8() int { return 1 }
 
-func TestRestoreAfterARestart(t *testing.T) {
-	ctx := t.Context()
-	path := filepath.Join(t.TempDir(), "games.db")
+// openStore opens the database at path, closed when the test ends.
+func openStore(t *testing.T, path string) *store.Store {
+	t.Helper()
 	st, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { st.Close() })
+	return st
+}
+
+// captureLog sends the default logger's text to the buffer it returns
+// until the test ends.
+func captureLog(t *testing.T) *bytes.Buffer {
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	return &buf
+}
+
+func TestRestoreAfterARestart(t *testing.T) {
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "games.db")
+	st := openStore(t, path)
 	h := game.NewHub(odd{}, st)
 	playing, _ := h.Create("alice", false)
 	sub, _ := playing.Join("bob")
@@ -42,11 +60,7 @@ func TestRestoreAfterARestart(t *testing.T) {
 	waiting, _ := h.Create("carol", false) // nobody joins
 	st.Close()
 
-	st, err = store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	st = openStore(t, path)
 	h2 := game.NewHub(odd{}, st)
 	if err := start(ctx, st, h2, time.Now()); err != nil {
 		t.Fatal(err)
@@ -82,21 +96,14 @@ func TestRestoreAfterARestart(t *testing.T) {
 // games already saved.
 func TestStartReadiesStatsBeforeRestoring(t *testing.T) {
 	ctx := t.Context()
-	path := filepath.Join(t.TempDir(), "games.db")
-	st, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	st := openStore(t, filepath.Join(t.TempDir(), "games.db"))
 	h := game.NewHub(odd{}, st)
 	playing, _ := h.Create("alice", false)
 	sub, _ := playing.Join("bob")
 	defer playing.Leave(sub)
 	// A new database has no counters version yet, as on the first start
 	// with counters: the start rebuilds.
-	var buf bytes.Buffer
-	defer slog.SetDefault(slog.Default())
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	buf := captureLog(t)
 	if err := start(ctx, st, game.NewHub(odd{}, st), time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -120,22 +127,22 @@ func TestStartReadiesStatsBeforeRestoring(t *testing.T) {
 	}
 }
 
-func TestNewLoggerJSON(t *testing.T) {
-	var buf bytes.Buffer
-	newLogger("json", &buf).Info("listening", "addr", ":8080")
-	var line map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
-		t.Fatalf("not JSON: %q: %v", buf.String(), err)
-	}
-	if line["msg"] != "listening" || line["addr"] != ":8080" || line["level"] != "INFO" {
-		t.Errorf("got %v", line)
-	}
-}
-
-func TestNewLoggerTextByDefault(t *testing.T) {
-	var buf bytes.Buffer
-	newLogger("", &buf).Info("listening", "addr", ":8080")
-	if got := buf.String(); !strings.Contains(got, "msg=listening addr=:8080") {
-		t.Errorf("got %q, want text output", got)
+// LOG_FORMAT=json logs JSON; anything else, readable text.
+func TestNewLogger(t *testing.T) {
+	for _, c := range []struct {
+		format string
+		ok     func(out []byte) bool
+	}{
+		{"json", func(out []byte) bool {
+			var line map[string]any
+			return json.Unmarshal(out, &line) == nil && line["msg"] == "listening" && line["addr"] == ":8080" && line["level"] == "INFO"
+		}},
+		{"", func(out []byte) bool { return strings.Contains(string(out), "msg=listening addr=:8080") }},
+	} {
+		var buf bytes.Buffer
+		newLogger(c.format, &buf).Info("listening", "addr", ":8080")
+		if !c.ok(buf.Bytes()) {
+			t.Errorf("LOG_FORMAT=%q logged %q", c.format, buf.String())
+		}
 	}
 }

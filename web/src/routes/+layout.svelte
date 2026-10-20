@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '#lib/theme/tokens.css';
+	import '#lib/theme/content.css';
 	import Toaster from '#lib/Toaster.svelte';
 	import { reportError } from '#lib/report-error.ts';
 	import { onMount } from 'svelte';

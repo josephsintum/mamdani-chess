@@ -22,15 +22,21 @@ type MeJSON struct {
 }
 
 func newMeJSON(name string, a store.Allowance) MeJSON {
-	out := MeJSON{ChangesLeft: a.Left}
+	out := MeJSON{ChangesLeft: a.Left, ChangesResetAt: resetAtMs(a)}
 	if name != "" {
 		out.Name = &name
 	}
-	if !a.ResetAt.IsZero() {
-		ms := a.ResetAt.UnixMilli()
-		out.ChangesResetAt = &ms
-	}
 	return out
+}
+
+// resetAtMs is when a's changes come back (Unix ms), or nil while none are
+// used.
+func resetAtMs(a store.Allowance) *int64 {
+	if a.ResetAt.IsZero() {
+		return nil
+	}
+	ms := a.ResetAt.UnixMilli()
+	return &ms
 }
 
 // me returns the caller's name, or null if they have none yet, and their
@@ -58,9 +64,8 @@ func (s *Server) nameOffers(w http.ResponseWriter, r *http.Request) {
 	if s.nameRefused(w, a, err) {
 		return
 	}
-	out := newMeJSON("", a)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"names": offers, "changesLeft": out.ChangesLeft, "changesResetAt": out.ChangesResetAt,
+		"names": offers, "changesLeft": a.Left, "changesResetAt": resetAtMs(a),
 	})
 }
 

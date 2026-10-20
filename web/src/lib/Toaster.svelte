@@ -35,103 +35,107 @@
 />
 
 <style>
-	:global(.mc-toast) {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		width: min(380px, calc(100vw - 24px));
-		padding: 12px 16px;
-		border: 1px solid var(--accent-line);
-		border-radius: 12px;
-		background: var(--surface);
-		box-shadow: 0 14px 36px var(--hole);
-		color: var(--text);
-		font-family: var(--font-body);
-		font-size: 15px;
-	}
-	/* A dot in the notice's tone; types with their own icon hide it. */
-	:global(.mc-toast:not(:has(.mc-toast-icon))::before) {
-		content: '';
-		flex-shrink: 0;
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		background: var(--accent);
-	}
-	:global(.mc-toast-icon) {
-		display: flex;
-		flex-shrink: 0;
-		color: var(--accent);
-	}
-	:global(.mc-toast-success) {
-		border-color: var(--accent);
-	}
-	:global(.mc-toast-error) {
-		border-color: var(--hazard);
-	}
-	:global(.mc-toast-error .mc-toast-icon) {
-		color: var(--hazard);
-	}
-	:global(.mc-toast-title) {
-		font-weight: 600;
-	}
-	:global(.mc-toast-description) {
-		color: var(--text-muted);
-		font-size: 13px;
-	}
-	/* The ✕ sits at the end of the row. */
-	:global(.mc-toast-close) {
-		display: grid;
-		place-items: center;
-		flex-shrink: 0;
-		order: 10;
-		width: 32px;
-		height: 32px;
-		margin: -6px -8px -6px auto;
-		padding: 0;
-		border: 0;
-		border-radius: 8px;
-		background: transparent;
-		color: var(--text-muted);
-		cursor: pointer;
-	}
-	:global(.mc-toast-close:hover),
-	:global(.mc-toast-close:focus-visible) {
-		background: var(--surface-2);
-		color: var(--text);
-	}
-	:global(.mc-toast-close svg) {
-		width: 14px;
-		height: 14px;
-	}
-	:global(.mc-toast-action) {
-		flex-shrink: 0;
-		margin-left: auto;
-		min-height: 36px;
-		padding: 0 14px;
-		border: 0;
-		border-radius: 8px;
-		background: var(--accent);
-		color: var(--accent-text);
-		font: inherit;
-		font-weight: 600;
-		cursor: pointer;
+	:global {
+		.mc-toast {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			width: min(380px, calc(100vw - 24px));
+			padding: 12px 16px;
+			border: 1px solid var(--accent-line);
+			border-radius: 12px;
+			background: var(--surface);
+			box-shadow: 0 14px 36px var(--hole);
+			color: var(--text);
+			font-family: var(--font-body);
+			font-size: 15px;
+		}
+		/* A dot in the notice's tone; types with their own icon hide it. */
+		.mc-toast:not(:has(.mc-toast-icon))::before {
+			content: '';
+			flex-shrink: 0;
+			width: 10px;
+			height: 10px;
+			border-radius: 50%;
+			background: var(--accent);
+		}
+		.mc-toast-icon {
+			display: flex;
+			flex-shrink: 0;
+			color: var(--accent);
+		}
+		.mc-toast-success {
+			border-color: var(--accent);
+		}
+		.mc-toast-error {
+			border-color: var(--hazard);
+		}
+		.mc-toast-error .mc-toast-icon {
+			color: var(--hazard);
+		}
+		.mc-toast-title {
+			font-weight: 600;
+		}
+		.mc-toast-description {
+			color: var(--text-muted);
+			font-size: 13px;
+		}
+		/* The ✕ sits at the end of the row. */
+		.mc-toast-close {
+			display: grid;
+			place-items: center;
+			flex-shrink: 0;
+			order: 10;
+			width: 32px;
+			height: 32px;
+			margin: -6px -8px -6px auto;
+			padding: 0;
+			border: 0;
+			border-radius: 8px;
+			background: transparent;
+			color: var(--text-muted);
+			cursor: pointer;
+		}
+		.mc-toast-close:hover,
+		.mc-toast-close:focus-visible {
+			background: var(--surface-2);
+			color: var(--text);
+		}
+		.mc-toast-close svg {
+			width: 14px;
+			height: 14px;
+		}
+		.mc-toast-action {
+			flex-shrink: 0;
+			margin-left: auto;
+			min-height: 36px;
+			padding: 0 14px;
+			border: 0;
+			border-radius: 8px;
+			background: var(--accent);
+			color: var(--accent-text);
+			font: inherit;
+			font-weight: 600;
+			cursor: pointer;
+		}
 	}
 	/* Narrow screens: a button beside the text would squeeze it into a tall
 	   column over the board, so it goes underneath. */
 	@media (max-width: 479px) {
-		:global(.mc-toast) {
-			flex-wrap: wrap;
-		}
-		:global(.mc-toast [data-content]) {
-			flex: 1 1 calc(100% - 64px);
-		}
-		:global(.mc-toast-close) {
-			order: 2;
-		}
-		:global(.mc-toast-action) {
-			order: 3;
-			margin-left: 20px;
+		:global {
+			.mc-toast {
+				flex-wrap: wrap;
+			}
+			.mc-toast [data-content] {
+				flex: 1 1 calc(100% - 64px);
+			}
+			.mc-toast-close {
+				order: 2;
+			}
+			.mc-toast-action {
+				order: 3;
+				margin-left: 20px;
+			}
 		}
 	}
 </style>

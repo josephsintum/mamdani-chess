@@ -3,8 +3,8 @@ import { pieceOn } from './board.ts';
 import { freeMoves } from './sandbox.ts';
 import { framesOf, scenes, type Scene } from './scenes.ts';
 
-const holes = (s: Scene) => framesOf(s).at(-1)!.view.potholes.map((h) => h.sq);
 const end = (s: Scene) => framesOf(s).at(-1)!.view;
+const holes = (v: { potholes: { sq: string }[] }) => v.potholes.map((h) => h.sq);
 
 describe('scenes', () => {
 	it.each<Scene>(Object.values(scenes))('$id plays only moves the pieces can make, and shows only pieces', (scene) => {
@@ -26,10 +26,10 @@ describe('scenes', () => {
 
 	it('dice: an odd roll does nothing, the knight falls, a king is re-rolled', () => {
 		const v = end(scenes.dice);
-		expect(v.board[21]).toBe(''); // f3
+		expect(pieceOn(v, 'f3')).toBe('');
 		expect(v.lost.white).toEqual(['wN']);
 		expect(v.last.some((e) => e.kind === 'reroll' && e.sq === 'e8')).toBe(true);
-		expect(holes(scenes.dice)).toEqual(['f3', 'h6']);
+		expect(holes(v)).toEqual(['f3', 'h6']);
 	});
 
 	it('roads: the rook stops at the pothole and the knight jumps it', () => {
@@ -42,10 +42,11 @@ describe('scenes', () => {
 
 	it('rounds: c4 runs out, the cap closes the oldest, then f3 resets', () => {
 		const frames = framesOf(scenes.rounds);
+		const v = frames.at(-1)!.view;
 		expect(frames.at(-2)!.view.last.some((e) => e.kind === 'pothole_closed' && e.sq === 'e5')).toBe(true);
-		expect(holes(scenes.rounds)).toEqual(['b6', 'd7', 'a3', 'h5', 'f3']);
-		expect(end(scenes.rounds).potholes.find((h) => h.sq === 'f3')).toEqual({ sq: 'f3', by: 'black', left: 3 });
-		expect(end(scenes.rounds).last.at(-1)).toMatchObject({ kind: 'pothole_reset', sq: 'f3', was: 'white', left: 1 });
+		expect(holes(v)).toEqual(['b6', 'd7', 'a3', 'h5', 'f3']);
+		expect(v.potholes.find((h) => h.sq === 'f3')).toEqual({ sq: 'f3', by: 'black', left: 3 });
+		expect(v.last.at(-1)).toMatchObject({ kind: 'pothole_reset', sq: 'f3', was: 'white', left: 1 });
 	});
 
 	it('blocks: the Mamdani on d2 cuts the bishop off from the king', () => {
@@ -70,7 +71,7 @@ describe('scenes', () => {
 
 	it('mate: a pothole on g7 mates the king on h8', () => {
 		const v = end(scenes.mate);
-		expect(holes(scenes.mate)).toEqual(['g7']);
+		expect(holes(v)).toEqual(['g7']);
 		expect(v.result).toEqual({ winner: 'white', draw: false, reason: 'checkmate' });
 		// Its one step, g8, is on the checking rook's line, and the Mamdani is boxed in.
 		const moves = freeMoves(v, true);

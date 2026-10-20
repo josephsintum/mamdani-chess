@@ -26,18 +26,19 @@
 	// The game the guest is already playing, if any: one game at a time.
 	let already = $state('');
 	const friend = new FriendGame();
+	let foundTimer: ReturnType<typeof setTimeout> | undefined;
+	// Set once the guest has left the page: a game's view that arrives
+	// later must not change anything, or take them back to the game.
+	let left = false;
 
 	// Back to a game the guest is seated in: straight in if nobody has
 	// moved yet (a reload of the opponent-found screen), otherwise ask.
 	async function resume(code: string) {
-		try {
-			if ((await fetchView(code)).seq === 0) return play(code);
-		} catch {
-			// fall through to asking
-		}
+		const view = await fetchView(code).catch(() => null);
+		if (left) return;
+		if (view?.seq === 0) return play(code);
 		already = code;
 	}
-	let foundTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function play(code: string) {
 		clearTimeout(foundTimer);
@@ -47,11 +48,12 @@
 	// Who's who, from the game itself (GET shows it without taking a seat);
 	// then into the game after FOUND_MS, or at once if that fails.
 	async function matched(code: string) {
-		try {
-			found = { code, card: matchCard(await fetchView(code)) };
-		} catch {
-			return play(code);
-		}
+		const card = await fetchView(code)
+			.then(matchCard)
+			.catch(() => null);
+		if (left) return;
+		if (!card) return play(code);
+		found = { code, card };
 		foundTimer = setTimeout(() => play(code), FOUND_MS);
 	}
 
@@ -103,7 +105,7 @@
 			.catch(() => connect());
 		const tick = setInterval(() => (now = Date.now()), 250);
 		return () => {
-			done = true;
+			done = left = true;
 			clearTimeout(retry);
 			es?.close();
 			clearInterval(tick);
@@ -135,7 +137,7 @@
 	{#if already}
 		{@render ring(true)}
 		<div class="text" role="status">
-			<h1>You're in a game</h1>
+			<h1 class="page-title">You're in a game</h1>
 			<p>One game at a time: finish that one, then find another.</p>
 		</div>
 		<a class="cancel rejoin" href="/game/{already}">Rejoin game</a>
@@ -143,7 +145,7 @@
 	{:else if found}
 		{@render ring(true)}
 		<div class="text" role="status">
-			<h1>Opponent found</h1>
+			<h1 class="page-title">Opponent found</h1>
 			<div class="found">
 				{@render side(found.card.you, true)}
 				<p class="vs">vs</p>
@@ -157,7 +159,7 @@
 		{@render ring(false, formatElapsed(elapsed))}
 		<!-- Elevator music while waiting; it stops when this goes. -->
 		<div class="text" {@attach () => loop('waiting')}>
-			<h1>Looking for an opponent</h1>
+			<h1 class="page-title">Looking for an opponent</h1>
 			<p>You'll be paired with the next player who taps Play online. Colors are picked at random.</p>
 			<p class="sr-only" aria-live="polite">{connected ? 'In the queue.' : 'Connecting…'}</p>
 		</div>
@@ -225,13 +227,8 @@
 		gap: 12px;
 	}
 	h1 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
 		font-size: clamp(40px, 7vw, 64px);
 		line-height: 1;
-		text-transform: uppercase;
 	}
 	.text p {
 		margin: 0;

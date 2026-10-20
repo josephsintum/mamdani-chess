@@ -68,7 +68,7 @@ func TestRestoreKeepsAFinishedGamesResult(t *testing.T) {
 	st := openStore(t)
 	h := NewHub(odd{}, st)
 	g, _, _ := seated(t, h)
-	openings(t, g)
+	plays(t, g, "e2e4", "e7e5")
 	if err := g.Resign("bob"); err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestRestoreShowsAFlagFallAsItWas(t *testing.T) {
 	}
 	for _, c := range cases {
 		h := NewHub(odd{}, nil)
-		code := "FLAG" + strings.ToUpper(c.reason[:2]) // real codes are upper case
+		const code = "FLAG01"
 		h.Restore([]store.SavedGame{{
 			Code: code, White: "a", Black: "b",
 			Turns:  turns,

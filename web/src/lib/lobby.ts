@@ -2,7 +2,7 @@
 // codes. The JSON types come from the server's Go types (wire.gen.ts).
 
 import type { Live, MeJSON } from './wire.gen.ts';
-import { jsonOf } from './api.ts';
+import { fetchJSON, jsonOf, jsonPost } from './api.ts';
 
 /** A game being played, as the home page lists it. */
 export type LiveGame = Live;
@@ -56,9 +56,7 @@ function remember(name: string | null) {
 }
 
 export async function me(): Promise<Me> {
-	const res = await fetch('/api/me');
-	if (!res.ok) throw new Error(`could not load your name (${res.status})`);
-	const m = (await res.json()) as Me;
+	const m = await fetchJSON<Me>('/api/me', 'load your name');
 	remember(m.name);
 	return m;
 }
@@ -77,11 +75,7 @@ export async function nameOffers(): Promise<Offers> {
 
 /** Changes the caller's name to one of their offers; returns the new state. */
 export async function chooseName(name: string): Promise<Me> {
-	const res = await fetch('/api/me/name', {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ name })
-	});
+	const res = await fetch('/api/me/name', jsonPost({ name }));
 	const body = await jsonOf<Me & { error: string }>(res);
 	if (!res.ok) throw new ApiError(body.error ?? `could not change your name (${res.status})`, res.status);
 	const m = body as Me;
@@ -95,11 +89,7 @@ export function untilText(resetAt: number, now: number): string {
 	return mins >= 60 ? `${Math.ceil(mins / 60)} h` : `${mins} min`;
 }
 
-export async function liveGames(): Promise<LiveGames> {
-	const res = await fetch('/api/games');
-	if (!res.ok) throw new Error(`could not load live games (${res.status})`);
-	return (await res.json()) as LiveGames;
-}
+export const liveGames = () => fetchJSON<LiveGames>('/api/games', 'load live games');
 
 /** Game codes use these characters: no lookalikes (0 O 1 I L). See game/dice.go. */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -126,24 +116,6 @@ export function initials(name: string): string {
 	if (words.length === 0) return '';
 	const first = words[0][0];
 	return (words.length > 1 ? first + words[words.length - 1][0] : first).toUpperCase();
-}
-
-/** A board from a FEN's piece placement ("rnbqkbnr/pppppppp/8/…"), index 0 = a1. */
-export function boardFromFen(placement: string): string[] {
-	const board = Array<string>(64).fill('');
-	placement.split('/').forEach((row, i) => {
-		let file = 0;
-		for (const ch of row) {
-			if (/\d/.test(ch)) {
-				file += Number(ch);
-				continue;
-			}
-			const color = ch === ch.toUpperCase() ? 'w' : 'b';
-			board[(7 - i) * 8 + file] = color + ch.toUpperCase();
-			file++;
-		}
-	});
-	return board;
 }
 
 /** Time spent waiting, counting up: "0:07", "1:30", "12:05". */

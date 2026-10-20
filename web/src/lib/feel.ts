@@ -1,6 +1,7 @@
 // How the board looks and moves: pure helpers for the board's frame and
 // effects (docs/superpowers/specs/2026-10-06-board-feel-design.md).
 
+import { squareAt } from './board.ts';
 import { distance } from './pieces.ts';
 
 const RANKS = ['8', '7', '6', '5', '4', '3', '2', '1'] as const;
@@ -13,9 +14,7 @@ export function coordinates(flipped: boolean): { ranks: readonly string[]; files
 
 /** The square at a column and row on screen, 0 to 7 from the top left: cellOf's inverse. */
 export function squareAtCell(col: number, row: number, flipped: boolean): string {
-	const file = flipped ? 7 - col : col;
-	const rank = flipped ? row : 7 - row;
-	return String.fromCharCode(97 + file) + (rank + 1);
+	return flipped ? squareAt(7 - col, row) : squareAt(col, 7 - row);
 }
 
 /** A dark square, by index (0 = a1, which is dark). */
@@ -37,7 +36,11 @@ function screenDelta(from: string, to: string, flipped: boolean): { dx: number; 
 	return { dx: b.col - a.col, dy: b.row - a.row };
 }
 
-/** A seeded random number generator (Lehmer), so a seeded effect is the same every time. */
+/**
+ * A seeded random number generator (Lehmer), so a seeded effect is the same
+ * every time. Not dice.ts's tumbleFaces generator: merging them would change
+ * every burst and confetti piece.
+ */
 function seeded(seed: number): () => number {
 	let s = seed;
 	return () => ((s = (s * 16807) % 2147483647) - 1) / 2147483646;

@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,14 +13,9 @@ import (
 // With the database gone, the prune, the counters, the backfill and the
 // restart count each log at ERROR and startup goes on.
 func TestPrepareStatsNeverStopsTheServer(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := openStore(t, filepath.Join(t.TempDir(), "test.db"))
 	st.Close()
-	var buf bytes.Buffer
-	defer slog.SetDefault(slog.Default())
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	buf := captureLog(t)
 	prepareStats(context.Background(), st, time.Now())
 	out := buf.String()
 	if strings.Count(out, "level=ERROR") != 4 || !strings.Contains(out, "old stats rows not pruned") || !strings.Contains(out, "restart not counted") ||
@@ -54,15 +47,9 @@ func savedWithoutStats(t *testing.T, st *store.Store, now time.Time) {
 // add to rebuilt counters instead of being thrown away by the rebuild. (A
 // second backfill finds nothing: store's TestGamesWithoutStatsAndBackfillRow.)
 func TestPrepareStatsRebuildsBeforeBackfilling(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	st := openStore(t, filepath.Join(t.TempDir(), "test.db"))
 	savedWithoutStats(t, st, time.Now())
-	var buf bytes.Buffer
-	defer slog.SetDefault(slog.Default())
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	buf := captureLog(t)
 	prepareStats(t.Context(), st, time.Now())
 	out := buf.String()
 	rebuilt, backfilled := strings.Index(out, "stats rebuilt"), strings.Index(out, "game stats backfilled")

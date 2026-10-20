@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-// A HEAD request runs a GET route's handler, and a stream's handler joins:
-// HEAD on a game's stream took Black's seat (seats are never given back),
-// and HEAD on /api/match put the guest in the quick-match line. A HEAD on
-// a stream now gets the stream's headers and joins nothing.
+// A HEAD on a stream gets its headers and joins nothing (see headSSE).
 func TestHeadOnAStreamJoinsNothing(t *testing.T) {
 	s, ts := newTestServer(t)
 	alice, bob, carol := newPlayer(t, ts), newPlayer(t, ts), newPlayer(t, ts)

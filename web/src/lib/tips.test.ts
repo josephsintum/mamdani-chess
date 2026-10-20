@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { viewOf } from './test-boards.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { memoryStorage, viewOf } from './test-boards.ts';
 import { markSeen, seenTips, setTipsOn, TIP_GAP, tipFor, tipsOn, type Tip } from './tips.ts';
 import type { EventJSON } from './game.ts';
 
@@ -35,12 +35,10 @@ describe('tipFor', () => {
 
 describe('tip storage', () => {
 	beforeEach(() => {
-		const items = new Map<string, string>();
-		vi.stubGlobal('localStorage', {
-			getItem: (k: string) => items.get(k) ?? null,
-			setItem: (k: string, v: string) => void items.set(k, v),
-			removeItem: (k: string) => void items.delete(k)
-		});
+		vi.stubGlobal('localStorage', memoryStorage());
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
 	});
 
 	it('remembers what was shown', () => {

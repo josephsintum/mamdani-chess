@@ -1,17 +1,16 @@
 <script lang="ts">
 	import Header from '#lib/Header.svelte';
-	import MiniBoard from '#lib/MiniBoard.svelte';
+	import MiniBoard, { heroBoard } from '#lib/MiniBoard.svelte';
+	import PageHead from '#lib/PageHead.svelte';
 	import SiteFooter from '#lib/SiteFooter.svelte';
-	import { boardFromFen } from '#lib/lobby.ts';
-	import { emptyView, freeMoves } from '#lib/sandbox.ts';
+	import { emptyView, freeMoves, startView } from '#lib/sandbox.ts';
 	import { HOLE_CAP, HOLE_ROUNDS } from '#lib/wire.gen.ts';
 
 	// The rules, as the live rules doc has them (RULES.md is its copy): short
 	// sections with a board each, then every rule in full for the edge cases.
 	// How-to-play shows each one played.
 
-	const start = boardFromFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR');
-	const midgame = boardFromFen('r1bqkb1r/1p3ppp/p1n1pn2/3N4/3P4/5N2/PP2PPPP/R1BQKB1R');
+	const start = startView().board;
 	const reachView = { ...emptyView(), mamdani: 'd4', potholes: [{ sq: 'f6', by: 'white' as const, left: 3 }] };
 	const reach = freeMoves(reachView, true).map((m) => m.to);
 
@@ -37,19 +36,15 @@
 	];
 </script>
 
-<svelte:head>
-	<title>Rules · Mamdani Chess</title>
-	<!-- Here, not from the server, so it goes when the app navigates on. -->
-	<link rel="canonical" href="https://mamdanichess.com/rules" />
-</svelte:head>
+<PageHead title="Rules · Mamdani Chess" path="/rules" />
 
 {#snippet played(scene: string)}
-	<a class="played" href="/how-to-play#{scene}">See it played →</a>
+	<a class="arrow-link" href="/how-to-play#{scene}">See it played →</a>
 {/snippet}
 
 <Header />
 
-<main>
+<main class="content">
 	<nav class="toc" aria-label="Rules sections">
 		<span class="toc-head">On this page</span>
 		{#each sections as s (s.id)}
@@ -59,17 +54,17 @@
 
 	<article>
 		<header class="intro">
-			<h1>The rules</h1>
+			<h1 class="page-title">The rules</h1>
 			<p class="lede">
 				Chess, with two additions. Potholes open at random and swallow pieces. The Mamdani, a neutral piece either
 				player can move, blocks lines and repairs potholes. Everything else is ordinary chess.
 			</p>
-			<a class="played" href="/how-to-play">New here? See how to play →</a>
+			<a class="arrow-link" href="/how-to-play">New here? See how to play →</a>
 		</header>
 
 		<section id="setup" class="with-figure">
 			<div class="text">
-				<h2>Setup</h2>
+				<h2 class="section-title">Setup</h2>
 				<p>
 					A normal chess position, plus the Mamdani on a5, a square that is empty at the start. White moves first. Each
 					player has 10 minutes, plus 5 seconds a move.
@@ -82,7 +77,7 @@
 		</section>
 
 		<section id="turn">
-			<h2>A turn</h2>
+			<h2 class="section-title">A turn</h2>
 			<p>Every turn is one move, then one pothole roll:</p>
 			<ol class="steps">
 				{#each steps as step, i (i)}
@@ -95,7 +90,7 @@
 
 		<section id="potholes" class="with-figure">
 			<div class="text">
-				<h2>Potholes</h2>
+				<h2 class="section-title">Potholes</h2>
 				<ul>
 					<li>Whatever stands on the square falls in and is lost, unless a saving roll saves it.</li>
 					<li>Kings never fall. If the dice land on a king, they roll again.</li>
@@ -112,7 +107,7 @@
 			</div>
 			<figure>
 				<MiniBoard
-					board={midgame}
+					board={heroBoard}
 					mamdani="a5"
 					potholes={[{ sq: 'f4', by: 'white', left: 2 }]}
 					target="d5"
@@ -125,7 +120,7 @@
 
 		<section id="mamdani" class="with-figure">
 			<div class="text">
-				<h2>The Mamdani</h2>
+				<h2 class="section-title">The Mamdani</h2>
 				<ul>
 					<li>
 						It belongs to neither player. It moves like a queen, onto empty squares only, and can't jump pieces or
@@ -153,7 +148,7 @@
 		</section>
 
 		<section id="saving">
-			<h2>Saving rolls</h2>
+			<h2 class="section-title">Saving rolls</h2>
 			<p>A saving roll is one d8. Odd saves the piece, and the pothole never opens.</p>
 			<div class="table-wrap">
 				<table>
@@ -189,7 +184,7 @@
 		</section>
 
 		<section id="winning">
-			<h2>Winning and draws</h2>
+			<h2 class="section-title">Winning and draws</h2>
 			<ul>
 				<li>Checkmate wins. So does your opponent running out of time, or resigning.</li>
 				<li>
@@ -203,8 +198,8 @@
 		</section>
 
 		<section id="full">
-			<details>
-				<summary><h2>Every rule, in full</h2></summary>
+			<details class="disclosure">
+				<summary><h2 class="section-title">Every rule, in full</h2></summary>
 				<div class="full">
 					<h3>When the dice land on a square</h3>
 					<ul>
@@ -283,9 +278,6 @@
 		grid-template-columns: 200px minmax(0, 1fr);
 		gap: 64px;
 		align-items: start;
-		max-width: 1120px;
-		margin: 0 auto;
-		padding: 56px 32px 0;
 	}
 	.toc {
 		position: sticky;
@@ -329,27 +321,13 @@
 		flex-direction: column;
 		gap: 16px;
 	}
-	h1 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: clamp(56px, 9vw, 80px);
-		line-height: 0.92;
-		text-transform: uppercase;
-	}
 	.lede {
 		margin: 0;
 		font-size: 19px;
 		line-height: 1.55;
 	}
 	h2 {
-		margin: 0;
-		color: var(--text);
-		font-family: var(--font-display);
-		font-weight: 800;
 		font-size: 40px;
-		text-transform: uppercase;
 	}
 	h3 {
 		margin: 8px 0 0;
@@ -374,18 +352,6 @@
 	.note {
 		color: var(--text-muted);
 		font-size: 15px;
-	}
-	.played {
-		align-self: flex-start;
-		padding: 10px 0;
-		margin: -10px 0;
-		color: var(--accent);
-		font-weight: 600;
-		text-decoration: none;
-	}
-	.played:hover {
-		text-decoration: underline;
-		text-underline-offset: 3px;
 	}
 	.with-figure {
 		display: grid;
@@ -474,25 +440,10 @@
 		background: var(--surface);
 	}
 	summary {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
 		padding: 18px 20px;
-		cursor: pointer;
-		list-style: none;
-	}
-	summary::-webkit-details-marker {
-		display: none;
 	}
 	summary::after {
-		content: '+';
-		color: var(--accent);
-		font-family: var(--font-mono);
 		font-size: 24px;
-	}
-	details[open] summary::after {
-		content: '−';
 	}
 	summary h2 {
 		font-size: 28px;
@@ -512,7 +463,6 @@
 		main {
 			grid-template-columns: minmax(0, 1fr);
 			gap: 32px;
-			padding: 32px 16px 0;
 		}
 		.toc {
 			position: static;

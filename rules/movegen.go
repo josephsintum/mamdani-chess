@@ -193,7 +193,7 @@ func (p *Position) castlingMoves(moves []Move, k Square, blocked Bitboard) []Mov
 	if c == Black {
 		home, ks, qs = E8, BlackKingside, BlackQueenside
 	}
-	if k != home || p.Castling&(ks|qs) == 0 || p.attackedWith(k, them, blocked) {
+	if k != home || p.Castling&(ks|qs) == 0 || p.attacked(k, them, blocked) {
 		return moves
 	}
 	rook := NewPiece(c, Rook)
@@ -201,11 +201,11 @@ func (p *Position) castlingMoves(moves []Move, k Square, blocked Bitboard) []Mov
 	// Mamdani and potholes; the king may not pass through or land on an
 	// attacked square.
 	if p.Castling&ks != 0 && p.Board[k+3] == rook && blocked&(bit(k+1)|bit(k+2)) == 0 &&
-		!p.attackedWith(k+1, them, blocked) && !p.attackedWith(k+2, them, blocked) {
+		!p.attacked(k+1, them, blocked) && !p.attacked(k+2, them, blocked) {
 		moves = append(moves, Move{From: k, To: k + 2})
 	}
 	if p.Castling&qs != 0 && p.Board[k-4] == rook && blocked&(bit(k-1)|bit(k-2)|bit(k-3)) == 0 &&
-		!p.attackedWith(k-1, them, blocked) && !p.attackedWith(k-2, them, blocked) {
+		!p.attacked(k-1, them, blocked) && !p.attacked(k-2, them, blocked) {
 		moves = append(moves, Move{From: k, To: k - 2})
 	}
 	return moves

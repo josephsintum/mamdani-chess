@@ -111,9 +111,6 @@ func TestPracticeOwnerIsNotWatching(t *testing.T) {
 	g := h.CreatePractice("alice")
 	join(t, g, "alice")
 	join(t, g, "bob")
-	if err := g.do(func() {}); err != nil { // the joins have been handled
-		t.Fatal(err)
-	}
 	if got := g.live.Load().Watching; got != 1 {
 		t.Errorf("Watching = %d with the owner and one onlooker, want 1", got)
 	}

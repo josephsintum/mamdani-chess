@@ -6,7 +6,9 @@
 	import { BLINK_MS, scanFrames, SCAN_MS, type DicePill, type Scan } from './dice.ts';
 	import { exitMs, reducedMotion } from './motion.ts';
 	import { untrack } from 'svelte';
-	import { moveDuration, reconcile, type PieceRef } from './pieces.ts';
+	import { moveDuration, pieceSrc, reconcile, type PieceRef } from './pieces.ts';
+	import CornerPill from './CornerPill.svelte';
+	import PromotePicker from './PromotePicker.svelte';
 
 	let {
 		stage,
@@ -59,13 +61,6 @@
 		/** A tap on a piece that can't move now (the other side's, one with no moves, or any while the opponent plays): it shakes "no". */
 		onrefuse?: (sq: string) => void;
 	} = $props();
-
-	const promoOptions = [
-		{ promo: 'q', kind: 'Q', name: 'Queen' },
-		{ promo: 'r', kind: 'R', name: 'Rook' },
-		{ promo: 'b', kind: 'B', name: 'Bishop' },
-		{ promo: 'n', kind: 'N', name: 'Knight' }
-	];
 
 	let selected = $state<string | null>(null);
 	let promoting = $state.raw<{ from: string; to: string } | null>(null);
@@ -202,7 +197,6 @@
 		{ transform: 'translateY(0) scale(1)' }
 	];
 
-	/** Column and row on screen for a square, 0..7 from the top left. */
 	function cell(sq: string): { col: number; row: number } {
 		return cellOf(sq, flipped);
 	}
@@ -348,16 +342,6 @@
 		onmove({ from, to, promo });
 	}
 
-	function promoKey(e: KeyboardEvent) {
-		if (e.key === 'Escape') promoting = null;
-	}
-
-	// Focus the first choice when the picker opens, so Escape and the arrow
-	// keys work at once, without tabbing in.
-	function focusFirst(node: HTMLElement) {
-		node.querySelector('button')?.focus();
-	}
-
 	// Transitions. Each one collapses to nothing under reduced motion.
 	const ms = (n: number) => (reducedMotion() ? 0 : n);
 
@@ -452,8 +436,7 @@
 	/**
 	 * A pothole closes on its schedule, or the cap closes it. A repaired one
 	 * hides at once: the celebration draws its own hole shrinking under the
-	 * cone. (1 ms, not 0: with Svelte 5.57, a turn whose leaving holes mixed a
-	 * 0 ms exit with a timed one left them all on the board.)
+	 * cone. (1 ms, not 0: see exitMs in motion.ts.)
 	 */
 	function closeUp(_node: Element, { sq }: { sq: string }) {
 		if (repairedSquares.has(sq)) return { duration: ms(1), css: () => 'opacity: 0' };
@@ -503,25 +486,20 @@
 	function scanner(node: HTMLElement) {
 		const s = untrack(() => scan);
 		if (!s) return;
-		const timers = scanFrames(s.sq, s.seed).map((f) =>
-			setTimeout(() => {
-				node.style.cssText = place(f.sq);
-				lit = f.sq;
-			}, f.at)
-		);
-		timers.push(
-			setTimeout(() => (landed = s.key), SCAN_MS)
-		);
-		timers.push(setTimeout(() => (lit = ''), SCAN_MS + 700));
+		const timers = [
+			...scanFrames(s.sq, s.seed).map((f) =>
+				setTimeout(() => {
+					node.style.cssText = place(f.sq);
+					lit = f.sq;
+				}, f.at)
+			),
+			setTimeout(() => (landed = s.key), SCAN_MS),
+			setTimeout(() => (lit = ''), SCAN_MS + 700)
+		];
 		return () => {
 			timers.forEach(clearTimeout);
 			lit = '';
 		};
-	}
-
-	/** How long the turn's last pill stays: an odd roll's briefly, a square or a saving roll's a little longer. */
-	function pillHold(p: DicePill): number {
-		return p.tone === 'odd' && !p.then ? 600 : (p.then?.at ?? 0) + 1400;
 	}
 </script>
 
@@ -535,7 +513,7 @@
      label column and row are the same size, so the frame stays square. -->
 <div class="frame" class:dim {@attach (node) => void (frameEl = node)}>
 <div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span class:on={lit[1] === r}>{r}</span>{/each}</div>
-<div class="board" class:dim class:late={!!freshMate} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms; --blink: {BLINK_MS}ms" {@attach dragArea}>
+<div class="board" class:late={!!freshMate} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms; --blink: {BLINK_MS}ms" {@attach dragArea}>
 	{#each order as sq (sq)}
 		{@const name = label(sq)}
 		<button
@@ -615,11 +593,7 @@
 				<span class="ring" out:ringOut={{ fell: stage.target === p.sq }}></span>
 				<span class="dust" out:puff={{ fell: stage.target === p.sq }}>{#each DUST as a (a)}<i style="--a: {a}deg"></i>{/each}</span>
 				<span class="piece" out:leave={{ fell: stage.target === p.sq, code: p.code }} {@attach motion(p)}>
-					{#if p.code === 'M'}
-						<img class="mamdani" src="/mamdani/piece.webp" alt="" draggable="false" />
-					{:else}
-						<img src="/pieces/{p.code}.svg" alt="" draggable="false" />
-					{/if}
+					<img class:mamdani={p.code === 'M'} src={pieceSrc(p.code)} alt="" draggable="false" />
 				</span>
 			</span>
 		{/each}
@@ -683,27 +657,13 @@
 		{/if}
 	</div>
 
-	{#if pill}
-		{#key pill.key}
-			<span class="pills" class:last={pill.last} style="--at: {pill.at ?? 0}ms; --hold: {(pill.at ?? 0) + pillHold(pill)}ms; --then: {pill.then?.at ?? 0}ms" aria-hidden="true">
-				<span class="pill {pill.tone}" class:swap={!!pill.then}>{pill.text}</span>
-				{#if pill.then}<span class="pill {pill.then.tone} next">{pill.then.text}</span>{/if}
-			</span>
-		{/key}
-	{/if}
+	{#if pill}<CornerPill {pill} />{/if}
 
 	<!-- Screen readers hear the bubble's line; the bubble itself is drawn above. -->
 	<p class="sr-only" aria-live="polite">{quip ? spoken(quip.line) : ''}</p>
 
 	{#if pending}
-		<div class="promote" role="dialog" aria-label="Promote to" tabindex="-1" onkeydown={promoKey} {@attach focusFirst}>
-			{#each promoOptions as option (option.promo)}
-				<button aria-label={option.name} onclick={() => promote(option.promo)}>
-					<img src="/pieces/{pieceOn(stage, pending.from)[0]}{option.kind}.svg" alt="" draggable="false" />
-				</button>
-			{/each}
-			<button class="cancel" onclick={() => (promoting = null)}>Cancel</button>
-		</div>
+		<PromotePicker color={pieceOn(stage, pending.from)[0]} onpick={promote} oncancel={() => (promoting = null)} />
 	{/if}
 </div>
 <div class="files" aria-hidden="true">{#each labels.files as f (f)}<span class:on={lit.startsWith(f)}>{f}</span>{/each}</div>
@@ -744,6 +704,12 @@
 	.frame.dim .files {
 		opacity: 0.55;
 	}
+	/* The dice on the board: the coordinates the file and rank dice point to glow. */
+	.ranks span.on,
+	.files span.on {
+		color: var(--hazard);
+		font-weight: 700;
+	}
 	/* On a phone the board is as big as fits, so the labels go compact: the
 	   frame then costs the board 14 px each way. */
 	@media (max-width: 640px) {
@@ -775,9 +741,6 @@
 		touch-action: none;
 		user-select: none;
 		-webkit-touch-callout: none;
-		/* A piece's crisp outline: its own shape offset 2 px four ways, no blur. */
-		--outline-filter: drop-shadow(2px 0 0 var(--piece-outline)) drop-shadow(-2px 0 0 var(--piece-outline))
-			drop-shadow(0 2px 0 var(--piece-outline)) drop-shadow(0 -2px 0 var(--piece-outline));
 	}
 	/* Game over: a shade darkens the squares and pieces (as a filter of
 	   saturate 0.6 and brightness 0.55 did), under the celebrate layer. */
@@ -792,14 +755,14 @@
 		pointer-events: none;
 		transition: opacity 0.4s ease;
 	}
-	.board.dim .shade {
+	.frame.dim .shade {
 		opacity: 1;
 	}
 	.celebrate {
 		z-index: 6;
 	}
 	/* A checkmate burst plays first, then the board dims. */
-	.board.dim.late .shade {
+	.frame.dim .late .shade {
 		transition-delay: var(--burst-hold);
 	}
 	.square {
@@ -972,11 +935,10 @@
 	.piece img {
 		width: 90%;
 		height: 90%;
-		filter: var(--outline-filter);
+		filter: var(--piece-outline-2);
 	}
 	.piece .mamdani {
 		filter: none; /* its yellow border is its outline */
-		box-sizing: border-box;
 		width: 74%;
 		height: auto;
 		aspect-ratio: 1;
@@ -1034,35 +996,6 @@
 		border-radius: 6px;
 	}
 
-	.promote {
-		position: absolute;
-		inset: 32% 8%;
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 8px;
-		padding: 8px;
-		background: var(--surface);
-		border: 2px solid var(--accent);
-		border-radius: 10px;
-		z-index: 7; /* above the shade and the celebrate layer */
-	}
-	.promote button {
-		min-height: 44px;
-		border: 0;
-		border-radius: 6px;
-		background: var(--surface-2);
-		cursor: pointer;
-	}
-	.promote img {
-		width: 80%;
-		height: 80%;
-		filter: var(--outline-filter);
-	}
-	.promote .cancel {
-		grid-column: 1 / -1;
-		color: var(--text);
-		font: inherit;
-	}
 	/* The Mamdani's repair: a cone drops on the hole, the hole shrinks under
 	   it, the cone lifts, sparks burst and the Mamdani gives a thumbs up.
 	   About 1.3 s after --delay; it never holds up the turn. */
@@ -1162,27 +1095,16 @@
 			opacity: 1;
 		}
 		100% {
-			transform: rotate(var(--a)) translateY(-300%) scale(1);
+			transform: rotate(var(--a)) translateY(var(--reach, -300%)) var(--end, scale(1));
 			opacity: 0;
 		}
 	}
+	/* Every other spark flies further, spinning. */
 	.spark.far {
+		--reach: -360%;
+		--end: scale(1.1) rotate(45deg);
 		width: 28%;
-		animation-name: spark-far;
 		animation-duration: 0.6s;
-	}
-	@keyframes spark-far {
-		0% {
-			transform: rotate(var(--a)) translateY(0) scale(0.4);
-			opacity: 1;
-		}
-		70% {
-			opacity: 1;
-		}
-		100% {
-			transform: rotate(var(--a)) translateY(-360%) scale(1.1) rotate(45deg);
-			opacity: 0;
-		}
 	}
 	.thumb {
 		font-size: 66cqh;
@@ -1294,14 +1216,12 @@
 		border: 3px solid var(--hazard);
 		border-radius: 50%;
 		opacity: 0;
-		pointer-events: none;
 	}
 	/* A fall: dust puffing off the hole's rim (--p runs 0 to 1). */
 	.dust {
 		position: absolute;
 		inset: 0;
 		opacity: 0;
-		pointer-events: none;
 	}
 	.dust i {
 		position: absolute;
@@ -1528,14 +1448,9 @@
 		}
 	}
 
-	/* The dice on the board: the scan square follows the file and rank dice,
-	   the matching coordinates glow, the target blinks on a re-roll, and a
-	   pill in the corner says what the roll means. */
-	.ranks span.on,
-	.files span.on {
-		color: var(--hazard);
-		font-weight: 700;
-	}
+	/* The dice on the board: the scan square follows the file and rank dice
+	   (their coordinates glow, above), the target blinks on a re-roll, and
+	   a pill in the corner (CornerPill) says what the roll means. */
 	.scan {
 		background: var(--hazard);
 		box-shadow: 0 0 18px 4px color-mix(in srgb, var(--hazard) 60%, transparent);
@@ -1553,79 +1468,8 @@
 			opacity: 0.15;
 		}
 	}
-	.pills {
-		position: absolute;
-		top: 6px;
-		right: 6px;
-		z-index: 7;
-		display: grid;
-		justify-items: end;
-		pointer-events: none;
-		animation: pill-in 0.16s ease-out var(--at) both;
-	}
-	.pills.last {
-		animation:
-			pill-in 0.16s ease-out var(--at) both,
-			pill-out 0.22s ease-in var(--hold) forwards;
-	}
-	.pill {
-		grid-area: 1 / 1;
-		padding: 5px 9px;
-		border-radius: 999px;
-		font: 600 12px/1 var(--font-mono);
-		white-space: nowrap;
-		background: var(--surface);
-		color: var(--text);
-		box-shadow: 0 0 0 1px var(--line);
-	}
-	.pill.pot {
-		background: var(--accent);
-		color: var(--accent-text);
-		box-shadow: none;
-	}
-	.pill.where {
-		background: var(--hazard);
-		color: var(--accent-text);
-		box-shadow: none;
-	}
-	.pill.save {
-		background: var(--piece-light);
-		color: var(--piece-dark);
-		box-shadow: none;
-	}
-	.pill.swap {
-		animation: pill-out 0.15s ease-in var(--then) forwards;
-	}
-	.pill.next {
-		opacity: 0;
-		animation: pill-in 0.18s ease-out var(--then) forwards;
-	}
-	@keyframes pill-in {
-		from {
-			opacity: 0;
-			transform: scale(0.8);
-		}
-		to {
-			opacity: 1;
-		}
-	}
-	@keyframes pill-out {
-		to {
-			opacity: 0;
-		}
-	}
-	/* Reduced motion: no scan; the pill shows what the dice decided, then goes. */
+	/* Reduced motion: no scan (see the template), and no blink. */
 	@media (prefers-reduced-motion: reduce) {
-		.pills,
-		.pill.next {
-			animation: pill-in 1ms linear both;
-		}
-		.pill.swap {
-			animation: pill-out 1ms linear forwards;
-		}
-		.pills.last {
-			animation: pill-out 1ms linear var(--hold) forwards;
-		}
 		.target.blink {
 			animation: none;
 		}

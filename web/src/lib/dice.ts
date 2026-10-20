@@ -29,11 +29,32 @@ export function firstDiceStep(last: readonly EventJSON[]): number {
 	return i < 0 ? last.length : i;
 }
 
+/**
+ * Whether event `i` of a turn comes with its dice rather than its move.
+ * Before the roll a pothole_closed is a hole's own rounds running out and a
+ * repaired is the Mamdani's move; with the roll, a pothole_closed is the
+ * cap's and a repaired is the dice landing beside the Mamdani.
+ */
+export function withRoll(last: readonly EventJSON[], i: number): boolean {
+	return i > firstDiceStep(last);
+}
+
+/** Whether a pothole roll came up odd: no pothole. */
+export const oddRoll = (e: EventJSON) => (e.roll ?? 1) % 2 === 1;
+
+/** When a step's outcome can show, in ms: once its dice have landed. */
+export function landsAt(e: EventJSON): number | undefined {
+	if (e.kind === 'rolled_pothole') return THROW_MS;
+	if (e.kind === 'target') return SCAN_MS;
+	if (e.kind === 'saving_roll') return SAVE_MS;
+	return undefined;
+}
+
 const PLAY: Readonly<Record<string, number>> = TIMING.playMs;
 
 /** How long the browser plays one dice step, from the shared table. */
 export function playMs(e: EventJSON): number {
-	if (e.kind === 'rolled_pothole') return (e.roll ?? 1) % 2 === 1 ? PLAY.rolled_pothole_odd : PLAY.rolled_pothole_even;
+	if (e.kind === 'rolled_pothole') return oddRoll(e) ? PLAY.rolled_pothole_odd : PLAY.rolled_pothole_even;
 	return PLAY[e.kind] ?? PLAY.other;
 }
 
@@ -52,7 +73,8 @@ type Frame = { at: number; face: number };
 
 /**
  * A die's faces from `seed`: random faces that flick fast, then slower, and
- * never show `final` until the last frame, at `ms`.
+ * never show `final` until the last frame, at `ms`. Its generator differs
+ * from feel.ts's `seeded` on purpose: sharing one would change every face.
  */
 export function tumbleFaces(final: number, ms: number, seed: number): Frame[] {
 	let s = (seed * 9301 + 49297) % 233280 || 1;
@@ -138,14 +160,14 @@ function pillAt(view: View, i: number): Omit<DicePill, 'last'> | null {
 	const key = `${view.seq}:${i}`;
 	switch (e.kind) {
 		case 'rolled_pothole':
-			return (e.roll ?? 1) % 2 === 1
+			return oddRoll(e)
 				? { key, text: `d8 ${e.roll} · no pothole`, tone: 'odd', at: THROW_MS }
 				: { key, text: `d8 ${e.roll} · pothole`, tone: 'pot', at: THROW_MS };
 		case 'target': {
 			// Straight after the roll, the roll's pill stays (same key) and turns
 			// into the square; after a re-roll it is a new pill.
 			const sameKey = view.last[i - 1]?.kind === 'rolled_pothole' ? `${view.seq}:${i - 1}` : key;
-			const roll = view.last.find((x) => x.kind === 'rolled_pothole')?.roll ?? 0;
+			const roll = view.last[firstDiceStep(view.last)]?.roll ?? 0;
 			return { key: sameKey, text: `d8 ${roll} · pothole`, tone: 'pot', then: { text: e.sq ?? '', tone: 'where', at: SCAN_MS } };
 		}
 		case 'reroll':
@@ -194,7 +216,7 @@ export function stepDice(view: View, i: number): DieSpec[] {
 	const seed = diceSeed(view.seq, i);
 	switch (e.kind) {
 		case 'rolled_pothole':
-			return [{ value: e.roll ?? 0, tone: (e.roll ?? 1) % 2 === 1 ? 'dull' : 'pot', delay: 0, ms: THROW_MS, seed }];
+			return [{ value: e.roll ?? 0, tone: oddRoll(e) ? 'dull' : 'pot', delay: 0, ms: THROW_MS, seed }];
 		case 'target':
 			return targetDice(e.sq ?? 'a1', seed);
 		case 'saving_roll':

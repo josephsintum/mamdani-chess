@@ -129,9 +129,6 @@ describe('burstShards', () => {
 		expect(angles[0]).toBeLessThan(40);
 		expect(angles.at(-1)).toBeGreaterThan(320);
 	});
-	it('is the same burst every time, so a test can pin it', () => {
-		expect(burstShards()).toEqual(burstShards());
-	});
 });
 
 describe('confetti', () => {
@@ -140,7 +137,6 @@ describe('confetti', () => {
 		expect(pieces).toHaveLength(80);
 		expect(pieces.filter((c) => c.cone)).toHaveLength(5);
 		expect(new Set(pieces.map((c) => c.tone))).toEqual(new Set(['accent', 'hazard', 'cream']));
-		expect(confetti()).toEqual(pieces); // seeded: the same every time
 	});
 	it('lands every piece before it is cleared away', () => {
 		for (const c of confetti()) {

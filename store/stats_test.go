@@ -3,17 +3,7 @@ package store
 import (
 	"reflect"
 	"testing"
-	"time"
 )
-
-var newYork = must1(time.LoadLocation("America/New_York"))
-
-func must1[T any](v T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-	return v
-}
 
 func TestDaysFrom(t *testing.T) {
 	for _, c := range []struct {

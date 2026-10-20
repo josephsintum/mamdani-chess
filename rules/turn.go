@@ -20,11 +20,11 @@ var ErrBadDie = errors.New("die roll outside 1..8")
 const maxRerolls = 64
 
 // Apply plays one full turn: move, countdown, repair, pothole roll,
-// placement and resolution (or the reset of a hole already there). It returns the new position and what happened,
-// in order. A move that checkmates ends the game at once: no pothole roll
-// follows, so the dice can't undo a mate made on the board. The roll itself
-// may leave the next player mated; the game sees that like any other mate.
-// p is not modified.
+// placement and resolution (or the reset of a hole already there). It
+// returns the new position and what happened, in order. A move that
+// checkmates ends the game at once: no pothole roll follows, so the dice
+// can't undo a mate made on the board. The roll itself may leave the next
+// player mated; the game sees that like any other mate. p is not modified.
 func Apply(p Position, m Move, dice Dice) (Position, []Event, error) {
 	if !p.isLegal(m) {
 		return p, nil, ErrIllegalMove
@@ -94,45 +94,40 @@ func (p *Position) rollPothole(mover Color, dice Dice, ev *[]Event) {
 		file, rank := dice.D8(), dice.D8()
 		s := Square((rank-1)*8 + file - 1)
 		emit(ev, Event{Kind: Target, Square: s})
-		if p.IsPothole(s) {
+		switch {
+		case p.IsPothole(s):
 			p.resetHole(s, mover, ev)
-			return
-		}
-		if reason := p.rerollReason(s, mover); reason != "" {
-			emit(ev, Event{Kind: Reroll, Square: s, Reason: reason})
+		case p.Board[s].Kind() == King:
+			emit(ev, Event{Kind: Reroll, Square: s, Reason: ReasonKing})
 			continue
+		case p.nextToMamdani(s):
+			// Repaired the moment it opens; nothing changes.
+			emit(ev, Event{Kind: Repaired, Square: s})
+		case p.exposes(s, mover):
+			emit(ev, Event{Kind: Reroll, Square: s, Reason: ReasonExposes})
+			continue
+		default:
+			p.resolve(s, mover, dice, ev)
 		}
-		p.resolve(s, mover, dice, ev)
 		return
 	}
 	emit(ev, Event{Kind: NoPothole})
 }
 
-// rerollReason returns why the placement dice must be rolled again for s,
-// or "" if s is a valid target.
-func (p *Position) rerollReason(s Square, mover Color) RerollReason {
-	if p.Board[s].Kind() == King {
-		return ReasonKing
-	}
-	if p.nextToMamdani(s) {
-		return "" // repaired the moment it opens; nothing changes
-	}
-	// Would the fall leave the roller in check once the hole is gone?
-	// While open, the hole blocks the same lines the piece did, so the test
-	// is made without it: the roller must not inherit an unanswerable check
-	// when their own pothole closes. With HoleCap open, the oldest hole
-	// closes as this one opens, and it may be the one shielding the
-	// roller's king: then the roller would be in check on the other
-	// player's turn, so that is tested too.
+// exposes reports whether a fall on s would leave mover in check once the
+// hole is gone. While open, the hole blocks the same lines the piece did,
+// so the test is made without it: the roller must not inherit an
+// unanswerable check when their own pothole closes. With HoleCap open, the
+// oldest hole closes as this one opens, and it may be the one shielding
+// the roller's king: then the roller would be in check on the other
+// player's turn, so that is tested too.
+func (p *Position) exposes(s Square, mover Color) bool {
 	gone := *p
 	gone.remove(s)
 	if i := gone.capVictim(); i >= 0 {
 		gone.Potholes[i].Sq = NoSquare
 	}
-	if gone.InCheck(mover) {
-		return ReasonExposes
-	}
-	return ""
+	return gone.InCheck(mover)
 }
 
 // nextToMamdani reports whether s touches the Mamdani, diagonals included.
@@ -149,11 +144,9 @@ func (p *Position) remove(s Square) {
 	p.take(s)
 }
 
+// resolve opens a pothole on s, after whatever stands there falls or is
+// saved by its saving roll.
 func (p *Position) resolve(s Square, mover Color, dice Dice, ev *[]Event) {
-	if p.nextToMamdani(s) {
-		emit(ev, Event{Kind: Repaired, Square: s})
-		return
-	}
 	switch {
 	case s == p.Mamdani:
 		// The Mamdani always gets a saving roll, made by the roller.

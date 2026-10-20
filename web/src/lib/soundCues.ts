@@ -2,7 +2,7 @@
 // audio; the pages hand the result to sound.ts.
 
 import { fallsWith } from './board.ts';
-import { firstDiceStep, SAVE_MS } from './dice.ts';
+import { SAVE_MS, withRoll } from './dice.ts';
 import { BURST_HOLD_MS, TEETER_MS } from './feel.ts';
 import type { Color, EventJSON, MoveJSON, View } from './game.ts';
 import { reducedMotion } from './motion.ts';
@@ -19,25 +19,17 @@ const THROWS: Readonly<Record<string, Sound>> = { rolled_pothole: 'die', saving_
 
 /**
  * The sounds for a turn's events [from, to), just revealed, in order.
- * `skipMove` skips the move itself (and its capture) when it already
- * sounded as the player made it. Each throw rattles: one die for the
- * pothole roll and a saving roll, two for the file and rank dice. A
- * re-roll buzzes as its target blinks, and a saved piece chimes as its die
- * lands and it hops out. A new
- * pothole cracks open, and one that closes on its own, its rounds run out,
- * hisses (once, however many close together); one the cap pushes out
- * closes quietly. A piece falling in cracks its hole open (the hole opens
- * in the fall's step, before the server's pothole_opened) and explodes as
- * it drops, after its teeter; the Mamdani gets only the crowd's gasp. A repair sounds with its celebration: once the Mamdani has
- * arrived when its move fixed the hole, or at once when the dice land
- * beside it.
+ * `skipMove`: the move (and its capture) already sounded as the player made
+ * it. A saved piece chimes as its die lands. Holes closing on their own hiss
+ * once per turn; the cap's close is silent. A fall cracks its hole open at
+ * once (the hole opens in the fall's step, before the server's
+ * pothole_opened) and lands after its teeter; the Mamdani gets only the
+ * crowd's gasp. A repair by the Mamdani's move waits for its glide.
  */
 export function revealCues(last: readonly EventJSON[], { from = 0, to = last.length, skipMove = false } = {}): Cue[] {
 	const cues: Cue[] = [];
 	// With reduced motion a piece drops at once, without its teeter.
 	const teeter = reducedMotion() ? 0 : TEETER_MS;
-	// Holes close on their own before the roll; during it, only the cap closes one.
-	const roll = firstDiceStep(last);
 	let hissed = false;
 	// A resignation or a timeout mid-roll empties last while the roll's timer
 	// still reveals one more step.
@@ -49,16 +41,15 @@ export function revealCues(last: readonly EventJSON[], { from = 0, to = last.len
 		if (e.kind === 'reroll') cues.push({ sound: 'reroll', delayMs: 0 });
 		if (e.kind === 'saving_roll' && e.saved) cues.push({ sound: 'saved', delayMs: SAVE_MS });
 		if (e.kind === 'pothole_opened' && fallsWith(last, i) === Infinity) cues.push({ sound: 'pothole', delayMs: 0 });
-		if (e.kind === 'pothole_closed' && i < roll && !hissed) {
+		if (e.kind === 'pothole_closed' && !withRoll(last, i) && !hissed) {
 			hissed = true;
 			cues.push({ sound: 'closed', delayMs: 0 });
 		}
-		if (e.kind === 'repaired') cues.push({ sound: 'repair', delayMs: i < roll ? mamdaniGlide(last.slice(0, i)) : 0 });
+		if (e.kind === 'repaired') cues.push({ sound: 'repair', delayMs: withRoll(last, i) ? 0 : mamdaniGlide(last.slice(0, i)) });
 		if (e.kind === 'fell') {
-			const hole = holeWithFall(last, i);
 			if (e.piece === 'M') cues.push({ sound: 'mamdani-fell', delayMs: teeter });
 			else {
-				if (hole >= 0) cues.push({ sound: 'pothole', delayMs: 0 });
+				if (opensWithFall(last, i)) cues.push({ sound: 'pothole', delayMs: 0 });
 				cues.push({ sound: 'fell', delayMs: teeter });
 			}
 		}
@@ -66,12 +57,11 @@ export function revealCues(last: readonly EventJSON[], { from = 0, to = last.len
 	return cues;
 }
 
-// The index of the hole the fall at i opens in the same step, or -1
-// (board.ts, stageAt).
-function holeWithFall(last: readonly EventJSON[], i: number): number {
+// Whether the fall at i opens its hole in the same step (board.ts, stageAt).
+function opensWithFall(last: readonly EventJSON[], i: number): boolean {
 	let j = i + 1;
 	while (last[j]?.kind === 'pothole_closed') j++;
-	return last[j]?.kind === 'pothole_opened' && fallsWith(last, j) === i ? j : -1;
+	return last[j]?.kind === 'pothole_opened' && fallsWith(last, j) === i;
 }
 
 // How long the Mamdani glides if one of these events moved it: Board waits

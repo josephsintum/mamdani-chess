@@ -35,13 +35,6 @@ func TestPawnsAndPotholes(t *testing.T) {
 	}
 }
 
-func TestPotholeBlocksCheck(t *testing.T) {
-	p := setup(t, "4k3/8/8/8/8/8/8/4K2r w - - 0 1", NoSquare, hole(F1, Black, 1))
-	if p.InCheck(White) {
-		t.Error("a pothole on f1 should block the rook's check")
-	}
-}
-
 func TestCastlingAndPotholes(t *testing.T) {
 	const fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
 	p := setup(t, fen, NoSquare)

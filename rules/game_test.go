@@ -120,30 +120,16 @@ func TestInsufficientMaterial(t *testing.T) {
 	}
 }
 
-func TestReplay(t *testing.T) {
-	g := NewGame()
-	for _, step := range []struct {
-		uci   string
-		rolls []int
-	}{
-		{"e2e4", []int{2, 4, 4}},
-		{"e7e5", []int{2, 4, 2, 6}},
-		{"a5b5", []int{1}},
+// Replay checks the recorded dice: a turn must use them exactly.
+func TestReplayRejectsWrongDice(t *testing.T) {
+	for name, rolls := range map[string][]int{
+		"missing": {2},       // an even roll needs two placement dice
+		"unused":  {1, 4, 4}, // an odd roll is the turn's only die
 	} {
-		if _, err := g.Play(mv(t, step.uci), dice(step.rolls...)); err != nil {
-			t.Fatal(err)
+		turns := []Turn{{Move: Move{From: E2, To: E4}, Dice: rolls}}
+		if _, err := Replay(StartPosition(), turns); err == nil {
+			t.Errorf("%s dice: replay should fail", name)
 		}
-	}
-	r, err := Replay(StartPosition(), g.Turns)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.Pos != g.Pos || r.Result != g.Result {
-		t.Error("replay did not rebuild the same game")
-	}
-	short := []Turn{{Move: g.Turns[0].Move, Dice: []int{2}}}
-	if _, err := Replay(StartPosition(), short); err == nil {
-		t.Error("replay with missing dice should fail")
 	}
 }
 

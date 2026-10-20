@@ -1,4 +1,4 @@
-// Package store persists games in SQLite.
+// Package store persists games, guests and the stats in SQLite.
 package store
 
 import (
@@ -40,6 +40,8 @@ func OpenIn(path string, zone *time.Location) (*Store, error) {
 		return nil, err
 	}
 	// SQLite allows one writer; a single connection avoids SQLITE_BUSY.
+	// Every statement shares it, so rows must be closed before the next
+	// statement (eachRow does).
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db, zone: zone}
 	if err := s.migrate(context.Background()); err != nil {
@@ -51,3 +53,37 @@ func OpenIn(path string, zone *time.Location) (*Store, error) {
 
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
+
+// inTx runs fn in one transaction, committed when fn returns nil.
+func (s *Store) inTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// queryer is a *sql.DB or a *sql.Tx.
+type queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// eachRow runs q and calls row for each row it returns, closing the rows
+// before it returns.
+func eachRow(ctx context.Context, db queryer, q string, args []any, row func(*sql.Rows) error) error {
+	rows, err := db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := row(rows); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}

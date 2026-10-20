@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -100,6 +101,21 @@ func checkInvariants(t *testing.T, seed, ply int, before Position, m Move, ev []
 	if q.Mated() && g.Result.Reason != Checkmate {
 		fail("the dice undid a checkmate made on the board")
 	}
+}
+
+// checkBitboards fails if p's bitboards disagree with its Board.
+func checkBitboards(p *Position) error {
+	var want Position
+	for s, pc := range p.Board {
+		if pc != NoPiece {
+			want.byColor[pc.Color()] |= bit(Square(s))
+			want.byKind[pc.Kind()] |= bit(Square(s))
+		}
+	}
+	if want.byColor != p.byColor || want.byKind != p.byKind {
+		return errors.New("bitboards out of step with the board")
+	}
+	return nil
 }
 
 // checkHoles accounts for every hole across one turn: each of the mover's

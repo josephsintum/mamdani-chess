@@ -5,14 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
-	"path/filepath"
 	"testing"
-	"testing/synctest"
-	"time"
-
-	"mamdani-chess/game"
-	"mamdani-chess/store"
 )
 
 func TestPracticeAndReconnectEvents(t *testing.T) {
@@ -32,92 +25,6 @@ func TestPracticeAndReconnectEvents(t *testing.T) {
 	if counts["event.practice"] != 1 || counts["event.reconnect"] != 1 || counts["event.restart"] != 0 {
 		t.Fatalf("counters %v", counts)
 	}
-}
-
-// counted sums every counter so far, by key.
-func counted(t *testing.T, s *Server) map[string]int {
-	t.Helper()
-	days, err := s.store.Counts(t.Context(), "", time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	sum := map[string]int{}
-	for _, d := range days {
-		for k, n := range d.N {
-			sum[k] += n
-		}
-	}
-	return sum
-}
-
-// playtestHeader adds the header the playtest script sends to every request.
-type playtestHeader struct{}
-
-func (playtestHeader) RoundTrip(r *http.Request) (*http.Response, error) {
-	r = r.Clone(r.Context())
-	r.Header.Set("X-Playtest", "1")
-	return http.DefaultTransport.RoundTrip(r)
-}
-
-// newPlaytester is a browser the playtest script drives.
-func newPlaytester(t *testing.T, ts *httptest.Server) *player {
-	t.Helper()
-	p := newPlayer(t, ts)
-	p.c.Transport = playtestHeader{}
-	return p
-}
-
-// kindOf reads a saved game's kind and playtest mark.
-func kindOf(t *testing.T, s *Server, code string) (string, bool) {
-	t.Helper()
-	kind, playtest, err := s.store.GameKind(t.Context(), code)
-	if err != nil {
-		t.Fatalf("kind of %s: %v", code, err)
-	}
-	return kind, playtest
-}
-
-func hasStats(t *testing.T, s *Server, code string) bool {
-	t.Helper()
-	has, err := s.store.HasGameStats(t.Context(), code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return has
-}
-
-// rematchOf has both players ask for a rematch of a finished game and
-// returns the new game's code, read from white's stream.
-func rematchOf(t *testing.T, code string, white, black *player) string {
-	t.Helper()
-	w := white.stream(code)
-	w.state()
-	rematch := "/api/games/" + code + "/rematch"
-	for _, p := range []*player{white, black} {
-		if status, body := p.post(rematch, `{}`); status != http.StatusNoContent {
-			t.Fatalf("rematch: %d %s", status, body)
-		}
-	}
-	for {
-		if next := w.state().Rematch.Code; next != "" {
-			return next
-		}
-	}
-}
-
-// matchPair puts a and b through quick match and returns their game's code
-// once both streams have ended (each search is logged as its stream ends).
-func matchPair(t *testing.T, a, b *player) string {
-	t.Helper()
-	as, _ := a.queue()
-	bs, _ := b.queue()
-	code := matchedCode(as)
-	if got := matchedCode(bs); got != code {
-		t.Fatalf("matched to %s and %s", code, got)
-	}
-	as.waitEnd(2*time.Second, "matched")
-	bs.waitEnd(2*time.Second, "matched")
-	return code
 }
 
 // A playtest's games are marked, its searches and events aren't logged,
@@ -156,7 +63,8 @@ func TestPlaytestGamesAreNotCounted(t *testing.T) {
 }
 
 // A game that ends saves its stats row with the result; every game is
-// saved with its kind, and a rematch keeps it.
+// saved with its kind, and a rematch keeps it. (An aborted game's missing
+// row is in game's TestAbortedGameSavesNoStatsRow.)
 func TestGameEndSavesStatsAndKind(t *testing.T) {
 	s, ts := newTestServer(t)
 	alice, bob := newPlayer(t, ts), newPlayer(t, ts)
@@ -189,37 +97,4 @@ func TestGameEndSavesStatsAndKind(t *testing.T) {
 	if _, _, err := s.store.GameKind(t.Context(), practice); !errors.Is(err, sql.ErrNoRows) || hasStats(t, s, practice) {
 		t.Fatalf("practice game saved: %v", err)
 	}
-
-	// White misses the first move: aborted, no stats row.
-	t.Run("aborted", func(t *testing.T) {
-		synctest.Test(t, func(t *testing.T) {
-			st, err := store.Open(filepath.Join(t.TempDir(), "abort.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer st.Close()
-			g, err := game.NewHub(odd{}, st).CreatePair("white", "black", false)
-			if err != nil {
-				t.Fatal(err)
-			}
-			time.Sleep(game.FirstMoveTime + time.Second)
-			synctest.Wait()
-			has, err := st.HasGameStats(t.Context(), g.Code())
-			if err != nil {
-				t.Fatal(err)
-			}
-			// Up to tomorrow, as the page asks: Summarize lists every day.
-			tomorrow := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
-			days, err := st.Counts(t.Context(), "", tomorrow)
-			if err != nil {
-				t.Fatal(err)
-			}
-			section := store.Summarize(days, "", tomorrow)
-			if has || len(section.Ends) != 1 || section.Ends[0] != (store.Count{Label: "Aborted", N: 1}) {
-				t.Fatalf("stats row %v, ends %v; want none and one aborted", has, section.Ends)
-			}
-			time.Sleep(game.DefaultIdle + time.Minute) // evicted, so the bubble's goroutines end
-			synctest.Wait()
-		})
-	})
 }

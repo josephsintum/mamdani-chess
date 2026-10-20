@@ -6,6 +6,5 @@
 		"skipLibCheck": true,
 		"sourceMap": true
 	},
-	"include": ["src", "test", "*"],
-	"exclude": ["src/service-worker"]
+	"include": ["src", "*"]
 }

@@ -27,12 +27,8 @@
 		return framesOf(scene, nextSeq);
 	}
 
-	function showEnd() {
-		const all = frames();
-		anim.receive(all[all.length - 1].view);
-		showing = '';
-	}
-	showEnd();
+	// How the scene ends, until it plays.
+	anim.receive(frames().at(-1)!.view);
 
 	const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 

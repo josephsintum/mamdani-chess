@@ -31,6 +31,6 @@ sleep 2
 # Black's first event after the move is the move itself (its join event came earlier).
 GOT=$(awk -v sent="$SENT" '$1 > sent { print; exit }' "$EVENTS")
 [[ -n $GOT ]] || fail "Black got no update within 2 s of the move (the stream is buffered)"
-GAP=$(python3 -c "print(f'{$GOT - $SENT:.2f}')")
-python3 -c "import sys; sys.exit(0 if $GOT - $SENT <= 1 else 1)" || fail "Black got the move ${GAP} s after it was sent (over 1 s)"
+GAP=$(awk -v got="$GOT" -v sent="$SENT" 'BEGIN { printf "%.2f", got - sent }')
+awk -v got="$GOT" -v sent="$SENT" 'BEGIN { exit !(got - sent <= 1) }' || fail "Black got the move ${GAP} s after it was sent (over 1 s)"
 echo "ok: Black got White's move ${GAP} s after it was sent"

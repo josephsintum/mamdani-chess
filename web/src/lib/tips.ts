@@ -3,6 +3,7 @@
 // quiet turns after each (TIP_GAP), and the help dialog can switch them off.
 
 import type { EventJSON, View } from './game.ts';
+import { offSwitch } from './stored.ts';
 import { HOLE_ROUNDS } from './wire.gen.ts';
 
 export type Tip = 'move' | 'roll' | 'opened' | 'reset' | 'fell' | 'saving' | 'repaired';
@@ -69,24 +70,8 @@ export function markSeen(tip: Tip) {
 	}
 }
 
-// The choice made on this page, which holds even when storage is blocked.
-let chosen: boolean | undefined;
+const tips = offSwitch(OFF_KEY);
 
-export function tipsOn(): boolean {
-	if (chosen !== undefined) return chosen;
-	try {
-		return localStorage.getItem(OFF_KEY) === null;
-	} catch {
-		return true;
-	}
-}
-
-export function setTipsOn(on: boolean) {
-	chosen = on;
-	try {
-		if (on) localStorage.removeItem(OFF_KEY);
-		else localStorage.setItem(OFF_KEY, '1');
-	} catch {
-		// Blocked storage: the choice lasts while the page is open.
-	}
-}
+/** Tips are on unless this browser switched them off. */
+export const tipsOn = tips.on;
+export const setTipsOn = tips.set;
