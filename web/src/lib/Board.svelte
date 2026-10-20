@@ -1127,7 +1127,7 @@
 		line-height: 1;
 		transform-origin: 50% 100%;
 		filter: drop-shadow(0 2px 2px var(--hole));
-		animation: thumb 1.1s calc(var(--delay) + 700ms) both;
+		animation: thumb 1.1s calc(var(--delay) + 700ms) both; /* THUMB_DONE_MS in board.ts: the repair's line waits for it */
 	}
 	/* On the top row the thumb would leave the board, so it drops in below. */
 	.top .thumb {

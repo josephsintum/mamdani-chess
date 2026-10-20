@@ -448,9 +448,14 @@ export function repairsShown(view: View, shown: number): Repair[] {
 }
 
 /**
+ * When a repair's 👍 is done, in ms after the Mamdani is there: it starts
+ * 700 ms after and runs 1.1 s (Board.svelte's .thumb). His line waits for it.
+ */
+export const THUMB_DONE_MS = 700 + 1100;
+
+/**
  * How long a repair celebration stays on the board, in ms: long enough for
- * the 👍 (it starts 700 ms after the Mamdani's glide and runs 1.1 s) after
- * the longest glide there is, corner to corner, 614 ms.
+ * the 👍 after the longest glide there is, corner to corner, 614 ms.
  */
 export const CELEBRATION_MS = 2500;
 
