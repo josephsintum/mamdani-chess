@@ -94,7 +94,7 @@ export function tumbleFaces(final: number, ms: number, seed: number): Frame[] {
 }
 
 /** A die's face at `t` ms after it was thrown (its first face before then). */
-function faceAt(frames: Frame[], t: number): number {
+export function faceAt(frames: Frame[], t: number): number {
 	let face = frames[0].face;
 	for (const f of frames) if (f.at <= t) face = f.face;
 	return face;
@@ -129,6 +129,8 @@ export interface Scan {
 	sq: string;
 	key: string;
 	seed: number;
+	/** The target's event in the turn: its age (Animator.age) says how far the scan has run. */
+	step: number;
 }
 
 /** The latest target revealed, unless a re-roll followed it: the scan the board runs. */
@@ -136,7 +138,7 @@ export function scanOf(view: View, shown: number): Scan | null {
 	for (let i = Math.min(shown, view.last.length) - 1; i >= firstDiceStep(view.last); i--) {
 		const e = view.last[i];
 		if (e.kind === 'reroll') return null;
-		if (e.kind === 'target' && e.sq) return { sq: e.sq, key: `${view.seq}:${i}`, seed: diceSeed(view.seq, i) };
+		if (e.kind === 'target' && e.sq) return { sq: e.sq, key: `${view.seq}:${i}`, seed: diceSeed(view.seq, i), step: i };
 	}
 	return null;
 }
@@ -152,10 +154,12 @@ export interface DicePill {
 	then?: { text: string; tone: PillTone; at: number };
 	/** The turn's last pill: it fades on its own. */
 	last: boolean;
+	/** The event it shows: its age (Animator.age) says how far the pill has played. */
+	step: number;
 }
 
 /** The pill for one dice event, or null for events the pill doesn't name. */
-function pillAt(view: View, i: number): Omit<DicePill, 'last'> | null {
+function pillAt(view: View, i: number): Omit<DicePill, 'last' | 'step'> | null {
 	const e = view.last[i];
 	const key = `${view.seq}:${i}`;
 	switch (e.kind) {
@@ -191,7 +195,7 @@ export function dicePill(view: View, shown: number): DicePill | null {
 		const pill = pillAt(view, i);
 		if (!pill) continue;
 		const last = !view.last.some((_, j) => j > i && pillAt(view, j));
-		return { ...pill, last };
+		return { ...pill, last, step: i };
 	}
 	return null;
 }
@@ -208,10 +212,18 @@ export interface DieSpec {
 	delay: number;
 	ms: number;
 	seed: number;
+	/** The event it was thrown for: its age (Animator.age) says how far the throw has gone. */
+	step: number;
 }
 
 /** The dice thrown for event `i` of a turn: one for a roll, two (file and rank) for a target, none otherwise. */
 export function stepDice(view: View, i: number): DieSpec[] {
+	return eventDice(view, i).map((d) => ({ ...d, step: i }));
+}
+
+type Throw = Omit<DieSpec, 'step'>;
+
+function eventDice(view: View, i: number): Throw[] {
 	const e = view.last[i];
 	const seed = diceSeed(view.seq, i);
 	switch (e.kind) {
@@ -226,7 +238,7 @@ export function stepDice(view: View, i: number): DieSpec[] {
 }
 
 /** The file and rank dice for a target `sq`: the tray throws them and the board's scan follows them. */
-function targetDice(sq: string, seed: number): DieSpec[] {
+function targetDice(sq: string, seed: number): Throw[] {
 	return [
 		{ value: FILES.indexOf(sq[0]) + 1, tone: 'where', delay: 0, ms: FILE_MS, seed: seed + 1 },
 		{ value: Number(sq[1]), tone: 'where', delay: RANK_DELAY_MS, ms: RANK_MS, seed: seed + 2 }

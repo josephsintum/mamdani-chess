@@ -16,6 +16,7 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest run",
 		"playtest": "node scripts/playtest.js",
+		"replays": "node scripts/replays.js",
 		"og-image": "node scripts/og-image.js"
 	},
 	"devDependencies": {

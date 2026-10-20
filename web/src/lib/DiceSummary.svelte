@@ -1,14 +1,18 @@
 <script lang="ts">
+	import type { Age } from './animator.svelte.ts';
 	import { diceSummary } from './board.ts';
 	import { SAVE_MS, SCAN_MS } from './dice.ts';
 	import Die from './Die.svelte';
 	import { sideName, type View } from './game.ts';
+	import { catchUp } from './motion.ts';
 
 	// The phone's dice card: the turn's dice as a row of chips that fill in as
 	// they play out, and one outcome line. The steps are in the moves sheet.
 	// wrap: chips that don't fit take a second line (pages whose layout can
-	// grow); the game's card keeps one height, so there they clip.
-	let { view, shown, wrap = false }: { view: View; shown: number; wrap?: boolean } = $props();
+	// grow); the game's card keeps one height, so there they clip. `age`
+	// (Animator.age) says how far each step has played, so a card drawn late
+	// starts there.
+	let { view, shown, age, wrap = false }: { view: View; shown: number; age: Age; wrap?: boolean } = $props();
 
 	let summary = $derived(diceSummary(view, shown));
 	let side = $derived(summary.who ? sideName(summary.who) : 'Dice');
@@ -22,11 +26,11 @@
 			{#if i > 0}<span class="arrow" aria-hidden="true">→</span>{/if}
 			{#if chip.dice?.length}
 				<!-- The thrown dice, then what they decide once they land: the square, or saved / lost. -->
-				{#each chip.dice as d, j (j)}<Die die={d} small />{/each}
+				{#each chip.dice as d, j (j)}<Die die={d} small age={age(d.step)} />{/each}
 				{#if chip.kind === 'square'}
-					<span class="chip square late" style:--late="{SCAN_MS}ms">{chip.text}</span>
+					<span class="chip square late" style:--late="{SCAN_MS}ms" {@attach catchUp(age(chip.dice[0].step))}>{chip.text}</span>
 				{:else if chip.kind === 'good' || chip.kind === 'bad'}
-					<span class="chip {chip.kind} late" style:--late="{SAVE_MS}ms">{chip.kind === 'good' ? 'saved' : 'lost'}</span>
+					<span class="chip {chip.kind} late" style:--late="{SAVE_MS}ms" {@attach catchUp(age(chip.dice[0].step))}>{chip.kind === 'good' ? 'saved' : 'lost'}</span>
 				{/if}
 			{:else}
 				<span class="chip {chip.kind}">{chip.text}</span>
@@ -34,7 +38,7 @@
 		{/each}
 	</div>
 	<p class="line {summary.tone}" aria-live="polite">
-		{#key summary.line}<span class="text" class:late={summary.lineAt} style:--late="{summary.lineAt ?? 0}ms">{summary.line}</span>{/key}
+		{#key summary.line}<span class="text" class:late={summary.lineAt} style:--late="{summary.lineAt ?? 0}ms" {@attach catchUp(summary.lineStep === undefined ? Infinity : age(summary.lineStep))}>{summary.line}</span>{/key}
 	</p>
 </section>
 

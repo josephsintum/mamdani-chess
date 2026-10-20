@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+	import type { Age } from './animator.svelte.ts';
 	import DiceTray from './DiceTray.svelte';
 	import type { View } from './game.ts';
 	import { reducedMotion } from './motion.ts';
@@ -12,10 +13,13 @@
 	// The phone's "Moves and rolls": a sheet over the game (from the bottom,
 	// or from the right on a phone on its side) with the log, the
 	// current turn's dice step by step, and the stats once the game is over.
-	// A native <dialog>: showModal() traps focus and closes on Escape.
-	let { view, shown, rolling }: { view: View; shown: number; rolling: boolean } = $props();
+	// A native <dialog>: showModal() traps focus and closes on Escape. Its
+	// dice are drawn only while it's open: a closed dialog runs no CSS
+	// animations, so a tray kept inside would start them on every opening.
+	let { view, shown, rolling, age }: { view: View; shown: number; rolling: boolean; age: Age } = $props();
 
 	let dialog: HTMLDialogElement | undefined;
+	let opened = $state(false);
 	let still = $state(false); // no slide under reduced motion (or instant mode)
 	let returnTo: HTMLElement | null = null;
 
@@ -23,6 +27,7 @@
 	export function open(from: HTMLElement | null) {
 		returnTo = from;
 		still = reducedMotion();
+		opened = true;
 		dialog?.showModal();
 	}
 
@@ -36,7 +41,11 @@
 	}
 </script>
 
-<dialog bind:this={dialog} class="sheet" class:still aria-labelledby="log-heading" onclick={backdrop} onclose={() => returnTo?.focus()}>
+<dialog bind:this={dialog} class="sheet" class:still aria-labelledby="log-heading" onclick={backdrop}
+	onclose={() => {
+		opened = false;
+		returnTo?.focus();
+	}}>
 	<div class="body">
 		<span class="handle" aria-hidden="true"></span>
 		<button type="button" class="close" onclick={close}>Close</button>
@@ -49,7 +58,7 @@
 			</dl>
 		{/if}
 		<MoveLog log={view.log} {rolling} />
-		<DiceTray {view} {shown} />
+		{#if opened}<DiceTray {view} {shown} {age} />{/if}
 	</div>
 </dialog>
 

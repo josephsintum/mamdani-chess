@@ -230,6 +230,8 @@ export interface DiceStep {
 	tone: 'normal' | 'muted' | 'good' | 'hazard';
 	/** When its line shows, in ms: what the dice decided waits for them to land. */
 	revealAt?: number;
+	/** Its event in the turn: its age (Animator.age) says how far it has played. */
+	step: number;
 }
 
 /** "White" or "Black" for a hole's roller. */
@@ -242,10 +244,11 @@ const rerollWhy = (e: EventJSON) => rerollReasons[e.reason ?? ''] ?? e.reason ??
 export function diceSteps(view: View, shown: number): DiceStep[] {
 	const steps: DiceStep[] = [];
 	view.last.slice(0, shown).forEach((e, i) => {
+		const push = (step: Omit<DiceStep, 'step'>) => steps.push({ ...step, step: i });
 		switch (e.kind) {
 			case 'rolled_pothole': {
 				const even = !oddRoll(e);
-				steps.push({
+				push({
 					title: even ? 'Even. A pothole opens' : 'Odd. No pothole',
 					detail: `d8 rolled ${e.roll}`,
 					dice: stepDice(view, i),
@@ -265,15 +268,15 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 					: occupant
 						? `${capitalize(pieceName(occupant))} is there`
 						: 'Empty square';
-				steps.push({ title: `Square ${sq}`, detail: `File ${file} = ${sq[0]}, rank ${rank}. ${there}`, dice: stepDice(view, i), tone: 'normal', revealAt: landsAt(e) });
+				push({ title: `Square ${sq}`, detail: `File ${file} = ${sq[0]}, rank ${rank}. ${there}`, dice: stepDice(view, i), tone: 'normal', revealAt: landsAt(e) });
 				break;
 			}
 			case 'reroll':
-				steps.push({ title: 'Re-roll', detail: capitalize(rerollWhy(e)), dice: [], tone: 'muted' });
+				push({ title: 'Re-roll', detail: capitalize(rerollWhy(e)), dice: [], tone: 'muted' });
 				break;
 			case 'saving_roll': {
 				const who = capitalize(pieceName(e.piece));
-				steps.push({
+				push({
 					title: e.saved ? `Odd. ${who} is saved` : `Even. No save`,
 					detail:
 						e.piece === 'M'
@@ -286,10 +289,10 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 				break;
 			}
 			case 'fell':
-				steps.push({ title: `${capitalize(pieceName(e.piece))} falls in`, detail: `Lost on ${e.sq}`, dice: [], tone: 'hazard' });
+				push({ title: `${capitalize(pieceName(e.piece))} falls in`, detail: `Lost on ${e.sq}`, dice: [], tone: 'hazard' });
 				break;
 			case 'pothole_opened':
-				steps.push({
+				push({
 					title: `Pothole opens on ${e.sq}`,
 					detail: `It closes after ${HOLE_ROUNDS} of ${rollerName(e.color)}’s moves`,
 					dice: [],
@@ -297,7 +300,7 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 				});
 				break;
 			case 'pothole_reset':
-				steps.push({
+				push({
 					title: `Pothole on ${e.sq} reset`,
 					detail: `Now ${rollerName(e.color)}’s: it closes after ${HOLE_ROUNDS} of their moves`,
 					dice: [],
@@ -305,14 +308,14 @@ export function diceSteps(view: View, shown: number): DiceStep[] {
 				});
 				break;
 			case 'repaired':
-				if (withRoll(view.last, i)) steps.push({ title: 'Repaired at once', detail: `${e.sq} is next to the Mamdani`, dice: [], tone: 'good' });
+				if (withRoll(view.last, i)) push({ title: 'Repaired at once', detail: `${e.sq} is next to the Mamdani`, dice: [], tone: 'good' });
 				break;
 			case 'pothole_closed':
 				// Before the roll a hole closes on its own schedule (the tray notes it).
-				if (withRoll(view.last, i)) steps.push({ title: `At most ${HOLE_CAP} potholes`, detail: `The oldest, on ${e.sq}, closes`, dice: [], tone: 'muted' });
+				if (withRoll(view.last, i)) push({ title: `At most ${HOLE_CAP} potholes`, detail: `The oldest, on ${e.sq}, closes`, dice: [], tone: 'muted' });
 				break;
 			case 'no_pothole':
-				steps.push({ title: 'No pothole this turn', detail: '64 re-rolls found no valid square', dice: [], tone: 'muted' });
+				push({ title: 'No pothole this turn', detail: '64 re-rolls found no valid square', dice: [], tone: 'muted' });
 				break;
 		}
 	});
@@ -335,6 +338,8 @@ export interface DiceSummary {
 	tone: 'normal' | 'good' | 'hazard' | 'muted';
 	/** When the line shows, in ms: once the latest step's dice land. */
 	lineAt?: number;
+	/** The latest step's event, which the line tells: its age (Animator.age) says how far it has played. */
+	lineStep?: number;
 }
 
 /**
@@ -416,7 +421,7 @@ export function diceSummary(view: View, shown: number): DiceSummary {
 	});
 	if (pending) chips.push({ text: '?', kind: 'pending' });
 	const latest = view.last[Math.min(shown, view.last.length) - 1];
-	return { who: roll.color ?? mover, chips, line, tone, lineAt: latest ? landsAt(latest) : undefined };
+	return { who: roll.color ?? mover, chips, line, tone, lineAt: latest ? landsAt(latest) : undefined, lineStep: latest ? Math.min(shown, view.last.length) - 1 : undefined };
 }
 
 /** Whether the dice, not the move, delivered checkmate: a mating move ends the game before any roll. */
@@ -429,6 +434,8 @@ export interface Repair {
 	sq: string;
 	key: string;
 	hole: boolean;
+	/** Its event in the turn: its age (Animator.age) says how far the celebration has played. */
+	step: number;
 }
 
 /**
@@ -437,7 +444,7 @@ export interface Repair {
  * during the roll fixes a hole before it opens. Each key plays once.
  */
 export function repairsShown(view: View, shown: number): Repair[] {
-	return view.last.flatMap((e, i) => (e.kind === 'repaired' && e.sq && i < shown ? [{ sq: e.sq, key: `${view.seq}:${i}`, hole: !withRoll(view.last, i) }] : []));
+	return view.last.flatMap((e, i) => (e.kind === 'repaired' && e.sq && i < shown ? [{ sq: e.sq, key: `${view.seq}:${i}`, hole: !withRoll(view.last, i), step: i }] : []));
 }
 
 /**
@@ -446,24 +453,6 @@ export function repairsShown(view: View, shown: number): Repair[] {
  * the longest glide there is, corner to corner, 614 ms.
  */
 export const CELEBRATION_MS = 2500;
-
-const celebrated: string[] = [];
-
-/**
- * Remembers that a repair (by its `repairsShown` key) has been celebrated,
- * so a board mounted later, as when the game page switches layouts at
- * 640 px, doesn't play it again. Keeps the latest 64.
- */
-export function markCelebrated(key: string) {
-	if (celebrated.includes(key)) return;
-	celebrated.push(key);
-	if (celebrated.length > 64) celebrated.shift();
-}
-
-/** The repairs celebrated so far, as a set to check keys against. */
-export function celebratedSoFar(): Set<string> {
-	return new Set(celebrated);
-}
 
 export interface BarPill {
 	text: string;
@@ -569,8 +558,8 @@ export function matedKing(view: View): string {
 /** What the board plays over a turn as it is revealed: Board's effect props. */
 export interface BoardEffects {
 	lastMove: { from: string; to: string } | null;
-	/** The square of a piece a saving roll has saved, so it hops out. */
-	saved: string;
+	/** A piece a saving roll has saved, so it hops out: its square and the roll's event. */
+	saved: { sq: string; step: number } | null;
 	repairs: Repair[];
 	pill: DicePill | null;
 	scan: Scan | null;
@@ -596,12 +585,13 @@ export function boardEffects(
 ): BoardEffects {
 	const live = animated && !quiet;
 	const moved = view.last.find((e) => e.kind === 'moved');
+	const save = view.last.findIndex((e, i) => e.kind === 'saving_roll' && e.saved && i < shown);
 	const stopped = !quiet && !animating;
 	const end = stopped && ending ? say(view, shown, ending) : null;
 	const sq = stopped && mate ? matedKing(view) : '';
 	return {
 		lastMove: moved?.from && moved.to ? { from: moved.from, to: moved.to } : null,
-		saved: view.last.find((e, i) => e.kind === 'saving_roll' && e.saved && i < shown)?.sq ?? '',
+		saved: save < 0 ? null : { sq: view.last[save].sq ?? '', step: save },
 		repairs: live ? repairsShown(view, shown) : [],
 		pill: live ? dicePill(view, shown) : null,
 		scan: live ? scanOf(view, shown) : null,

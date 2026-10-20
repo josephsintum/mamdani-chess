@@ -49,7 +49,8 @@
 			quiet: still,
 			say,
 			ending: ending > 0 ? { key: `${id}:end:${ending}`, winner: true } : null,
-			mate: `${id}:${view.seq}:${ending}`
+			// A mate shown at once (a reload) doesn't burst, as in a game.
+			mate: anim.animated ? `${id}:${view.seq}:${ending}` : null
 		})
 	);
 </script>
@@ -63,6 +64,7 @@
 	dim={!!view.result && !anim.animating}
 	check={checkSquare(view, stage, { animating: anim.animating, guessing: false })}
 	{...effects}
+	age={anim.age}
 	{onmove}
 	{onrefuse}
 />

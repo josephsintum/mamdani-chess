@@ -116,7 +116,10 @@
 
 	function end(result: NonNullable<View['result']>) {
 		endings += 1;
-		load({ ...$state.snapshot(view), status: 'over', result, last: [] });
+		const v = $state.snapshot(view);
+		// Without a result first, so each ending is a new one (Animator.age('end')), even the same again.
+		load({ ...v, result: null });
+		load({ ...v, status: 'over', result, last: [] });
 	}
 
 	function setYou(c: Color | 'spectator') {
@@ -215,7 +218,7 @@
 		</div>
 
 		<div class="side">
-			<DiceTray {view} shown={anim.shown} />
+			<DiceTray {view} shown={anim.shown} age={anim.age} />
 			<MoveLog log={view.log} rolling={anim.animating} />
 		</div>
 	</div>

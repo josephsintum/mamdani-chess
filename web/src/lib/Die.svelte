@@ -1,25 +1,35 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { THROW_MS, tumbleFaces, type DieSpec } from './dice.ts';
+	import { faceAt, THROW_MS, tumbleFaces, type DieSpec } from './dice.ts';
 	import { reducedMotion } from './motion.ts';
 
 	// A d8 shown as a diamond, thrown into the tray: it flies in spinning,
 	// bounces twice and settles, its face tumbling on the seeded schedule the
-	// board's scan follows, slowing until it lands on its value.
-	let { die, small = false }: { die: DieSpec; small?: boolean } = $props();
+	// board's scan follows, slowing until it lands on its value. `age` is how
+	// far in its throw is (Animator.age of its step): a die drawn late joins
+	// its throw there, and one with no age (Infinity) has landed.
+	let { die, small = false, age = 0 }: { die: Omit<DieSpec, 'step'>; small?: boolean; age?: number } = $props();
 
 	let face = $state(0); // 0: landed, showing the value
 	// A pothole roll's die shows even (yellow) or odd only once it lands.
 	let tone = $derived(face && (die.tone === 'pot' || die.tone === 'dull') ? '' : die.tone);
 
 	// Thrown once, when the die appears: the tray redraws its steps as the
-	// roll plays, with equal specs, and must not throw it again.
+	// roll plays, with equal specs, and must not throw it again. Each face
+	// change reads the clock, so timers a hidden tab held back show the face
+	// it should be now, not each one in turn.
 	function roll(node: HTMLElement) {
 		const d = untrack(() => die);
-		if (reducedMotion()) return;
+		const start = untrack(() => age);
+		if (reducedMotion() || start >= d.delay + Math.max(THROW_MS, d.ms)) return;
+		const thrown = performance.now() - start + d.delay;
 		const frames = tumbleFaces(d.value, d.ms, d.seed);
-		face = frames[0].face;
-		const timers = frames.map((f) => setTimeout(() => (face = f.at >= d.ms ? 0 : f.face), d.delay + f.at));
+		const show = () => {
+			const t = performance.now() - thrown;
+			face = t >= d.ms ? 0 : faceAt(frames, t);
+		};
+		show();
+		const timers = frames.filter((f) => d.delay + f.at > start).map((f) => setTimeout(show, d.delay + f.at - start));
 		node.animate(
 			[
 				{ transform: 'translate(-28px, -14px) rotate(-215deg) scale(0.7)', opacity: 0 },
@@ -28,7 +38,7 @@
 				{ transform: 'translate(0, -3px) rotate(45deg)', offset: 0.86 },
 				{ transform: 'translate(0, 0) rotate(45deg)' }
 			],
-			{ duration: THROW_MS, delay: d.delay, easing: 'ease-out', fill: 'backwards' }
+			{ duration: THROW_MS, delay: d.delay - start, easing: 'ease-out', fill: 'backwards' }
 		);
 		return () => timers.forEach(clearTimeout);
 	}

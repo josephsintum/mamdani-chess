@@ -153,10 +153,16 @@
 		} else {
 			void start();
 		}
+		// Coming back to a tab mid-animation jumps to the end of the roll, as in a game.
+		const finishOnReturn = () => {
+			if (!document.hidden) anim.finish();
+		};
+		document.addEventListener('visibilitychange', finishOnReturn);
 		return () => {
 			alive = false;
 			close();
 			anim.stop();
+			document.removeEventListener('visibilitychange', finishOnReturn);
 		};
 	});
 </script>
@@ -190,7 +196,7 @@
 					onmove={(m) => void move(m)}
 					onrefuse={() => play('error')}
 				/>
-				<div class="phone-dice"><DiceSummary {view} shown={anim.shown} wrap /></div>
+				<div class="phone-dice"><DiceSummary {view} shown={anim.shown} age={anim.age} wrap /></div>
 			{:else}
 				<div class="placeholder" aria-hidden="true"></div>
 			{/if}
@@ -208,7 +214,7 @@
 		</div>
 		{#if view}
 			<div class="side">
-				<div class="tray"><DiceTray {view} shown={anim.shown} /></div>
+				<div class="tray"><DiceTray {view} shown={anim.shown} age={anim.age} /></div>
 				<MoveLog log={view.log} rolling={anim.animating} />
 			</div>
 		{/if}

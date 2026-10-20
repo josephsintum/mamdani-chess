@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { blockedSquares, CELEBRATION_MS, celebratedSoFar, markCelebrated, pieceOn, squareIndex, type Repair, type Stage } from './board.ts';
+	import type { Age } from './animator.svelte.ts';
+	import { blockedSquares, CELEBRATION_MS, pieceOn, squareIndex, type Repair, type Stage } from './board.ts';
 	import { pieceName, sideName, type MoveJSON } from './game.ts';
 	import { biggerShake, BURST_HOLD_MS, burstShards, captureShake, cellOf, coordinates, FALL_MS, fitShift, GLIDE_EASE, isDark, knockOffset, rippleDelay, SHAKE, shakeFrames, squareAtCell, TEETER_MS, TRAIL_FADE_MS, trailColor, trailOf, type Shake, WHIP_TAIL_MS, whipFrames, whiplash } from './feel.ts';
-	import { lineParts, spoken } from './catchphrases.ts';
+	import { lineParts, spoken, type Quip } from './catchphrases.ts';
 	import { BLINK_MS, scanFrames, SCAN_MS, type DicePill, type Scan } from './dice.ts';
-	import { exitMs, reducedMotion } from './motion.ts';
+	import { catchUp, exitMs, reducedMotion } from './motion.ts';
 	import { untrack } from 'svelte';
 	import { moveDuration, pieceSrc, reconcile, type PieceRef } from './pieces.ts';
 	import CornerPill from './CornerPill.svelte';
@@ -18,7 +19,7 @@
 		interactive = false,
 		dim = false,
 		check = '',
-		saved = '',
+		saved = null,
 		repairs = [],
 		quip = null,
 		mated = null,
@@ -26,6 +27,7 @@
 		scan = null,
 		reroll = false,
 		showing = '',
+		age,
 		onmove,
 		onrefuse
 	}: {
@@ -37,8 +39,8 @@
 		dim?: boolean;
 		/** The king's square to glow when in check, or "". */
 		check?: string;
-		/** A square whose piece just survived a saving roll, or "". */
-		saved?: string;
+		/** A piece that just survived a saving roll: its square and the roll's event. */
+		saved?: { sq: string; step: number } | null;
 		/**
 		 * Potholes the Mamdani has just repaired, to celebrate. `hole` is true
 		 * when an open pothole is fixed by the Mamdani's move, false when the
@@ -46,8 +48,8 @@
 		 */
 		repairs?: Repair[];
 		/** A speech bubble for a big moment (catchphrases.ts); a new key pops a new one. */
-		quip?: { sq: string; emoji: string; line: string; key: string; delay?: number } | null;
-		/** The mated king's square, burst once per game (by key). */
+		quip?: Quip | null;
+		/** The mated king's square, burst once per game (by key), at the game's end. */
 		mated?: { sq: string; key: string } | null;
 		/** The pill on the board's corner saying what the dice mean (dice.ts dicePill). */
 		pill?: DicePill | null;
@@ -57,6 +59,12 @@
 		reroll?: boolean;
 		/** A piece shown as if picked up, its moves and blocked squares marked, on a board you can't play on (how-to-play). */
 		showing?: string;
+		/**
+		 * How far in each one-off effect is (Animator.age): a board drawn late
+		 * (the game page swaps boards at 640 px) starts each there, and one
+		 * with no age shows how it ends.
+		 */
+		age: Age;
 		onmove: (move: MoveJSON) => void;
 		/** A tap on a piece that can't move now (the other side's, one with no moves, or any while the opponent plays): it shakes "no". */
 		onrefuse?: (sq: string) => void;
@@ -94,11 +102,10 @@
 	let blocked = $derived(new Set(current ? blockedSquares(stage, current) : []));
 	let repairedSquares = $derived(new Set(repairs.map((r) => r.sq)));
 	let holes = $derived(new Map(stage.potholes.map((h) => [h.sq, h])));
-	// Repairs already celebrated on a board before this one mounted (the game
-	// page swaps boards at 640 px) don't play again.
-	const playedBefore = celebratedSoFar();
-	let fresh = $derived(repairs.filter((r) => !playedBefore.has(r.key)));
-	let freshMate = $derived(mated && !playedBefore.has(mated.key) ? mated : null);
+	const LIT_MS = 700; // how long the coordinates glow after the dice land
+	// The scan, while the dice still tumble or the coordinates still glow:
+	// one long done when the board is drawn isn't drawn at all.
+	let scanning = $derived(scan && !reducedMotion() && age(scan.step) < SCAN_MS + LIT_MS ? scan : null);
 	// A pothole fixed by the Mamdani's move waits for the Mamdani to arrive.
 	let glide = $derived(lastMove?.to === stage.mamdani && !reducedMotion() ? moveDuration(lastMove.from, lastMove.to) : 0);
 
@@ -144,14 +151,14 @@
 		return (node: HTMLElement) => {
 			const settled = bounce.sq === p.sq ? `bounce:${bounce.n}` : '';
 			const refused = nope.id === p.id ? `nope:${nope.n}` : '';
-			const savedHere = saved === p.sq;
 			if (!saved) delete node.dataset.saved;
 			if (reducedMotion()) return;
 			// Saved by an odd saving roll: it teeters hard, then hops out as
-			// the hole closes under it.
-			if (savedHere && node.dataset.saved !== saved) {
-				node.dataset.saved = saved;
-				node.animate(SAVE_HOP, { duration: 640, easing: 'ease-out' });
+			// the hole closes under it, from as far in as the roll is.
+			if (saved?.sq === p.sq && node.dataset.saved !== saved.sq) {
+				node.dataset.saved = saved.sq;
+				const since = age(saved.step);
+				if (since < SAVE_HOP_MS) node.animate(SAVE_HOP, { duration: SAVE_HOP_MS, delay: -since, easing: 'ease-out' });
 				return;
 			}
 			if (refused && node.dataset.nope !== refused) {
@@ -188,6 +195,7 @@
 		{ transform: 'translateX(3%)' },
 		{ transform: 'translateX(0)' }
 	];
+	const SAVE_HOP_MS = 640;
 	const SAVE_HOP: Keyframe[] = [
 		{ transform: 'rotate(0)' },
 		{ transform: 'rotate(-14deg)', offset: 0.16 },
@@ -446,14 +454,16 @@
 	/**
 	 * A repair celebration plays to the end even when the next move arrives
 	 * first (the opponent can reply as soon as the dice stop): the node stays
-	 * until its CSS animations are done.
+	 * until its CSS animations are done. `since` is how far in it started.
 	 */
-	function born(node: HTMLElement) {
-		node.dataset.born = String(performance.now());
+	function born(since: number) {
+		return (node: HTMLElement) => {
+			node.dataset.born ??= String(performance.now() - Math.min(since, CELEBRATION_MS));
+		};
 	}
 	function linger(node: HTMLElement) {
-		const age = performance.now() - Number(node.dataset.born);
-		return { duration: exitMs(age, CELEBRATION_MS) };
+		const elapsed = performance.now() - Number(node.dataset.born);
+		return { duration: exitMs(elapsed, CELEBRATION_MS) };
 	}
 
 	/** A round passes: one of a hole's cones lifts away. */
@@ -480,22 +490,28 @@
 	}
 
 	// The square the file and rank dice point to as they tumble; its letter
-	// and number glow on the coordinates outside the board.
+	// and number glow on the coordinates outside the board, a while after
+	// they land. It runs from as far in as its target's age, and each step
+	// reads the clock, so timers a hidden tab held back jump to where the
+	// scan is now rather than playing it again.
 	let lit = $state('');
 	let landed = $state(''); // the scan whose dice have landed, by key
 	function scanner(node: HTMLElement) {
-		const s = untrack(() => scan);
+		const s = untrack(() => scanning);
 		if (!s) return;
-		const timers = [
-			...scanFrames(s.sq, s.seed).map((f) =>
-				setTimeout(() => {
-					node.style.cssText = place(f.sq);
-					lit = f.sq;
-				}, f.at)
-			),
-			setTimeout(() => (landed = s.key), SCAN_MS),
-			setTimeout(() => (lit = ''), SCAN_MS + 700)
-		];
+		const frames = scanFrames(s.sq, s.seed);
+		const since = untrack(() => age(s.step));
+		const began = performance.now() - since;
+		const step = () => {
+			const t = performance.now() - began;
+			let f = frames[0];
+			for (const g of frames) if (g.at <= t) f = g;
+			node.style.cssText = place(f.sq);
+			lit = t < SCAN_MS + LIT_MS ? f.sq : '';
+			if (t >= SCAN_MS) landed = s.key;
+		};
+		step();
+		const timers = [...frames.map((f) => f.at), SCAN_MS, SCAN_MS + LIT_MS].filter((at) => at > since).map((at) => setTimeout(step, at - since));
 		return () => {
 			timers.forEach(clearTimeout);
 			lit = '';
@@ -513,7 +529,7 @@
      label column and row are the same size, so the frame stays square. -->
 <div class="frame" class:dim {@attach (node) => void (frameEl = node)}>
 <div class="ranks" aria-hidden="true">{#each labels.ranks as r (r)}<span class:on={lit[1] === r}>{r}</span>{/each}</div>
-<div class="board" class:late={!!freshMate} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms; --blink: {BLINK_MS}ms" {@attach dragArea}>
+<div class="board" class:late={!!mated} role="group" aria-label="Chessboard" style="--glide-ease: {GLIDE_EASE}; --trail-fade: {TRAIL_FADE_MS}ms; --burst-hold: {BURST_HOLD_MS}ms; --blink: {BLINK_MS}ms" {@attach dragArea}>
 	{#each order as sq (sq)}
 		{@const name = label(sq)}
 		<button
@@ -535,7 +551,7 @@
 			{#if blocked.has(sq)}
 				<span class="blocked" title="Blocked by a pothole">×</span>
 			{/if}
-			{#if saved === sq}
+			{#if saved?.sq === sq}
 				<span class="saved"></span>
 			{/if}
 		</button>
@@ -543,12 +559,12 @@
 
 	<div class="layer" aria-hidden="true">
 		{#if saved && !reducedMotion()}
-			{#key saved}
-				<span class="slot" style={place(saved)}><span class="hole briefly"></span></span>
+			{#key saved.sq}
+				<span class="slot" style={place(saved.sq)} {@attach catchUp(age(saved.step))}><span class="hole briefly"></span></span>
 			{/key}
 		{/if}
-		{#if freshMate}
-			<span class="slot" style="{place(freshMate.sq)}; --delay: {impact()}ms"><span class="wash"></span></span>
+		{#if mated}
+			<span class="slot" style="{place(mated.sq)}; --delay: {impact()}ms" {@attach catchUp(age('end'))}><span class="wash"></span></span>
 		{/if}
 		{#each stage.potholes as h (h.sq)}
 			<span class="slot" style={place(h.sq)}>
@@ -564,13 +580,13 @@
 				</span>
 			</span>
 		{/each}
-		{#if scan && !reducedMotion()}
-			{#key scan.key}
-				<span class="slot scan" class:landed={landed === scan.key} {@attach scanner}></span>
+		{#if scanning}
+			{#key scanning.key}
+				<span class="slot scan" class:landed={landed === scanning.key} {@attach scanner}></span>
 			{/key}
 		{/if}
 		<!-- The target waits for the scan to land on it. -->
-		{#if stage.target && !(scan?.sq === stage.target && landed !== scan.key && !reducedMotion())}
+		{#if stage.target && !(scanning?.sq === stage.target && landed !== scanning.key)}
 			{#key stage.target}
 				<span class="slot" style={place(stage.target)}><span class="target" class:blink={reroll} in:drop></span></span>
 			{/key}
@@ -604,16 +620,8 @@
 	<div class="shade" aria-hidden="true"></div>
 
 	<div class="layer celebrate" aria-hidden="true">
-		{#each fresh as r (r.key)}
-			<span
-				class="slot fix"
-				style="{place(r.sq)}; --delay: {r.hole ? glide : 0}ms"
-				{@attach (node) => {
-					born(node);
-					markCelebrated(r.key);
-				}}
-				out:linger
-			>
+		{#each repairs as r (r.key)}
+			<span class="slot fix" style="{place(r.sq)}; --delay: {r.hole ? glide : 0}ms" {@attach born(age(r.step))} {@attach catchUp(age(r.step))} out:linger>
 				{#if r.hole}<span class="hole patched"></span>{/if}
 				<svg class="cone" viewBox="0 0 40 40">
 					{@render coneShape()}
@@ -624,24 +632,26 @@
 		{/each}
 		{#if quip}
 			{#key quip.key}
-				<span class="slot fix quip" class:top={cell(quip.sq).row < 2} style="{place(quip.sq)}; --quip-delay: {quip.delay ?? 0}ms">
+				<span class="slot fix quip" class:top={cell(quip.sq).row < 2} style="{place(quip.sq)}; --quip-delay: {quip.delay}ms" {@attach catchUp(age(quip.at))}>
 					<span class="bubble" {@attach fit}><em>{quip.emoji}</em> {#each lineParts(quip.line) as part, i (i)}{#if part.struck}<s>{part.text}</s>{:else}{part.text}{/if}{/each}</span>
 				</span>
 			{/key}
 		{/if}
-		{#if freshMate}
-			{#key freshMate.key}
+		{#if mated}
+			{#key mated.key}
 				<span
 					class="slot fix burst"
-					class:bottom={cell(freshMate.sq).row === 7}
-					style="{place(freshMate.sq)}; --delay: {impact()}ms"
+					class:bottom={cell(mated.sq).row === 7}
+					style="{place(mated.sq)}; --delay: {impact()}ms"
+					{@attach catchUp(age('end'))}
 					{@attach (node) => {
 						// Once: a later update to the finished game (a rematch
-						// offer, say) re-runs this, and must not shake again.
+						// offer, say) re-runs this, and must not shake again;
+						// nor does a board drawn after the burst hit.
 						if (node.dataset.burst) return;
 						node.dataset.burst = '1';
-						markCelebrated(freshMate.key);
-						shake(SHAKE.mate, impact() + 500);
+						const hit = impact() + 500 - untrack(() => age('end'));
+						if (hit >= 0) shake(SHAKE.mate, hit);
 					}}
 				>
 					{#each SHARDS as s, i (i)}<span class="shard" class:hazard={s.hazard} style="--a: {s.angle}deg; --d: {s.dist}; --s: {s.spin}deg"></span>{/each}
@@ -650,14 +660,20 @@
 				</span>
 			{/key}
 		{/if}
-		{#if fresh.length > 0 && stage.mamdani}
-			{#key fresh[0].key}
-				<span class="slot fix" class:top={cell(stage.mamdani).row === 0} style="{place(stage.mamdani)}; --delay: {fresh[0].hole ? glide : 0}ms" {@attach born} out:linger|global><span class="thumb">👍</span></span>
+		{#if repairs.length > 0 && stage.mamdani}
+			{#key repairs[0].key}
+				<span
+					class="slot fix"
+					class:top={cell(stage.mamdani).row === 0}
+					style="{place(stage.mamdani)}; --delay: {repairs[0].hole ? glide : 0}ms"
+					{@attach born(age(repairs[0].step))}
+					{@attach catchUp(age(repairs[0].step))}
+					out:linger|global><span class="thumb">👍</span></span>
 			{/key}
 		{/if}
 	</div>
 
-	{#if pill}<CornerPill {pill} />{/if}
+	{#if pill}<CornerPill {pill} age={age(pill.step)} />{/if}
 
 	<!-- Screen readers hear the bubble's line; the bubble itself is drawn above. -->
 	<p class="sr-only" aria-live="polite">{quip ? spoken(quip.line) : ''}</p>

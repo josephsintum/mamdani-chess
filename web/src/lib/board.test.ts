@@ -9,12 +9,10 @@ import {
 	moveRows,
 	resultCardOf,
 	CELEBRATION_MS,
-	celebratedSoFar,
 	checkSquare,
 	diceSteps,
 	diceSummary,
 	endedHere,
-	markCelebrated,
 	matedByRoll,
 	matedKing,
 	pillFor,
@@ -311,10 +309,10 @@ describe('repairsShown', () => {
 	];
 	const v = makeView({}, { last, seq: 7 });
 	it('lists repairs revealed so far: the move’s fixes an open hole, the roll’s fixes one before it opens', () => {
-		expect(repairsShown(v, 2)).toEqual([{ sq: 'f6', key: '7:1', hole: true }]);
+		expect(repairsShown(v, 2)).toEqual([{ sq: 'f6', key: '7:1', hole: true, step: 1 }]);
 		expect(repairsShown(v, 5)).toEqual([
-			{ sq: 'f6', key: '7:1', hole: true },
-			{ sq: 'd4', key: '7:4', hole: false }
+			{ sq: 'f6', key: '7:1', hole: true, step: 1 },
+			{ sq: 'd4', key: '7:4', hole: false, step: 4 }
 		]);
 	});
 });
@@ -455,20 +453,6 @@ describe('repair celebrations', () => {
 	it('last long enough for the 👍 after the Mamdani’s longest glide', () => {
 		// The 👍 starts 700 ms after the glide and runs 1.1 s (Board.svelte).
 		expect(CELEBRATION_MS).toBeGreaterThanOrEqual(moveDuration('a1', 'h8') + 700 + 1100);
-	});
-
-	it('are remembered once played, so a board mounted later skips them', () => {
-		markCelebrated('9:1');
-		expect(celebratedSoFar().has('9:1')).toBe(true);
-		expect(celebratedSoFar().has('9:4')).toBe(false);
-	});
-
-	it('remember only the latest 64', () => {
-		for (let i = 0; i < 70; i++) markCelebrated(`k${i}`);
-		const seen = celebratedSoFar();
-		expect(seen.has('k69')).toBe(true);
-		expect(seen.has('k5')).toBe(false);
-		expect(seen.size).toBeLessThanOrEqual(64);
 	});
 });
 
@@ -627,17 +611,18 @@ describe('boardEffects', () => {
 		boardEffects(view, shown, { animating: shown < view.last.length, animated: true, quiet: false, say: quipper(() => 0), ...o });
 
 	it('marks the move, and a saved piece once its roll shows', () => {
-		expect(fx(v, 1)).toMatchObject({ lastMove: { from: 'e2', to: 'e4' }, saved: '' });
-		expect(fx(v, 6).saved).toBe('b4');
+		expect(fx(v, 1)).toMatchObject({ lastMove: { from: 'e2', to: 'e4' }, saved: null });
+		expect(fx(v, 6).saved).toEqual({ sq: 'b4', step: 5 });
 	});
 	it('plays the dice and the turn’s moments only on a turn that plays out', () => {
 		const live = fx(v, 7);
 		expect(live.pill?.key).toBe('7:5');
 		expect(live.scan?.sq).toBe('b4');
-		expect(live.repairs).toEqual([{ sq: 'c5', key: '7:6', hole: false }]);
-		expect(live.quip).toMatchObject({ sq: 'c5', key: '7:6' });
+		expect(live.repairs).toEqual([{ sq: 'c5', key: '7:6', hole: false, step: 6 }]);
+		expect(live.quip).toMatchObject({ sq: 'c5', key: '7:6', at: 6 });
 		for (const still of [fx(v, 7, { animated: false }), fx(v, 7, { quiet: true })]) {
-			expect(still).toMatchObject({ pill: null, scan: null, repairs: [], quip: null, lastMove: { from: 'e2', to: 'e4' }, saved: 'b4' });
+			// The saved piece stays marked; its hop plays by the roll's age (Board).
+			expect(still).toMatchObject({ pill: null, scan: null, repairs: [], quip: null, lastMove: { from: 'e2', to: 'e4' }, saved: { sq: 'b4', step: 5 } });
 		}
 	});
 	it('blinks the target while a re-roll is the latest step', () => {
@@ -648,7 +633,7 @@ describe('boardEffects', () => {
 	it('says the end line and bursts the mate once the dice stop', () => {
 		const mate = { ...v, status: 'over' as const, result: { winner: 'white' as const, draw: false, reason: 'checkmate' } };
 		const opts = { ending: { key: 'G:end', winner: true }, mate: 'G:mate' };
-		expect(fx(mate, 7, opts)).toMatchObject({ quip: { sq: 'e8', key: 'G:end' }, mated: { sq: 'e8', key: 'G:mate' } });
+		expect(fx(mate, 7, opts)).toMatchObject({ quip: { sq: 'e8', key: 'G:end', at: 'end' }, mated: { sq: 'e8', key: 'G:mate' } });
 		// Still rolling: the turn's own moment, no burst yet.
 		expect(fx(mate, 6, opts)).toMatchObject({ quip: { key: '7:3' }, mated: null }); // the king spared
 		expect(fx(mate, 7, { ...opts, quiet: true })).toMatchObject({ quip: null, mated: null });
