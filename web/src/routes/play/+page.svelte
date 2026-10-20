@@ -27,23 +27,20 @@
 	let already = $state('');
 	const friend = new FriendGame();
 	let foundTimer: ReturnType<typeof setTimeout> | undefined;
-	// Set once the guest has left the page: an answer that arrives later
-	// (/api/me, a game's view) must not take them back.
+	// Set once the guest has left the page: a game's view that arrives
+	// later must not change anything, or take them back to the game.
 	let left = false;
 
 	// Back to a game the guest is seated in: straight in if nobody has
 	// moved yet (a reload of the opponent-found screen), otherwise ask.
 	async function resume(code: string) {
-		try {
-			if ((await fetchView(code)).seq === 0) return play(code);
-		} catch {
-			// fall through to asking
-		}
+		const view = await fetchView(code).catch(() => null);
+		if (left) return;
+		if (view?.seq === 0) return play(code);
 		already = code;
 	}
 
 	function play(code: string) {
-		if (left) return;
 		clearTimeout(foundTimer);
 		void goto(`/game/${code}`, { replace: true, state: { matched: true } });
 	}
@@ -51,11 +48,12 @@
 	// Who's who, from the game itself (GET shows it without taking a seat);
 	// then into the game after FOUND_MS, or at once if that fails.
 	async function matched(code: string) {
-		try {
-			found = { code, card: matchCard(await fetchView(code)) };
-		} catch {
-			return play(code);
-		}
+		const card = await fetchView(code)
+			.then(matchCard)
+			.catch(() => null);
+		if (left) return;
+		if (!card) return play(code);
+		found = { code, card };
 		foundTimer = setTimeout(() => play(code), FOUND_MS);
 	}
 

@@ -125,7 +125,8 @@ func Replay(start Position, turns []Turn) (*Game, error) {
 
 // PlayRecorded plays m with dice, the rolls recorded when the turn was
 // first played. It fails if m is illegal or the turn doesn't use the rolls
-// exactly: it runs out of them, or leaves some over.
+// exactly: it runs out of them, or leaves some over. Only an illegal move
+// leaves the game as it was; after the others it is in no state to go on.
 func (g *Game) PlayRecorded(m Move, dice []int) (ev []Event, err error) {
 	script := &ScriptedDice{Rolls: dice}
 	defer func() {

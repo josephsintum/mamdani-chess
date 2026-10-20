@@ -26,6 +26,10 @@ func TestRoadCountsClosesBySource(t *testing.T) {
 	if got != want {
 		t.Fatalf("stats\n got %+v\nwant %+v", got, want)
 	}
+	// The Mamdani fell by its event, whatever the position says.
+	if v, want := r.view(), (StatsJSON{SavingRolls: 1, Repaired: 2, MamdaniFell: true}); v != want {
+		t.Errorf("view %+v, want %+v", v, want)
+	}
 }
 
 // A mate is by a roll when the final turn rolled the dice; an earlier

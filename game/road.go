@@ -11,8 +11,9 @@ import (
 // turn's events as they are played (restore replays them, so a restart
 // rebuilds it), and hands the total to the store with the result.
 type road struct {
-	st     store.GameStats // all but MateByRoll, which stats works out
-	rolled bool            // the latest turn rolled the pothole die
+	st          store.GameStats // all but MateByRoll, which stats works out
+	rolled      bool            // the latest turn rolled the pothole die
+	mamdaniFell bool
 }
 
 // add counts one turn's events; pos is the position after them. A
@@ -41,6 +42,7 @@ func (r *road) add(ev []rules.Event, pos *rules.Position) {
 			r.st.Fell++
 			switch {
 			case e.Piece == rules.MamdaniPiece: // nobody's loss
+				r.mamdaniFell = true
 			case e.Piece.Color() == rules.White:
 				r.st.WhiteLost++
 			default:
@@ -76,14 +78,13 @@ func (r *road) stats(reason rules.Reason) store.GameStats {
 	return st
 }
 
-// view is the part of the stats a game's view shows; pos is the game's
-// position. Only a fall takes the Mamdani off the board.
-func (r *road) view(pos *rules.Position) StatsJSON {
+// view is the part of the stats a game's view shows.
+func (r *road) view() StatsJSON {
 	return StatsJSON{
 		SavingRolls: r.st.SavingRolls,
 		Saved:       r.st.Saved,
 		Repaired:    r.st.Repaired,
-		MamdaniFell: pos.Mamdani == rules.NoSquare,
+		MamdaniFell: r.mamdaniFell,
 	}
 }
 

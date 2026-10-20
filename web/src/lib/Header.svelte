@@ -1,16 +1,7 @@
-<script lang="ts" module>
-	/** The site's pages, in the header and the footer. */
-	export const siteLinks = [
-		{ href: '/how-to-play', label: 'How to play' },
-		{ href: '/rules', label: 'Rules' },
-		{ href: '/practice', label: 'Practice' },
-		{ href: '/about', label: 'About' }
-	];
-</script>
-
 <script lang="ts">
 	import { fly } from 'svelte/transition';
 	import { page } from '$app/state';
+	import { siteLinks } from './links.ts';
 	import {
 		ApiError,
 		chooseName,

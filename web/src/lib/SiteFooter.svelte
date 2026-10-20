@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { siteLinks } from './Header.svelte';
+	import { siteLinks } from './links.ts';
 
 	// The footer on the site's pages (not the game): where to learn the game,
 	// the original game's credit, and that this is a fan project.

@@ -170,6 +170,7 @@ func gzipped(parts net.Buffers) *bytes.Buffer {
 	zw.Reset(&z)
 	parts.WriteTo(zw)
 	zw.Close()
+	zw.Reset(nil) // so the pool doesn't keep this page alive
 	gzipWriters.Put(zw)
 	return &z
 }

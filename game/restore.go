@@ -1,6 +1,7 @@
 package game
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -38,14 +39,12 @@ func (h *Hub) Restore(saved []store.SavedGame) int {
 	return n
 }
 
-func (h *Hub) restore(sg store.SavedGame, now time.Time) (err error) {
+func (h *Hub) restore(sg store.SavedGame, now time.Time) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	defer func() {
-		if r := recover(); r != nil { // one bad game mustn't stop the server starting
-			err = fmt.Errorf("%v", r)
-		}
-	}()
+	if h.games[sg.Code] != nil {
+		return errors.New("already running")
+	}
 	g := newGame(h, sg.Game)
 	for _, t := range sg.Turns {
 		if err := g.replay(t); err != nil {
@@ -78,7 +77,12 @@ func (h *Hub) restore(sg store.SavedGame, now time.Time) (err error) {
 
 // replay plays one saved turn with its recorded dice and sets the clocks
 // it ended with.
-func (g *Game) replay(t store.Turn) error {
+func (g *Game) replay(t store.Turn) (err error) {
+	defer func() {
+		if r := recover(); r != nil { // one bad turn mustn't stop the server starting
+			err = fmt.Errorf("%v", r)
+		}
+	}()
 	m, err := rules.ParseMove(t.Move)
 	if err != nil {
 		return err

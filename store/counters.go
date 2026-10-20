@@ -207,10 +207,10 @@ func (s *Store) rebuild(ctx context.Context, now time.Time) (RebuildReport, erro
 	return RebuildReport{Days: len(days), Rows: len(c)}, nil
 }
 
-// countedGame is the SQL condition for a game the counters count at all:
-// playtests and retired games count nowhere. AddGameStats checks the same
-// in Go.
-const countedGame = `playtest = 0 AND COALESCE(result, '') != 'retired'`
+// countedGame is the SQL condition for a game (as g) the counters count at
+// all: playtests and retired games count nowhere. AddGameStats checks the
+// same in Go.
+const countedGame = `g.playtest = 0 AND COALESCE(g.result, '') != 'retired'`
 
 // recountGames streams every counted game with its stats row and its last
 // turn (one seek), never its other turns. A migration that retires games
@@ -278,11 +278,11 @@ func (s *Store) totalsAgree(ctx context.Context, now time.Time) (bool, error) {
 	cut := s.cutoff(now)
 	var agree bool
 	err := s.db.QueryRowContext(ctx, `SELECT
-		(SELECT COUNT(*) FROM games WHERE `+countedGame+`)
+		(SELECT COUNT(*) FROM games g WHERE `+countedGame+`)
 		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key IN ('games.quick', 'games.friend'))
-		AND (SELECT COUNT(*) FROM games WHERE `+countedGame+` AND kind = 'friend' AND rematch_of IS NULL AND black IS NOT NULL)
+		AND (SELECT COUNT(*) FROM games g WHERE `+countedGame+` AND kind = 'friend' AND rematch_of IS NULL AND black IS NOT NULL)
 		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key = 'friend.joined')
-		AND (SELECT COUNT(*) FROM games WHERE `+countedGame+` AND result IS NOT NULL)
+		AND (SELECT COUNT(*) FROM games g WHERE `+countedGame+` AND result IS NOT NULL)
 		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key LIKE 'end.%')
 		AND (SELECT COUNT(*) FROM searches WHERE started_at >= ?1)
 		  = (SELECT COALESCE(SUM(n), 0) FROM stats_days WHERE key = 'search' AND day >= ?2)

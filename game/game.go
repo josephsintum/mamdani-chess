@@ -597,7 +597,7 @@ func (g *Game) viewFor(r role) *View {
 		Log:      shared(g.log),
 		Lost:     LostJSON{White: shared(g.lost[rules.White]), Black: shared(g.lost[rules.Black])},
 		Taken:    LostJSON{White: shared(g.taken[rules.White]), Black: shared(g.taken[rules.Black])},
-		Stats:    g.road.view(p),
+		Stats:    g.road.view(),
 		Seq:      len(g.g.Turns),
 		Clock:    g.clockJSON(now),
 		Online:   OnlineJSON{White: g.connected(rules.White), Black: g.connected(rules.Black)},
