@@ -1,9 +1,13 @@
 <script lang="ts">
+	import type { Age } from './animator.svelte.ts';
 	import { diceSteps } from './board.ts';
 	import Die from './Die.svelte';
 	import { sideName, type View } from './game.ts';
+	import { catchUp } from './motion.ts';
 
-	let { view, shown }: { view: View; shown: number } = $props();
+	// `age` (Animator.age) says how far each step has played: a tray drawn
+	// late, on a reload or in a sheet opened mid-turn, starts each step there.
+	let { view, shown, age }: { view: View; shown: number; age: Age } = $props();
 
 	let mover = $derived(view.last.find((e) => e.kind === 'moved')?.color);
 	let steps = $derived(diceSteps(view, shown));
@@ -36,11 +40,11 @@
 		{/if}
 		<ol>
 			{#each steps as step, i (i)}
-				<li class={step.tone}>
+				<li class={step.tone} {@attach catchUp(age(step.step))}>
 					{#if step.dice.length}
 						<span class="dice">
 							{#each step.dice as d, j (j)}
-								<Die die={d} />
+								<Die die={d} age={age(d.step)} />
 							{/each}
 						</span>
 					{/if}

@@ -52,7 +52,7 @@
 		<ul>
 			{#each dice as row (row.text)}
 				<li>
-					<span class="key">{#each row.dice as d, i (i)}<Die die={d} small />{/each}</span>
+					<span class="key">{#each row.dice as d, i (i)}<Die die={d} small age={Infinity} />{/each}</span>
 					{row.text}
 				</li>
 			{/each}

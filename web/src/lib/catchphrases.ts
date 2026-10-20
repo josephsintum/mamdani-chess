@@ -213,6 +213,8 @@ export interface Quip {
 	line: string;
 	key: string;
 	delay: number;
+	/** Its event in the turn, or the game's end: its age (Animator.age) says how far the bubble has played. */
+	at: number | 'end';
 }
 
 /** A finished game's line, as a board asks for it: under `key`; winner-only lines need `winner`. */
@@ -229,7 +231,7 @@ export type Ending = { key: string; winner: boolean };
 export function quipper(random: () => number = Math.random) {
 	const said = new Map<string, string>();
 	let last: string | undefined;
-	const bubble = (q: { kind: QuipKind; sq: string; key: string; afterBurst?: true }, winner: boolean): Quip => {
+	const bubble = (q: { kind: QuipKind; sq: string; key: string; afterBurst?: true }, winner: boolean, at: Quip['at']): Quip => {
 		let line = said.get(q.key);
 		if (!line) {
 			line = pickLine(q.kind, last, random, { winner });
@@ -238,15 +240,15 @@ export function quipper(random: () => number = Math.random) {
 		}
 		const fell = q.kind === 'mamdaniFell' || q.kind === 'queenFell' || q.kind === 'wipedOut';
 		const delay = fell ? FALL_MS : q.afterBurst ? AFTER_BURST_MS : 0;
-		return { sq: q.sq, emoji: QUIPS[q.kind].emoji, line, key: q.key, delay };
+		return { sq: q.sq, emoji: QUIPS[q.kind].emoji, line, key: q.key, delay, at };
 	};
 	return (view: View, shown: number, ending?: Ending): Quip | null => {
 		if (ending) {
 			const end = endQuip(view);
-			return end && bubble({ ...end, key: ending.key }, ending.winner);
+			return end && bubble({ ...end, key: ending.key }, ending.winner, 'end');
 		}
 		const found = quipFor(view.last, shown, contextOf(view));
-		return found && bubble({ ...found, key: `${view.seq}:${found.index}` }, true);
+		return found && bubble({ ...found, key: `${view.seq}:${found.index}` }, true, found.index);
 	};
 }
 

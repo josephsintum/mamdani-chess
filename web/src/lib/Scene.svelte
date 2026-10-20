@@ -84,7 +84,7 @@
 	{#key presses}
 		<div class="board" class:rewound={presses > 0} inert>
 			<ScriptedBoard {anim} {legal} {showing} id="scene-{scene.id}" ending={1} />
-			<DiceSummary view={anim.view!} shown={anim.shown} wrap />
+			<DiceSummary view={anim.view!} shown={anim.shown} age={anim.age} wrap />
 		</div>
 	{/key}
 	<button type="button" class="replay" onclick={replay}>

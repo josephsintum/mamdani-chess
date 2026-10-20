@@ -90,19 +90,19 @@ describe('scanFrames', () => {
 describe('the board during a roll', () => {
 	it('says an odd roll, and lets the pill go', () => {
 		const v = view([move, { kind: 'rolled_pothole', roll: 3 }]);
-		expect(dicePill(v, 2)).toEqual({ key: '7:1', text: 'd8 3 · no pothole', tone: 'odd', at: 450, last: true });
+		expect(dicePill(v, 2)).toEqual({ key: '7:1', text: 'd8 3 · no pothole', tone: 'odd', at: 450, last: true, step: 1 });
 	});
 	it('says an even roll, then the square once the file and rank dice land', () => {
 		const v = view([move, { kind: 'rolled_pothole', roll: 6 }, { kind: 'target', sq: 'd5' }, { kind: 'pothole_opened', sq: 'd5' }]);
 		expect(dicePill(v, 2)).toMatchObject({ text: 'd8 6 · pothole', tone: 'pot', last: false });
-		expect(dicePill(v, 3)).toEqual({ key: '7:1', text: 'd8 6 · pothole', tone: 'pot', then: { text: 'd5', tone: 'where', at: SCAN_MS }, last: true });
+		expect(dicePill(v, 3)).toEqual({ key: '7:1', text: 'd8 6 · pothole', tone: 'pot', then: { text: 'd5', tone: 'where', at: SCAN_MS }, last: true, step: 2 });
 		// One pill from the roll to the square: the target step keeps the roll's
 		// pill (by key), so it isn't drawn again and doesn't flicker.
 		expect(dicePill(v, 3)?.key).toBe(dicePill(v, 2)?.key);
 		// The hole opening keeps the target's pill.
 		expect(dicePill(v, 4)?.key).toBe('7:1');
-		expect(scanOf(v, 3)).toEqual({ sq: 'd5', key: '7:2', seed: 7 * 97 + 2 * 2 });
-		expect(scanOf(v, 4)).toEqual({ sq: 'd5', key: '7:2', seed: 7 * 97 + 2 * 2 });
+		expect(scanOf(v, 3)).toEqual({ sq: 'd5', key: '7:2', seed: 7 * 97 + 2 * 2, step: 2 });
+		expect(scanOf(v, 4)).toEqual({ sq: 'd5', key: '7:2', seed: 7 * 97 + 2 * 2, step: 2 });
 	});
 	it('names a re-roll and a saving roll', () => {
 		const v = view([
@@ -116,13 +116,13 @@ describe('the board during a roll', () => {
 		expect(dicePill(v, 4)).toMatchObject({ text: 'e1 · re-roll', tone: 'pot' });
 		// After a re-roll the target's pill is a new one.
 		expect(dicePill(v, 5)?.key).toBe('7:4');
-		expect(dicePill(v, 6)).toEqual({ key: '7:5', text: 'White knight b4 · saving roll', tone: 'save', then: { text: 'White knight b4 · saved', tone: 'save', at: 450 }, last: true });
+		expect(dicePill(v, 6)).toEqual({ key: '7:5', text: 'White knight b4 · saving roll', tone: 'save', then: { text: 'White knight b4 · saved', tone: 'save', at: 450 }, last: true, step: 5 });
 		expect(scanOf(v, 4)).toBeNull(); // the re-roll: no scan while the target blinks
 		expect(scanOf(v, 5)?.sq).toBe('b4');
 	});
 	it('says a reset, with no re-roll blink', () => {
 		const v = view([move, { kind: 'rolled_pothole', roll: 4 }, { kind: 'target', sq: 'd4' }, { kind: 'pothole_reset', sq: 'd4', color: 'white', was: 'black', left: 1 }]);
-		expect(dicePill(v, 4)).toEqual({ key: '7:3', text: 'Pothole reset: 3 rounds', tone: 'pot', last: true });
+		expect(dicePill(v, 4)).toEqual({ key: '7:3', text: 'Pothole reset: 3 rounds', tone: 'pot', last: true, step: 3 });
 		expect(scanOf(v, 4)?.sq).toBe('d4');
 	});
 	it('says nothing before the roll', () => {
@@ -132,15 +132,15 @@ describe('the board during a roll', () => {
 
 describe('stepDice', () => {
 	it('throws one die for the roll, grey when odd and yellow when even', () => {
-		expect(stepDice(view([move, { kind: 'rolled_pothole', roll: 3 }], 3), 1)).toEqual([{ value: 3, tone: 'dull', delay: 0, ms: 450, seed: 3 * 97 + 2 }]);
+		expect(stepDice(view([move, { kind: 'rolled_pothole', roll: 3 }], 3), 1)).toEqual([{ value: 3, tone: 'dull', delay: 0, ms: 450, seed: 3 * 97 + 2, step: 1 }]);
 		expect(stepDice(view([move, { kind: 'rolled_pothole', roll: 6 }], 3), 1)[0].tone).toBe('pot');
 	});
 	it('throws the file and rank dice out of sync, with the scan\'s seeds', () => {
 		const v = view([move, { kind: 'rolled_pothole', roll: 6 }, { kind: 'target', sq: 'd5' }], 3);
 		const seed = 3 * 97 + 2 * 2;
 		expect(stepDice(v, 2)).toEqual([
-			{ value: 4, tone: 'where', delay: 0, ms: FILE_MS, seed: seed + 1 },
-			{ value: 5, tone: 'where', delay: RANK_DELAY_MS, ms: RANK_MS, seed: seed + 2 }
+			{ value: 4, tone: 'where', delay: 0, ms: FILE_MS, seed: seed + 1, step: 2 },
+			{ value: 5, tone: 'where', delay: RANK_DELAY_MS, ms: RANK_MS, seed: seed + 2, step: 2 }
 		]);
 	});
 	it('throws a cream die for a saving roll, and none for the rest', () => {

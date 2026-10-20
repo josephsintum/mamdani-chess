@@ -570,6 +570,7 @@
 		pill={cornerPill}
 		scan={fx.scan}
 		reroll={fx.reroll}
+		age={anim.age}
 		onmove={move}
 		onrefuse={() => play('error')}
 	/>
@@ -656,7 +657,7 @@
 			{@const [head, ...rest] = joined.split(' · ')}
 			<p class="ph-card notice" role="status"><span class="ph-notice-head">{head}</span><span>{rest.join(' · ')}</span></p>
 		{:else}
-			<DiceSummary {view} {shown} />
+			<DiceSummary {view} {shown} age={anim.age} />
 		{/if}
 
 		{#if view.status !== 'waiting' && !confirmResign}
@@ -694,7 +695,7 @@
 		{/if}
 		</div>
 	</div>
-	<MovesSheet bind:this={sheet} {view} {shown} rolling={animating} />
+	<MovesSheet bind:this={sheet} {view} {shown} rolling={animating} age={anim.age} />
 {:else}
 <main>
 	<header>
@@ -754,7 +755,7 @@
 			</div>
 
 			<div class="side-col">
-				<DiceTray {view} {shown} />
+				<DiceTray {view} {shown} age={anim.age} />
 				{#if error}<p class="error" role="alert">{error}</p>{/if}
 
 				{#if resultCard}

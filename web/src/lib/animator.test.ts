@@ -10,9 +10,11 @@ const roll: EventJSON[] = [
 	{ kind: 'pothole_opened', sq: 'd4', color: 'white' }
 ];
 
-function view(seq: number, last: EventJSON[] = []): View {
-	return { seq, last } as View;
+function view(seq: number, last: EventJSON[] = [], result?: View['result']): View {
+	return { seq, last, result } as View;
 }
+
+const over = { winner: 'white', reason: 'checkmate' } as View['result'];
 
 describe('Animator', () => {
 	beforeEach(() => vi.useFakeTimers());
@@ -121,6 +123,78 @@ describe('Animator', () => {
 		expect(a.shown).toBe(1);
 		vi.advanceTimersByTime(1);
 		expect(a.shown).toBe(2);
+	});
+});
+
+describe('Animator ages', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+	const clock = () => Date.now();
+
+	it('ages each event from when it was revealed, so an effect mounted late catches up', () => {
+		const a = new Animator(100, clock);
+		a.receive(view(0));
+		a.receive(view(1, roll));
+		expect(a.age(0)).toBe(0); // the move, revealed with the view
+		expect(a.age(1)).toBe(Infinity); // the roll, still to come
+		vi.advanceTimersByTime(100);
+		expect([a.age(0), a.age(1)]).toEqual([100, 0]);
+		vi.advanceTimersByTime(40);
+		expect(a.age(1)).toBe(40);
+		expect(a.age(9)).toBe(Infinity);
+	});
+
+	it('has no age for a turn shown at once: a load, a reconnect, a hidden tab', () => {
+		const a = new Animator(100, clock);
+		a.receive(view(3, roll)); // a load or reload
+		expect(roll.map((_, i) => a.age(i))).toEqual(roll.map(() => Infinity));
+		a.receive(view(4, roll), { hidden: true });
+		expect(a.age(0)).toBe(Infinity);
+		a.receive(view(6, roll)); // a reconnect that skipped a turn
+		expect(a.age(0)).toBe(Infinity);
+	});
+
+	it('keeps the ages through an update for the same turn, and settles what finish skips', () => {
+		const a = new Animator(100, clock);
+		a.receive(view(0));
+		a.receive(view(1, roll));
+		vi.advanceTimersByTime(100);
+		a.receive(view(1, roll)); // the opponent went offline, say
+		expect([a.age(0), a.age(1)]).toEqual([100, 0]);
+		a.finish(); // back to a hidden tab mid-roll
+		expect([a.age(1), a.age(2), a.age(3)]).toEqual([0, Infinity, Infinity]);
+	});
+
+	it("ages the game's end from when its turn finished playing, or when the result arrived", () => {
+		const a = new Animator(100, clock);
+		a.receive(view(0));
+		expect(a.age('end')).toBe(Infinity);
+		a.receive(view(1, roll, over)); // mate by roll
+		expect(a.age('end')).toBe(Infinity); // the dice still roll
+		vi.advanceTimersByTime(300);
+		expect(a.age('end')).toBe(0);
+		vi.advanceTimersByTime(50);
+		expect(a.age('end')).toBe(50);
+
+		const b = new Animator(100, clock);
+		b.receive(view(0));
+		b.receive(view(1, roll));
+		vi.advanceTimersByTime(1000);
+		b.receive(view(1, roll, over)); // a resignation: the same turn, now over
+		vi.advanceTimersByTime(20);
+		expect(b.age('end')).toBe(20);
+		b.receive(view(1, roll, over)); // a rematch offer keeps it
+		expect(b.age('end')).toBe(20);
+	});
+
+	it('has no age for an end shown at once', () => {
+		const a = new Animator(100, clock);
+		a.receive(view(5, roll, over)); // a reload after the game ended
+		expect(a.age('end')).toBe(Infinity);
+		const b = new Animator(100, clock);
+		b.receive(view(0));
+		b.receive(view(1, roll, over), { hidden: true });
+		expect(b.age('end')).toBe(Infinity);
 	});
 });
 

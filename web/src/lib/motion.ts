@@ -21,6 +21,28 @@ export function reducedMotion(): boolean {
 	return reduceQuery.matches;
 }
 
+const caught = new WeakSet<Element>();
+
+/**
+ * An attachment that starts a one-off effect's CSS animations `age` ms in:
+ * its age from Animator.age, read once, when it mounts. So an effect drawn
+ * late (on a reload, a board drawn again, a sheet opened) carries on where
+ * it should be rather than playing from the start, and one with no age
+ * (Infinity) shows how it ends. Script animations (a die's throw) take
+ * their age themselves.
+ */
+export function catchUp(age: number) {
+	return (node: Element) => {
+		if (!(age > 0) || caught.has(node)) return;
+		caught.add(node);
+		for (const a of node.getAnimations({ subtree: true })) {
+			if (!('animationName' in a) || a.effect?.getComputedTiming().iterations === Infinity) continue;
+			if (age === Infinity) a.finish();
+			else a.currentTime = Number(a.currentTime ?? 0) + age;
+		}
+	};
+}
+
 /**
  * What is left of an exit that started `elapsed` ms ago and lasts `total`,
  * never under 1 ms: with Svelte 5.57, an update whose leaving elements mixed

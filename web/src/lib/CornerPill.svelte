@@ -1,9 +1,11 @@
 <script lang="ts">
 	import type { DicePill } from './dice.ts';
+	import { catchUp } from './motion.ts';
 
 	// The pill on the board's corner saying what the dice mean (dice.ts
-	// dicePill). A new key plays it again.
-	let { pill }: { pill: DicePill } = $props();
+	// dicePill). A new key plays it again; `age` (Animator.age of its step)
+	// starts a pill drawn late that far in.
+	let { pill, age }: { pill: DicePill; age: number } = $props();
 
 	/** How long the turn's last pill stays: an odd roll's briefly, a square or a saving roll's a little longer. */
 	function hold(p: DicePill): number {
@@ -12,7 +14,7 @@
 </script>
 
 {#key pill.key}
-	<span class="pills" class:last={pill.last} style="--at: {pill.at ?? 0}ms; --hold: {(pill.at ?? 0) + hold(pill)}ms; --then: {pill.then?.at ?? 0}ms" aria-hidden="true">
+	<span class="pills" class:last={pill.last} {@attach catchUp(age)} style="--at: {pill.at ?? 0}ms; --hold: {(pill.at ?? 0) + hold(pill)}ms; --then: {pill.then?.at ?? 0}ms" aria-hidden="true">
 		<span class="pill {pill.tone}" class:swap={!!pill.then}>{pill.text}</span>
 		{#if pill.then}<span class="pill {pill.then.tone} next">{pill.then.text}</span>{/if}
 	</span>

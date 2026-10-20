@@ -1,4 +1,7 @@
-// Plays a turn's dice one step at a time. Shared by the game page and the
+// Plays a turn's dice one step at a time, and remembers when each step
+// played, so a one-off effect (a die's throw, a scan, a repair's 👍, a
+// bubble) plays once: an effect mounted late catches up by its age, and one
+// shown at once has none and shows settled. Shared by the game page and the
 // /dev/board sandbox, so the sandbox shows exactly what players see.
 
 import { dicePace, firstDiceStep } from './dice.ts';
@@ -11,6 +14,9 @@ import type { EventJSON, View } from './game.ts';
  * clock never starts while the dice still play.
  */
 export type Pace = number | ((shownLast: EventJSON | undefined) => number);
+
+/** Animator.age: how far in a one-off effect of the current turn is, in ms. */
+export type Age = (at: number | 'end') => number;
 
 export class Animator {
 	// Raw: a view is only ever replaced, never changed in place.
@@ -35,10 +41,30 @@ export class Animator {
 	 */
 	onreveal: ((view: View, from: number, to: number, jumped?: boolean) => void) | undefined;
 	#timer: ReturnType<typeof setTimeout> | undefined;
+	#now: () => number;
+	// When each event of view.last was revealed as the turn played out; null
+	// for one shown at once.
+	#revealedAt: (number | null)[] = [];
+	// When the game's result arrived: a time, 'turn' (when the turn that
+	// brought it finishes playing), or null (shown at once).
+	#endedAt: number | 'turn' | null = null;
 
-	constructor(pace: Pace = dicePace) {
+	constructor(pace: Pace = dicePace, now: () => number = () => performance.now()) {
 		this.pace = pace;
+		this.#now = now;
 	}
+
+	/**
+	 * How long ago, in ms, event `at` of the current turn was revealed, or
+	 * the game ended ('end'). Infinity for anything shown at once: on load,
+	 * on a reconnect, in a hidden tab, or skipped by finish(). An effect reads
+	 * it when it mounts and starts that far in, so a reload, a board drawn
+	 * again or a sheet opened later never plays it from the start.
+	 */
+	age: Age = (at) => {
+		const t = at !== 'end' ? this.#revealedAt[at] : this.#endedAt === 'turn' ? this.#revealedAt[(this.view?.last.length ?? 0) - 1] : this.#endedAt;
+		return t === null || t === undefined ? Infinity : this.#now() - t;
+	};
 
 	#wait(): number {
 		if (typeof this.pace === 'number') return this.pace;
@@ -59,17 +85,22 @@ export class Animator {
 	 * keeps a roll that is playing where it is.
 	 */
 	receive(next: View, { hidden = false }: { hidden?: boolean } = {}) {
-		if (this.view !== null && next.seq === this.view.seq) {
+		const prev = this.view;
+		if (prev !== null && next.seq === prev.seq) {
+			if (next.result && !prev.result) this.#endedAt = this.#now();
 			this.view = next;
 			this.shown = Math.min(this.shown, next.last.length);
 			return;
 		}
-		const live = this.view !== null && next.seq === this.view.seq + 1 && next.last.length > 0;
+		const live = prev !== null && next.seq === prev.seq + 1 && next.last.length > 0;
 		const animate = live && !hidden;
 		this.view = next;
 		this.animated = animate;
 		clearTimeout(this.#timer);
 		this.shown = animate ? firstDiceStep(next.last) : next.last.length;
+		const now = this.#now();
+		this.#revealedAt = next.last.map((_, i) => (animate && i < this.shown ? now : null));
+		this.#endedAt = animate && next.result && !prev?.result ? 'turn' : null;
 		if (animate) this.onreveal?.(next, 0, this.shown);
 		else if (live) this.onreveal?.(next, 0, this.shown, true);
 		this.#tick();
@@ -93,6 +124,7 @@ export class Animator {
 		if (!this.animating) return;
 		this.#timer = setTimeout(() => {
 			this.shown += 1;
+			this.#revealedAt[this.shown - 1] = this.#now();
 			if (this.view) this.onreveal?.(this.view, this.shown - 1, this.shown);
 			this.#tick();
 		}, this.#wait());
