@@ -27,6 +27,9 @@
 	let already = $state('');
 	const friend = new FriendGame();
 	let foundTimer: ReturnType<typeof setTimeout> | undefined;
+	// Set once the guest has left the page: an answer that arrives later
+	// (/api/me, a game's view) must not take them back.
+	let left = false;
 
 	// Back to a game the guest is seated in: straight in if nobody has
 	// moved yet (a reload of the opponent-found screen), otherwise ask.
@@ -40,6 +43,7 @@
 	}
 
 	function play(code: string) {
+		if (left) return;
 		clearTimeout(foundTimer);
 		void goto(`/game/${code}`, { replace: true, state: { matched: true } });
 	}
@@ -103,7 +107,7 @@
 			.catch(() => connect());
 		const tick = setInterval(() => (now = Date.now()), 250);
 		return () => {
-			done = true;
+			done = left = true;
 			clearTimeout(retry);
 			es?.close();
 			clearInterval(tick);
