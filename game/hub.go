@@ -33,6 +33,9 @@ type Hub struct {
 	// reserved holds codes being saved by create, so two creates can't
 	// pick the same one while neither holds mu.
 	reserved map[string]bool
+	// closing is closed by Close, which stops every game.
+	closing   chan struct{}
+	closeOnce sync.Once
 }
 
 // NewHub returns a hub whose games roll with dice, are saved to st (nil
@@ -41,7 +44,25 @@ func NewHub(dice rules.Dice, st Store) *Hub {
 	if st == nil {
 		st = nopStore{}
 	}
-	return &Hub{dice: dice, store: st, newCode: NewCode, games: map[string]*Game{}, reserved: map[string]bool{}}
+	return &Hub{dice: dice, store: st, newCode: NewCode, games: map[string]*Game{}, reserved: map[string]bool{}, closing: make(chan struct{})}
+}
+
+// Close stops every game where it stands, for a shutdown. A call or save
+// already under way finishes first, and nothing is saved once Close
+// returns, so the store can close after it. The next start restores the
+// games from what was saved. It returns how many games it stopped.
+func (h *Hub) Close() int {
+	h.closeOnce.Do(func() { close(h.closing) })
+	h.mu.Lock()
+	games := make([]*Game, 0, len(h.games))
+	for _, g := range h.games {
+		games = append(games, g)
+	}
+	h.mu.Unlock() // each game's stop takes mu to leave the hub
+	for _, g := range games {
+		<-g.done
+	}
+	return len(games)
 }
 
 // Create starts a friend game with creator in White's seat, giving them a

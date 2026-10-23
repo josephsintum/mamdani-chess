@@ -180,6 +180,11 @@ func (g *Game) loop() {
 				return
 			}
 			idle.Reset(g.idle)
+		case <-g.hub.closing:
+			// The server is shutting down. Everything the game did is
+			// saved, and the next start restores it.
+			g.stop()
+			return
 		}
 	}
 }

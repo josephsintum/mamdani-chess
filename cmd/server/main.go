@@ -46,6 +46,9 @@ func run() error {
 	defer st.Close()
 
 	hub := game.NewHub(game.CryptoDice{}, st)
+	// Deferred after st.Close, so it runs first: every game stops before
+	// the store closes, and no clock or eviction saves into a closed store.
+	defer func() { slog.Info("games stopped", "games", hub.Close()) }()
 	if err := start(context.Background(), st, hub, time.Now()); err != nil {
 		return err
 	}
@@ -76,6 +79,8 @@ func run() error {
 	case <-sig.Done():
 	}
 	slog.Info("shutting down")
+	// Within railway.json's drainingSeconds (15), after which Railway kills
+	// the process.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
